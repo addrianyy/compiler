@@ -1,2 +1,12 @@
 fn main(x: u32, y_test: i64**) -> void {
+    let xd: u32[11];
+
+    sad = 132;
+
+    if (5 + 8) {
+        return;
+    } else if (555) {
+    } else {
+        55;
+    }
 }

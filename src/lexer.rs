@@ -14,29 +14,31 @@ pub enum Keyword {
     While,
     If,
     Let,
+    Return,
+    Else,
 }
 
 impl Keyword {
     fn from_ident(ident: &str) -> Option<Keyword> {
-        let keyword = match ident {
-            "fn"    => Keyword::Function,
-            "void"  => Keyword::Void,
-            "u8"    => Keyword::U8,
-            "u16"   => Keyword::U16,
-            "u32"   => Keyword::U32,
-            "u64"   => Keyword::U64,
-            "i8"    => Keyword::I8,
-            "i16"   => Keyword::I16,
-            "i32"   => Keyword::I32,
-            "i64"   => Keyword::I64,
-            "for"   => Keyword::For,
-            "while" => Keyword::While,
-            "if"    => Keyword::If,
-            "let"   => Keyword::Let,
-            _       => return None,
-        };
-
-        Some(keyword)
+        Some(match ident {
+            "fn"     => Keyword::Function,
+            "void"   => Keyword::Void,
+            "u8"     => Keyword::U8,
+            "u16"    => Keyword::U16,
+            "u32"    => Keyword::U32,
+            "u64"    => Keyword::U64,
+            "i8"     => Keyword::I8,
+            "i16"    => Keyword::I16,
+            "i32"    => Keyword::I32,
+            "i64"    => Keyword::I64,
+            "for"    => Keyword::For,
+            "while"  => Keyword::While,
+            "if"     => Keyword::If,
+            "else"   => Keyword::Else,
+            "let"    => Keyword::Let,
+            "return" => Keyword::Return,
+            _        => return None,
+        })
     }
 }
 
@@ -120,7 +122,7 @@ pub struct Lexer {
 }
 
 impl Lexer {
-    pub fn lex(mut source: &str) -> Self {
+    pub fn new(mut source: &str) -> Self {
         const STATIC_TOKENS: &[(&str, Token)] = &[
             (">>=", Token::ShrAssign),
             ("<<=", Token::ShlAssign),
@@ -207,7 +209,7 @@ impl Lexer {
                 '\'' => {
                     source = &source[1..];
 
-                    // TODO: improve this, handle escapes.
+                    // TODO: improve this, properly handle escapes.
                     let end    = source.find(|c: char| c == '\'').unwrap();
                     let inside = &source[..end];
 
@@ -244,7 +246,7 @@ impl Lexer {
                             match ch {
                                 '\"' | '\\' => (),
                                 _           => {
-                                    panic!("Invalid escaped character {}", ch);
+                                    panic!("Invalid string escaped character {}.", ch);
                                 }
                             }
 
@@ -304,11 +306,9 @@ impl Lexer {
                             assert!(!has_dot, "Multiple dots in float literal.");
 
                             has_dot = true;
-                        } else {
-                            if valid.iter().find(|x| **x == ch).is_none() {
-                                source = &source[index..];
-                                break;
-                            }
+                        } else if valid.iter().find(|x| **x == ch).is_none() {
+                            source = &source[index..];
+                            break;
                         }
 
                         literal.push(ch);
@@ -360,12 +360,12 @@ impl Lexer {
             }
 
             let end = source.find(|c: char| !c.is_alphanumeric() && c != '_')
-                .unwrap_or(source.len());
+                .unwrap_or_else(|| source.len());
             let ident = &source[..end];
 
             source = &source[end..];
 
-            assert!(!ident.is_empty(), "Invalid state: {}", source);
+            assert!(!ident.is_empty(), "Invalid state: {}.", source);
 
             let token = match Keyword::from_ident(ident) {
                 Some(keyword) => Token::Keyword(keyword),
@@ -375,7 +375,7 @@ impl Lexer {
             tokens.push(token);
         }
 
-        if true {
+        if false {
             for token in &tokens {
                 println!("{:?}", token);
             }
@@ -390,7 +390,7 @@ impl Lexer {
     fn token(&self, cursor: isize) -> &Token {
         const EOF: Token = Token::Eof;
 
-        if cursor < 0 || cursor as usize > self.tokens.len() {
+        if cursor < 0 || cursor as usize >= self.tokens.len() {
             return &EOF;
         }
 
@@ -409,12 +409,6 @@ impl Lexer {
         self.token(self.cursor)
     }
 
-    pub fn restore(&mut self, count: usize) {
-        assert!(count > 0);
-
-        self.cursor -= count as isize;
-    }
-
     #[track_caller]
     pub fn eat_keyword(&mut self) -> &Keyword {
         let token = self.eat();
@@ -422,7 +416,7 @@ impl Lexer {
         if let Token::Keyword(keyword) = token {
             keyword
         } else {
-            panic!("Expected keyword, got {:?}", token);
+            panic!("Expected keyword, got {:?}.", token);
         }
     }
 
@@ -433,51 +427,19 @@ impl Lexer {
         if let Token::Identifier(expected) = token {
             expected
         } else {
-            panic!("Expected identifier, got {:?}", token);
+            panic!("Expected identifier, got {:?}.", token);
         }
     }
 
     #[track_caller]
+    #[allow(unused)]
     pub fn eat_literal(&mut self) -> &Literal {
         let token = self.eat();
 
         if let Token::Literal(expected) = token {
             expected
         } else {
-            panic!("Expected literal, got {:?}", token);
-        }
-    }
-
-    #[track_caller]
-    pub fn current_keyword(&mut self) -> &Keyword {
-        let token = self.current();
-
-        if let Token::Keyword(keyword) = token {
-            keyword
-        } else {
-            panic!("Expected keyword, got {:?}", token);
-        }
-    }
-
-    #[track_caller]
-    pub fn current_identifier(&mut self) -> &str {
-        let token = self.current();
-
-        if let Token::Identifier(expected) = token {
-            expected
-        } else {
-            panic!("Expected identifier, got {:?}", token);
-        }
-    }
-
-    #[track_caller]
-    pub fn current_literal(&mut self) -> &Literal {
-        let token = self.current();
-
-        if let Token::Literal(expected) = token {
-            expected
-        } else {
-            panic!("Expected literal, got {:?}", token);
+            panic!("Expected literal, got {:?}.", token);
         }
     }
 
@@ -486,8 +448,7 @@ impl Lexer {
         let token = self.eat();
 
         if token != expected {
-            panic!("Expected {:?}, got {:?}", expected, token);
+            panic!("Expected {:?}, got {:?}.", expected, token);
         }
     }
 }
-
