@@ -1,4 +1,4 @@
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Keyword {
     Function,
     Void,
@@ -13,6 +13,7 @@ pub enum Keyword {
     For,
     While,
     If,
+    Let,
 }
 
 impl Keyword {
@@ -31,6 +32,7 @@ impl Keyword {
             "for"   => Keyword::For,
             "while" => Keyword::While,
             "if"    => Keyword::If,
+            "let"   => Keyword::Let,
             _       => return None,
         };
 
@@ -38,7 +40,7 @@ impl Keyword {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum IntegerSuffix {
     U8,
     U16,
@@ -50,7 +52,7 @@ pub enum IntegerSuffix {
     I64,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Literal {
     Char(u8),
     String(String),
@@ -60,7 +62,7 @@ pub enum Literal {
     },
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Token {
     Identifier(String),
     Keyword(Keyword),
@@ -108,10 +110,12 @@ pub enum Token {
     Lt,
     Gte,
     Lte,
+
+    Eof,
 }
 
 pub struct Lexer {
-    cursor: usize,
+    cursor: isize,
     tokens: Vec<Token>,
 }
 
@@ -380,6 +384,109 @@ impl Lexer {
         Lexer {
             tokens,
             cursor: 0,
+        }
+    }
+
+    fn token(&self, cursor: isize) -> &Token {
+        const EOF: Token = Token::Eof;
+
+        if cursor < 0 || cursor as usize > self.tokens.len() {
+            return &EOF;
+        }
+
+        &self.tokens[cursor as usize]
+    }
+
+    pub fn eat(&mut self) -> &Token {
+        let cursor = self.cursor;
+
+        self.cursor += 1;
+
+        self.token(cursor)
+    }
+
+    pub fn current(&self) -> &Token {
+        self.token(self.cursor)
+    }
+
+    pub fn restore(&mut self, count: usize) {
+        assert!(count > 0);
+
+        self.cursor -= count as isize;
+    }
+
+    #[track_caller]
+    pub fn eat_keyword(&mut self) -> &Keyword {
+        let token = self.eat();
+
+        if let Token::Keyword(keyword) = token {
+            keyword
+        } else {
+            panic!("Expected keyword, got {:?}", token);
+        }
+    }
+
+    #[track_caller]
+    pub fn eat_identifier(&mut self) -> &str {
+        let token = self.eat();
+
+        if let Token::Identifier(expected) = token {
+            expected
+        } else {
+            panic!("Expected identifier, got {:?}", token);
+        }
+    }
+
+    #[track_caller]
+    pub fn eat_literal(&mut self) -> &Literal {
+        let token = self.eat();
+
+        if let Token::Literal(expected) = token {
+            expected
+        } else {
+            panic!("Expected literal, got {:?}", token);
+        }
+    }
+
+    #[track_caller]
+    pub fn current_keyword(&mut self) -> &Keyword {
+        let token = self.current();
+
+        if let Token::Keyword(keyword) = token {
+            keyword
+        } else {
+            panic!("Expected keyword, got {:?}", token);
+        }
+    }
+
+    #[track_caller]
+    pub fn current_identifier(&mut self) -> &str {
+        let token = self.current();
+
+        if let Token::Identifier(expected) = token {
+            expected
+        } else {
+            panic!("Expected identifier, got {:?}", token);
+        }
+    }
+
+    #[track_caller]
+    pub fn current_literal(&mut self) -> &Literal {
+        let token = self.current();
+
+        if let Token::Literal(expected) = token {
+            expected
+        } else {
+            panic!("Expected literal, got {:?}", token);
+        }
+    }
+
+    #[track_caller]
+    pub fn eat_expect(&mut self, expected: &Token) {
+        let token = self.eat();
+
+        if token != expected {
+            panic!("Expected {:?}, got {:?}", expected, token);
         }
     }
 }
