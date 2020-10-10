@@ -405,6 +405,12 @@ impl Lexer {
         self.token(cursor)
     }
 
+    pub fn restore(&mut self, count: usize) {
+        assert!(count > 0);
+
+        self.cursor -= count as isize;
+    }
+
     pub fn current(&self) -> &Token {
         self.token(self.cursor)
     }

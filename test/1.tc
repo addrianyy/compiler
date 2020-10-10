@@ -1,9 +1,2 @@
-fn main(x: u32, y_test: i64**) -> void {
-    let xd: u32[11];
-
-    sad = 132;
-
-    if (x > 10) {
-        return 6;
-    }
+fn main(x: u32, y: i64**) -> void {
 }

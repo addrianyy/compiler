@@ -92,6 +92,49 @@ pub enum Ty {
     Ptr(Box<Ty>),
 }
 
+impl Ty {
+    pub fn strip_pointer(&self) -> Option<Ty> {
+        if let Ty::Ptr(ty) = self {
+            Some(*ty.clone())
+        } else {
+            None
+        }
+    }
+
+    pub fn is_arithmetic_type(&self) -> bool {
+        match self {
+            Ty::Ptr(..) | Ty::Void => false,
+            _                      => true,
+        }
+    }
+
+    pub fn is_nonvoid_ptr(&self) -> bool {
+        match self {
+            Ty::Ptr(ty) => **ty != Ty::Void,
+            _           => false,
+        }
+    }
+
+    pub fn is_void(&self) -> bool {
+        matches!(self, Ty::Void)
+    }
+
+    fn from_token(token: &Token) -> Option<Self> {
+        Some(match token {
+            Token::Keyword(Keyword::U8)   => Ty::U8,
+            Token::Keyword(Keyword::U16)  => Ty::U16,
+            Token::Keyword(Keyword::U32)  => Ty::U32,
+            Token::Keyword(Keyword::U64)  => Ty::U64,
+            Token::Keyword(Keyword::I8)   => Ty::I8,
+            Token::Keyword(Keyword::I16)  => Ty::I16,
+            Token::Keyword(Keyword::I32)  => Ty::I32,
+            Token::Keyword(Keyword::I64)  => Ty::I64,
+            Token::Keyword(Keyword::Void) => Ty::Void,
+            _                             => return None,
+        })
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Expr {
     Variable(String),
@@ -106,6 +149,7 @@ pub enum Expr {
     },
     Number {
         value: u64,
+        ty:    Option<Ty>,
     },
     Array {
         array: Box<TypedExpr>,
@@ -118,7 +162,7 @@ pub enum Expr {
     Cast {
         value: Box<TypedExpr>,
         ty:    Ty,
-    }
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -186,18 +230,9 @@ impl Parser {
     }
 
     fn parse_ty(&mut self) -> Ty {
-        let mut ty = match self.lexer.eat_keyword() {
-            Keyword::U8   => Ty::U8,
-            Keyword::U16  => Ty::U16,
-            Keyword::U32  => Ty::U32,
-            Keyword::U64  => Ty::U64,
-            Keyword::I8   => Ty::I8,
-            Keyword::I16  => Ty::I16,
-            Keyword::I32  => Ty::I32,
-            Keyword::I64  => Ty::I64,
-            Keyword::Void => Ty::Void,
-            x             => panic!("Invalid type keyword {:?}.", x),
-        };
+        let current = self.lexer.eat();
+        let mut ty  = Ty::from_token(current)
+            .unwrap_or_else(|| panic!("Invalid type keyword {:?}.", current));
 
         loop {
             if self.lexer.current() != &Token::Mul {
@@ -228,7 +263,7 @@ impl Parser {
                 let _ = self.lexer.eat();
             } else {
                 assert!(current == &Token::ParenClose,
-                        "Expected comma or closing paren in argument list.");
+                        "Expected comma or closing paren in argument list. Got {:?}", current);
             }
         }
     }
@@ -277,6 +312,7 @@ impl Parser {
                 TypedExpr {
                     expr: Expr::Number {
                         value,
+                        ty: ty.clone(),
                     },
                     ty,
                 }
@@ -298,8 +334,27 @@ impl Parser {
                     }
                 }
             }
-            Token::ParenOpen => self.parse_paren_expression(),
-            _                => panic!("Unexpected token in primary expression: {:?}.", current),
+            Token::ParenOpen => {
+                let _ = self.lexer.eat();
+
+                if let Some(_) = Ty::from_token(self.lexer.current()) {
+                    let ty   = self.parse_ty();
+                    let _    = self.lexer.eat_expect(&Token::ParenClose);
+                    let expr = self.parse_primary_expression();
+
+                    TypedExpr {
+                        expr: Expr::Cast {
+                            value: Box::new(expr),
+                            ty,
+                        },
+                        ty: None,
+                    }
+                } else {
+                    self.lexer.restore(1);
+                    self.parse_paren_expression()
+                }
+            }
+            _ => panic!("Unexpected token in primary expression: {:?}.", current),
         };
 
         if self.lexer.current() == &Token::BracketOpen {
