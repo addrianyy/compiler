@@ -83,39 +83,44 @@ pub enum Expr {
     Variable(String),
     Unary {
         op:    UnaryOp,
-        value: Box<Expr>,
+        value: Box<TypedExpr>,
     },
     Binary {
-        left:  Box<Expr>,
+        left:  Box<TypedExpr>,
         op:    BinaryOp,
-        right: Box<Expr>,
+        right: Box<TypedExpr>,
     },
     Number {
         value: u64,
-        ty:    Option<Ty>,
     },
     Array {
-        array: Box<Expr>,
-        index: Box<Expr>,
+        array: Box<TypedExpr>,
+        index: Box<TypedExpr>,
     },
     Call {
         target: String,
-        args:   Vec<Expr>,
+        args:   Vec<TypedExpr>,
     },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TypedExpr {
+    pub ty:   Option<Ty>,
+    pub expr: Expr,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Stmt {
     Assign {
-        variable: Expr, 
-        value:    Expr,
+        variable: TypedExpr, 
+        value:    TypedExpr,
     },
     While {
-        condition: Expr,
+        condition: TypedExpr,
         body:      Body,
     },
     If {
-        arms:    Vec<(Expr, Body)>,
+        arms:    Vec<(TypedExpr, Body)>,
         default: Option<Body>,
     },
     Declare {
@@ -124,11 +129,11 @@ pub enum Stmt {
         /// Declaration type.
         decl_ty:  Ty,
         name:     String,
-        value:    Option<Expr>,
-        array:    Option<Expr>,
+        value:    Option<TypedExpr>,
+        array:    Option<TypedExpr>,
     },
-    Return(Option<Expr>),
-    Expr(Expr),
+    Return(Option<TypedExpr>),
+    Expr(TypedExpr),
 }
 
 pub type Body = Vec<Stmt>;
@@ -210,20 +215,23 @@ impl Parser {
         }
     }
 
-    fn parse_call_expression(&mut self, target: String) -> Expr {
+    fn parse_call_expression(&mut self, target: String) -> TypedExpr {
         let mut args = Vec::new();
 
         self.parse_argument_list(|parser| {
             args.push(parser.parse_expression());
         });
 
-        Expr::Call {
-            target,
-            args,
+        TypedExpr {
+            expr: Expr::Call {
+                target,
+                args,
+            },
+            ty: None,
         }
     }
 
-    fn parse_primary_expression(&mut self) -> Expr {
+    fn parse_primary_expression(&mut self) -> TypedExpr {
         let current = self.lexer.current();
 
         if let Some(unary) = UnaryOp::from_token(current) {
@@ -248,8 +256,10 @@ impl Parser {
                 let value = *value;
                 let _     = self.lexer.eat();
 
-                Expr::Number {
-                    value,
+                TypedExpr {
+                    expr: Expr::Number {
+                        value,
+                    },
                     ty,
                 }
             }
@@ -264,7 +274,10 @@ impl Parser {
                 if self.lexer.current() == &Token::ParenOpen {
                     self.parse_call_expression(ident)
                 } else {
-                    Expr::Variable(ident)
+                    TypedExpr {
+                        expr: Expr::Variable(ident),
+                        ty:   None,
+                    }
                 }
             }
             Token::ParenOpen => self.parse_paren_expression(),
@@ -276,16 +289,19 @@ impl Parser {
             let index = self.parse_expression();
             let _     = self.lexer.eat_expect(&Token::BracketClose);
 
-            result = Expr::Array {
-                array: Box::new(result),
-                index: Box::new(index),
-            };
+            result = TypedExpr {
+                expr: Expr::Array {
+                    array: Box::new(result),
+                    index: Box::new(index),
+                },
+                ty: None,
+            }
         }
 
         result
     }
 
-   fn parse_binary_expression(&mut self, precedence: i32, mut left: Expr) -> Expr {
+   fn parse_binary_expression(&mut self, precedence: i32, mut left: TypedExpr) -> TypedExpr {
         let get_token_precedence = |parser: &Self| {
             BinaryOp::from_token(parser.lexer.current())
                 .map(|op| op.precedence())
@@ -307,22 +323,25 @@ impl Parser {
                 right = self.parse_binary_expression(next_precedence + 1, right);
             }
 
-            left = Expr::Binary {
-                left:  Box::new(left),
-                right: Box::new(right),
-                op,
+            left = TypedExpr {
+                expr: Expr::Binary {
+                    left:  Box::new(left),
+                    right: Box::new(right),
+                    op,
+                },
+                ty: None,
             };
         }
     }
 
-    fn parse_expression(&mut self) -> Expr {
+    fn parse_expression(&mut self) -> TypedExpr {
         let left = self.parse_primary_expression();
         let expr = self.parse_binary_expression(0, left);
 
         expr
     }
 
-    fn parse_paren_expression(&mut self) -> Expr {
+    fn parse_paren_expression(&mut self) -> TypedExpr {
         let _    = self.lexer.eat_expect(&Token::ParenOpen);
         let expr = self.parse_expression();
         let _    = self.lexer.eat_expect(&Token::ParenClose);
@@ -330,13 +349,16 @@ impl Parser {
         expr
     }
 
-    fn parse_unary_expression(&mut self, op: UnaryOp) -> Expr {
+    fn parse_unary_expression(&mut self, op: UnaryOp) -> TypedExpr {
         let _    = self.lexer.eat();
         let expr = self.parse_primary_expression();
 
-        Expr::Unary {
-            op, 
-            value: Box::new(expr),
+        TypedExpr { 
+            expr: Expr::Unary {
+                op, 
+                value: Box::new(expr),
+            },
+            ty: None,
         }
     }
 
@@ -373,11 +395,14 @@ impl Parser {
 
             stmt = Some(Stmt::Assign {
                 variable: expr.clone(),
-                value:    Expr::Binary {
-                    left:  Box::new(expr.clone()),
-                    op:    combined,
-                    right: Box::new(second),
-                },
+                value:    TypedExpr {
+                    expr: Expr::Binary {
+                        left:  Box::new(expr.clone()),
+                        op:    combined,
+                        right: Box::new(second),
+                    },
+                    ty: None,
+                }
             });
         }
 

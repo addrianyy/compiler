@@ -1,7 +1,7 @@
 use std::io::{self, Write};
 use std::fmt;
 
-use super::{Ty, Stmt, Expr, Body, Func, FuncProto, ParsedModule};
+use super::{Ty, Stmt, Expr, TypedExpr, Body, Func, FuncProto, ParsedModule};
 
 const INDENT_STRING:  &str = "    ";
 const SUBITEM_INDENT: &str = "  ";
@@ -30,6 +30,12 @@ impl fmt::Display for Ty {
         }
 
         Ok(())
+    }
+}
+
+impl TypedExpr {
+    pub fn print<W: Write>(&self, w: &mut W, indent: usize) -> io::Result<()> {
+        self.expr.print(w, indent)
     }
 }
 
@@ -66,12 +72,8 @@ impl Expr {
                 writeln!(w, "{}Right:", i)?;
                 right.print(w, indent + 1)?;
             }
-            Expr::Number { value, ty } => {
-                if let Some(ty) = ty {
-                    writeln!(w, "{}{} ({})", i, value, ty)?;
-                } else {
-                    writeln!(w, "{}{}", i, value)?;
-                }
+            Expr::Number { value } => {
+                writeln!(w, "{}{}", i, value)?;
             }
             Expr::Array { array, index } => {
                 writeln!(w, "{}ArrayExpr", j)?;

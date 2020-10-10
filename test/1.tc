@@ -4,9 +4,10 @@ fn main(x: u32, y_test: i64**) -> void {
     sad = 132;
 
     if (5 + 8) {
-        return;
-    } else if (555) {
+        return 6;
+    } else if (x + 7) {
+        return x + 22;
     } else {
-        55;
+        return sad + 666;
     }
 }
