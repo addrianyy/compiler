@@ -39,16 +39,37 @@ impl Keyword {
 }
 
 #[derive(Clone, Debug)]
+pub enum IntegerSuffix {
+    U8,
+    U16,
+    U32,
+    U64,
+    I8,
+    I16,
+    I32,
+    I64,
+}
+
+#[derive(Clone, Debug)]
+pub enum Literal {
+    Char(u8),
+    String(String),
+    Number {
+        value:  u64,
+        suffix: Option<IntegerSuffix>,
+    },
+}
+
+#[derive(Clone, Debug)]
 pub enum Token {
     Identifier(String),
     Keyword(Keyword),
-
-    Literal {
-
-    },
+    Literal(Literal),
 
     Colon,
     Semicolon,
+    Comma,
+    Arrow,
 
     ParenOpen,
     ParenClose,
@@ -89,16 +110,18 @@ pub enum Token {
     Lte,
 }
 
-pub struct Lexer<'a> {
-    source: &'a str,
+pub struct Lexer {
+    cursor: usize,
+    tokens: Vec<Token>,
 }
 
-impl<'a> Lexer<'a> {
-    pub fn lex(mut source: &'a str) {
+impl Lexer {
+    pub fn lex(mut source: &str) -> Self {
         const STATIC_TOKENS: &[(&str, Token)] = &[
             (">>=", Token::ShrAssign),
             ("<<=", Token::ShlAssign),
 
+            ("->", Token::Arrow),
             ("==", Token::Equal),
             ("!=", Token::NotEqual),
             (">=", Token::Gte),
@@ -134,6 +157,7 @@ impl<'a> Lexer<'a> {
             ("[",  Token::BracketOpen),
             ("]",  Token::BracketClose),
 
+            (",",  Token::Comma),
             (":",  Token::Colon),
             (";",  Token::Semicolon),
             (">",  Token::Gt),
@@ -143,20 +167,7 @@ impl<'a> Lexer<'a> {
         let mut tokens = Vec::new();
 
         'lex_next: while !source.is_empty() {
-            let mut skip = 0;
-
-            for (index, ch) in source.char_indices() {
-                if !ch.is_whitespace() {
-                    break
-                }
-
-                skip = index + ch.len_utf8();
-            }
-
-            let skip = source.find(|ch| !ch.is_whitespace()).unwrap_or(source.len());
-
-            source = &source[skip..];
-
+            source = source.trim_start();
             if source.is_empty() {
                 break;
             }
@@ -188,14 +199,169 @@ impl<'a> Lexer<'a> {
                 }
             }
 
-            if source.chars().next().unwrap().is_numeric() {
-                panic!()
+            match source.chars().next().expect("Source is empty for some reason.") {
+                '\'' => {
+                    source = &source[1..];
+
+                    // TODO: improve this, handle escapes.
+                    let end    = source.find(|c: char| c == '\'').unwrap();
+                    let inside = &source[..end];
+
+                    source = &source[end + 1..];
+
+                    assert!(inside.len() == 1);
+                    let ch = inside.bytes().next().unwrap();
+
+                    tokens.push(Token::Literal(Literal::Char(ch)));
+
+                    continue 'lex_next;
+                }
+                '\"' => {
+                    source = &source[1..];
+
+                    let mut escaped = false;
+                    let mut end     = None;
+                    let mut literal = String::new();
+
+                    for (index, ch) in source.char_indices() {
+                        if !escaped {
+                            match ch {
+                                '\\' => {
+                                    escaped = true;
+                                    continue;
+                                }
+                                '\"' => {
+                                    end = Some(index + ch.len_utf8());
+                                    break;
+                                }
+                                _ => literal.push(ch),
+                            }
+                        } else {
+                            match ch {
+                                '\"' | '\\' => (),
+                                _           => {
+                                    panic!("Invalid escaped character {}", ch);
+                                }
+                            }
+
+                            literal.push(ch);
+                        }
+
+                        escaped = false;
+                    }
+
+                    let end = end.expect("Non-closed quote.");
+                    source = &source[end..];
+
+                    tokens.push(Token::Literal(Literal::String(literal)));
+
+                    continue 'lex_next;
+                }
+                x if x.is_numeric() => {
+                    #[derive(PartialEq, Eq)]
+                    enum Base {
+                        Dec,
+                        Bin,
+                        Hex,
+                    }
+
+                    let mut base = Base::Dec;
+
+                    if source.starts_with("0x") {
+                        source = &source[2..];
+                        base   = Base::Hex;
+                    } else if source.starts_with("0b") {
+                        source = &source[2..];
+                        base   = Base::Bin;
+                    }
+
+                    const VALID_BIN: &[char] = &['0', '1'];
+                    const VALID_DEC: &[char] = &['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+                    const VALID_HEX: &[char] = &['0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+                        'a', 'b', 'c', 'd', 'e', 'f', 'A', 'B', 'C', 'D', 'E', 'F'];
+
+                    let valid = match base {
+                        Base::Dec => VALID_DEC,
+                        Base::Bin => VALID_BIN,
+                        Base::Hex => VALID_HEX,
+                    };
+
+                    let mut has_dot = false;
+                    let mut literal = String::new();
+
+                    for (index, ch) in source.char_indices() {
+                        if ch == '_' {
+                            continue;
+                        }
+
+                        if ch == '.' {
+                            assert!(base == Base::Dec,
+                                    "Only decimal float literals are supported.");
+                            assert!(!has_dot, "Multiple dots in float literal.");
+
+                            has_dot = true;
+                        } else {
+                            if valid.iter().find(|x| **x == ch).is_none() {
+                                source = &source[index..];
+                                break;
+                            }
+                        }
+
+                        literal.push(ch);
+                    }
+
+                    if !has_dot {
+                        const SUFFIXES: &[(&str, IntegerSuffix)]  = &[
+                            ("u8",  IntegerSuffix::U8),
+                            ("u16", IntegerSuffix::U16),
+                            ("u32", IntegerSuffix::U32),
+                            ("u64", IntegerSuffix::U64),
+                            ("i8",  IntegerSuffix::I8),
+                            ("i16", IntegerSuffix::I16),
+                            ("i32", IntegerSuffix::I32),
+                            ("i64", IntegerSuffix::I64),
+                        ];
+
+                        let mut int_suffix = None;
+
+                        for (string, suffix) in SUFFIXES {
+                            if source.starts_with(string) {
+                                source     = &source[string.len()..];
+                                int_suffix = Some(suffix.clone());
+
+                                break;
+                            }
+                        }
+
+                        let base = match base {
+                            Base::Bin => 2,
+                            Base::Dec => 10,
+                            Base::Hex => 16,
+                        };
+
+                        let value = u64::from_str_radix(&literal, base)
+                            .expect("Invalid number literal.");
+
+                        tokens.push(Token::Literal(Literal::Number {
+                            suffix: int_suffix,
+                            value,
+                        }));
+                    } else {
+                        panic!("Float literals are not yet supported.");
+                    }
+
+                    continue 'lex_next;
+                }
+                _ => (),
             }
 
-            let end   = source.find(|c: char| c.is_whitespace()).unwrap_or(source.len());
+            let end = source.find(|c: char| !c.is_alphanumeric() && c != '_')
+                .unwrap_or(source.len());
             let ident = &source[..end];
 
             source = &source[end..];
+
+            assert!(!ident.is_empty(), "Invalid state: {}", source);
 
             let token = match Keyword::from_ident(ident) {
                 Some(keyword) => Token::Keyword(keyword),
@@ -203,6 +369,17 @@ impl<'a> Lexer<'a> {
             };
 
             tokens.push(token);
+        }
+
+        if true {
+            for token in &tokens {
+                println!("{:?}", token);
+            }
+        }
+
+        Lexer {
+            tokens,
+            cursor: 0,
         }
     }
 }
