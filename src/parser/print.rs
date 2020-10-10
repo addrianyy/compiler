@@ -53,6 +53,12 @@ impl Expr {
             Expr::Variable(name) => {
                 writeln!(w, "{}{}", i, name)?;
             }
+            Expr::Cast { value, ty } => {
+                writeln!(w, "{}CastExpr to {}", i, ty)?;
+
+                writeln!(w, "{}Value:", i)?;
+                value.print(w, indent + 1)?;
+            }
             Expr::Unary { op, value } => {
                 writeln!(w, "{}UnaryExpr", j)?;
 

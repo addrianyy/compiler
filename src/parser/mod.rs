@@ -22,6 +22,12 @@ pub enum BinaryOp {
     And,
     Or,
     Xor,
+    Equal,
+    NotEqual,
+    Gt,
+    Lt,
+    Gte,
+    Lte,
 }
 
 impl UnaryOp {
@@ -39,27 +45,35 @@ impl UnaryOp {
 impl BinaryOp {
     fn from_token(token: &Token) -> Option<BinaryOp> {
         Some(match token {
-            Token::Add => BinaryOp::Add,
-            Token::Sub => BinaryOp::Sub,
-            Token::Mul => BinaryOp::Mul,
-            Token::Div => BinaryOp::Div,
-            Token::Shr => BinaryOp::Shr,
-            Token::Shl => BinaryOp::Shl,
-            Token::And => BinaryOp::And,
-            Token::Or  => BinaryOp::Or,
-            Token::Xor => BinaryOp::Xor,
-            _          => return None,
+            Token::Add      => BinaryOp::Add,
+            Token::Sub      => BinaryOp::Sub,
+            Token::Mul      => BinaryOp::Mul,
+            Token::Div      => BinaryOp::Div,
+            Token::Shr      => BinaryOp::Shr,
+            Token::Shl      => BinaryOp::Shl,
+            Token::And      => BinaryOp::And,
+            Token::Or       => BinaryOp::Or,
+            Token::Xor      => BinaryOp::Xor,
+            Token::Equal    => BinaryOp::Equal,
+            Token::NotEqual => BinaryOp::NotEqual,
+            Token::Gt       => BinaryOp::Gt,
+            Token::Lt       => BinaryOp::Lt,
+            Token::Gte      => BinaryOp::Gte,
+            Token::Lte      => BinaryOp::Lte,
+            _               => return None,
         })
     }
 
     fn precedence(&self) -> i32 {
         match self {
-            BinaryOp::Mul | BinaryOp::Mod | BinaryOp::Div => 60,
-            BinaryOp::Add | BinaryOp::Sub => 50,
-            BinaryOp::Shl | BinaryOp::Shr => 40,
-            BinaryOp::And => 30,
-            BinaryOp::Xor => 20,
-            BinaryOp::Or  => 10,
+            BinaryOp::Mul   | BinaryOp::Mod | BinaryOp::Div                => 60,
+            BinaryOp::Add   | BinaryOp::Sub                                => 50,
+            BinaryOp::Shl   | BinaryOp::Shr                                => 40,
+            BinaryOp::Gt    | BinaryOp::Lt | BinaryOp::Gte | BinaryOp::Lte => 35,
+            BinaryOp::Equal | BinaryOp::NotEqual                           => 33,
+            BinaryOp::And                                                  => 30,
+            BinaryOp::Xor                                                  => 20,
+            BinaryOp::Or                                                   => 10,
         }
     }
 }
@@ -101,6 +115,10 @@ pub enum Expr {
         target: String,
         args:   Vec<TypedExpr>,
     },
+    Cast {
+        value: Box<TypedExpr>,
+        ty:    Ty,
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

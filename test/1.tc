@@ -3,11 +3,7 @@ fn main(x: u32, y_test: i64**) -> void {
 
     sad = 132;
 
-    if (5 + 8) {
+    if (x > 10) {
         return 6;
-    } else if (x + 7) {
-        return x + 22;
-    } else {
-        return sad + 666;
     }
 }
