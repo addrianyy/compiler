@@ -37,6 +37,7 @@ impl fmt::Display for BinaryOp {
             BinaryOp::Div => "div",
             BinaryOp::Shr => "shr",
             BinaryOp::Shl => "shl",
+            BinaryOp::Sar => "sar",
             BinaryOp::And => "and",
             BinaryOp::Or  => "or",
             BinaryOp::Xor => "xor",
@@ -49,8 +50,8 @@ impl fmt::Display for BinaryOp {
 impl fmt::Display for IntPredicate {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let name = match self {
-            IntPredicate::Equal    => "equal", 
-            IntPredicate::NotEqual => "not_equal", 
+            IntPredicate::Equal    => "eq", 
+            IntPredicate::NotEqual => "ne", 
             IntPredicate::GtU      => "ugt", 
             IntPredicate::GteU     => "ugte", 
             IntPredicate::GtS      => "sgt", 
@@ -154,6 +155,10 @@ impl FunctionData {
             }
             Instruction::Const { dst, ty, imm } => {
                 write!(w, "{} = {} {}", dst, ty, imm)?;
+            }
+            Instruction::GetElementPtr { dst, source, index } => {
+                write!(w, "{} = getelementptr {} {}, {} {}", dst, self.display_type(*dst),
+                       source, self.display_type(*index), index)?;
             }
         }
 

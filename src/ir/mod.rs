@@ -2,6 +2,7 @@ mod display;
 mod graph;
 mod dump;
 mod instruction;
+mod instruction_builders;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{self, Write};
@@ -9,7 +10,7 @@ use std::rc::Rc;
 
 pub use instruction::{UnaryOp, BinaryOp, IntPredicate};
 use instruction::Instruction;
-use graph::FlowGraph;
+use graph::{FlowGraph, Dominators};
 
 type Map<K, V> = BTreeMap<K, V>;
 type Set<T>    = BTreeSet<T>;
@@ -42,7 +43,7 @@ pub struct Type {
 }
 
 impl Type {
-    pub const U1:  Type = Type { kind: TypeKind::U1,  indirection: 0 };
+        const U1:  Type = Type { kind: TypeKind::U1,  indirection: 0 };
     pub const U8:  Type = Type { kind: TypeKind::U8,  indirection: 0 };
     pub const U16: Type = Type { kind: TypeKind::U16, indirection: 0 };
     pub const U32: Type = Type { kind: TypeKind::U32, indirection: 0 };
@@ -62,6 +63,10 @@ impl Type {
             kind:        self.kind,
             indirection: self.indirection.checked_sub(1)?,
         })
+    }
+
+    pub fn is_pointer(&self) -> bool {
+        self.indirection > 0
     }
 
     pub fn is_arithmetic(&self) -> bool {
@@ -161,28 +166,29 @@ impl FunctionData {
     fn targets(&self, label: Label) -> Vec<Label> {
         let block = &self.blocks[&label];
 
-        match &block[block.len() - 1] {
-            Instruction::Return     { .. }                    => vec![],
-            Instruction::Branch     { target }                => vec![*target],
-            Instruction::BranchCond { on_true, on_false, .. } => vec![*on_true, *on_false],
-            _ => {
-                panic!("Block {} doesn't end in terminator.", label);
-            }
-        }
+        block[block.len() - 1].targets().unwrap_or_else(|| {
+            panic!("Block {} doesn't end in terminator.", label);
+        })
     }
 
     fn value_creators(&self) -> Map<Value, Location> {
         let mut creators = Map::new();
 
-        for (label, body) in &self.blocks {
+        for label in self.reachable_labels() {
+            let body = &self.blocks[&label];
+
             for (inst_id, inst) in body.iter().enumerate() {
                 if let Some(value) = inst.created_value() {
-                    creators.insert(value, Location(*label, inst_id));
+                    creators.insert(value, Location(label, inst_id));
                 }
             }
         }
 
         creators
+    }
+
+    fn is_value_argument(&self, value: Value) -> bool {
+        self.argument_values.iter().find(|v| **v == value).is_some()
     }
 
     fn function_prototype(&self, func: Function) -> &FunctionPrototype {
@@ -239,8 +245,9 @@ impl FunctionData {
                     .expect("Void function return value is used.")
                     .clone()
             }
-            Instruction::StackAlloc { ty, .. } => ty.ptr(),
-            Instruction::Const      { ty, .. } => *ty,
+            Instruction::StackAlloc    { ty, ..    } => ty.ptr(),
+            Instruction::Const         { ty, ..    } => *ty,
+            Instruction::GetElementPtr { source, ..} => get_type!(*source),
             _ => {
                 panic!("Unexpected value creator: {:?}.", creator);
             }
@@ -248,7 +255,6 @@ impl FunctionData {
 
         assert!(cx.type_info.insert(value, ty).is_none(),
                 "Value has type infered multiple times.");
-
         ty
     }
 
@@ -366,6 +372,16 @@ impl FunctionData {
                 assert!(ty.is_normal_type(), "Only normal types are allowed.");
                 assert!(dst == *ty, "Const value instruction operand types must be the same.");
             }
+            Instruction::GetElementPtr { dst, source, index } => {
+                let dst    = get_type!(*dst);
+                let source = get_type!(*source);
+                let index  = get_type!(*index);
+
+                assert!(index.is_arithmetic(), "GEP index must be arithmetic.");
+                assert!(dst == source, "GEP destination and source must be the same type.");
+                assert!(dst.is_pointer() && dst.can_be_in_memory(),
+                        "GEP input type is not valid pointer.");
+            }
         }
     }
 
@@ -380,7 +396,9 @@ impl FunctionData {
                     "Function arguments defined multiple times.");
         }
 
-        for (_label, body) in &self.blocks {
+        for label in self.reachable_labels() {
+            let body = &self.blocks[&label];
+
             for inst in body {
                 if let Some(value) = inst.created_value() {
                     let _ = self.infer_value_type(value, &mut cx);
@@ -397,11 +415,67 @@ impl FunctionData {
         self.type_info = Some(cx.type_info);
     }
 
+    fn validate_ssa(&self) {
+        let labels     = self.reachable_labels();
+        let dominators = self.dominators();
+        let creators   = self.value_creators();
+
+        for &label in &labels {
+            let _    = self.targets(label);
+            let body = &self.blocks[&label];
+
+            for inst in &body[..body.len() - 1] {
+                assert!(inst.targets().is_none(), "Terminator {:?} in the middle of block {}.",
+                        inst, label);
+            }
+
+            for (inst_id, inst) in body.iter().enumerate() {
+                for value in inst.read_values() {
+                    if self.is_value_argument(value) {
+                        continue;
+                    }
+
+                    let creation_loc = *creators.get(&value).expect("Value used but not created.");
+                    let usage_loc    = Location(label, inst_id);
+
+                    assert!(self.validate_path(&dominators, creation_loc, usage_loc),
+                            "Value {} is used before being created.", value);
+                }
+            }
+        }
+    }
+
     fn finalize(&mut self) {
         assert!(self.prototype.return_type != Some(Type::U1),
                 "Functions cannot return U1.");
 
+        self.validate_ssa();
         self.build_type_info();
+    }
+
+    fn validate_path(&self, dominators: &Dominators, start: Location, end: Location) -> bool {
+        let start_label = start.0;
+        let end_label   = end.0;
+
+        if start_label == end_label {
+            return start.1 < end.1;
+        }
+
+        self.dominates(dominators, start_label, end_label)
+    }
+
+    fn dominates(&self, dominators: &Dominators, dominator: Label, target: Label) -> bool {
+        let mut current = Some(target);
+
+        while let Some(idom) = current {
+            if idom == dominator {
+                return true;
+            }
+
+            current = dominators.get(&idom).copied();
+        }
+
+        false
     }
 }
 
@@ -458,24 +532,6 @@ impl Module {
         self.active_point.expect("Invalid active point specified.")
     }
 
-    fn insert(&mut self, instruction: Instruction) {
-        let active_point = self.active_point();
-
-        self.function_mut(active_point.function)
-            .insert(active_point.label, instruction);
-    }
-
-    fn with_output(&mut self, f: impl FnOnce(Value) -> Instruction) -> Value {
-        let active_point = self.active_point();
-        let function     = self.function_mut(active_point.function);
-        let value        = function.allocate_value();
-        let instruction  = f(value);
-
-        function.insert(active_point.label, instruction);
-
-        value
-    }
-
     pub fn argument(&self, index: usize) -> Value {
         self.function(self.active_point().function).argument_values[index]
     }
@@ -492,60 +548,6 @@ impl Module {
             function,
             label: Label(0),
         });
-    }
-
-    pub fn arithmetic_unary(&mut self, op: UnaryOp, value: Value) -> Value {
-        self.with_output(|dst| Instruction::ArithmeticUnary { dst, op, value })
-    }
-
-    pub fn arithmetic_binary(&mut self, a: Value, op: BinaryOp, b: Value) -> Value {
-        self.with_output(|dst| Instruction::ArithmeticBinary { dst, a, op, b })
-    }
-
-    pub fn int_compare(&mut self, a: Value, pred: IntPredicate, b: Value) -> Value {
-        self.with_output(|dst| Instruction::IntCompare { dst, a, pred, b })
-    }
-
-    pub fn load(&mut self, ptr: Value) -> Value {
-        self.with_output(|dst| Instruction::Load { dst, ptr })
-    }
-
-    pub fn store(&mut self, ptr: Value, value: Value) {
-        self.insert(Instruction::Store { ptr, value });
-    }
-
-    pub fn call(&mut self, func: Function, args: Vec<Value>) -> Option<Value> {
-        match self.function(func).prototype.return_type.is_some() {
-            true => {
-                Some(self.with_output(|dst| {
-                    Instruction::Call { dst: Some(dst), func, args }
-                }))
-            }
-            false => {
-                self.insert(Instruction::Call { dst: None, func, args });
-                None
-            }
-        }
-    }
-
-    pub fn branch(&mut self, target: Label) {
-        self.insert(Instruction::Branch { target });
-    }
-
-    pub fn branch_cond(&mut self, value: Value, on_true: Label, on_false: Label) {
-        self.insert(Instruction::BranchCond { value, on_true, on_false });
-    }
-
-    pub fn stack_alloc(&mut self, ty: Type, size: usize) -> Value {
-        self.with_output(|dst| Instruction::StackAlloc { dst, ty, size })
-    }
-
-    pub fn ret(&mut self, value: Option<Value>) {
-        self.insert(Instruction::Return { value });
-    }
-
-    pub fn iconst(&mut self, value: impl Into<u64>, ty: Type) -> Value {
-        self.with_output(|dst| Instruction::Const { dst, imm: value.into(), ty })
     }
 
     pub fn finalize(&mut self) {

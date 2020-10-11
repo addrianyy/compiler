@@ -15,6 +15,7 @@ pub enum BinaryOp {
     Div,
     Shr,
     Shl,
+    Sar,
     And,
     Or,
     Xor,
@@ -83,6 +84,11 @@ pub enum Instruction {
         ty:  Type,
         imm: u64,
     },
+    GetElementPtr {
+        dst:    Value,
+        source: Value,
+        index:  Value,
+    },
 }
 
 impl Instruction {
@@ -99,22 +105,33 @@ impl Instruction {
             Instruction::StackAlloc       { dst, .. } => Some(dst),
             Instruction::Return           { ..      } => None,
             Instruction::Const            { dst, .. } => Some(dst),
+            Instruction::GetElementPtr    { dst, .. } => Some(dst),
         }
     }
 
     pub fn read_values(&self) -> Vec<Value> {
         match *self {
-            Instruction::ArithmeticUnary  { value, ..    } => vec![value],
-            Instruction::ArithmeticBinary { a, b, ..     } => vec![a, b],
-            Instruction::IntCompare       { a, b, ..     } => vec![a, b],
-            Instruction::Load             { ptr, ..      } => vec![ptr],
-            Instruction::Store            { ptr, value   } => vec![ptr, value],
-            Instruction::Call             { ref args, .. } => args.clone(),
-            Instruction::Branch           { ..           } => vec![],
-            Instruction::BranchCond       { value, ..    } => vec![value],
-            Instruction::StackAlloc       { ..           } => vec![],
-            Instruction::Return           { value, ..    } => value.into_iter().collect(),
-            Instruction::Const            { ..           } => vec![],
+            Instruction::ArithmeticUnary  { value, ..         } => vec![value],
+            Instruction::ArithmeticBinary { a, b, ..          } => vec![a, b],
+            Instruction::IntCompare       { a, b, ..          } => vec![a, b],
+            Instruction::Load             { ptr, ..           } => vec![ptr],
+            Instruction::Store            { ptr, value        } => vec![ptr, value],
+            Instruction::Call             { ref args, ..      } => args.clone(),
+            Instruction::Branch           { ..                } => vec![],
+            Instruction::BranchCond       { value, ..         } => vec![value],
+            Instruction::StackAlloc       { ..                } => vec![],
+            Instruction::Return           { value, ..         } => value.into_iter().collect(),
+            Instruction::Const            { ..                } => vec![],
+            Instruction::GetElementPtr    { source, index, .. } => vec![source, index],
+        }
+    }
+
+    pub fn targets(&self) -> Option<Vec<Label>> {
+        match self {
+            Instruction::Return     { .. }                    => Some(vec![]),
+            Instruction::Branch     { target }                => Some(vec![*target]),
+            Instruction::BranchCond { on_true, on_false, .. } => Some(vec![*on_true, *on_false]),
+            _                                                 => None,
         }
     }
 }

@@ -28,6 +28,7 @@ fn main() {
     let c    = module.iconst(999u32, ir::Type::U64);
     let v1   = module.arithmetic_binary(v1, ir::BinaryOp::Xor, c);
     let res  = module.int_compare(v1, ir::IntPredicate::GtS, v2);
+    let x    = module.get_element_ptr(arg2, v1);
 
     let true_label  = module.create_label();
     let false_label = module.create_label();

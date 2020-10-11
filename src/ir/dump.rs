@@ -44,7 +44,7 @@ impl FunctionData {
             None     => return_type = String::from("void"),
         }
 
-        let mut name = format!("func {} {}(", return_type, self.prototype.name);
+        let mut name = format!("{} {}(", return_type, self.prototype.name);
 
         for index in 0..self.prototype.arguments.len() {
             name.push_str(&format!("{} {}", self.prototype.arguments[index],
@@ -72,9 +72,7 @@ impl FunctionData {
 
         dotgraph.push_str("digraph G {\n");
 
-        let labels = self.traverse_bfs(Label(0), true);
-
-        for label in labels.into_iter() {
+        for label in self.reachable_labels() {
             let insts      = &self.blocks[&label];
             let targets    = self.targets(label);
 
@@ -119,12 +117,10 @@ impl FunctionData {
     pub fn dump_text<W: Write>(&self, w: &mut W) -> io::Result<()> {
         writeln!(w, "{} {{", self.prototype_representation())?;
 
-        let labels = self.traverse_bfs(Label(0), true);
-        let indent = "  ";
+        let     indent = "  ";
+        let mut first  = true;
 
-        let mut first = true;
-
-        for label in labels.into_iter() {
+        for label in self.reachable_labels() {
             if !first {
                 writeln!(w)?;
             }
