@@ -1,3 +1,7 @@
-void main(u32 x, i64** y) {
-    u8* test = 13u8;
+void main() {
+    u8 test[128];
+
+    test[11] *= 55u8;
+
+    return;
 }

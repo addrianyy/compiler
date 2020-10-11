@@ -103,6 +103,12 @@ pub enum Instruction {
         value: Value,
         ty:    Type,
     },
+    Select {
+        dst:      Value,
+        cond:     Value,
+        on_true:  Value,
+        on_false: Value,
+    },
 }
 
 impl Instruction {
@@ -121,6 +127,7 @@ impl Instruction {
             Instruction::Const            { dst, .. } => Some(dst),
             Instruction::GetElementPtr    { dst, .. } => Some(dst),
             Instruction::Cast             { dst, .. } => Some(dst),
+            Instruction::Select           { dst, .. } => Some(dst),
         }
     }
 
@@ -139,6 +146,9 @@ impl Instruction {
             Instruction::Const            { ..                } => vec![],
             Instruction::GetElementPtr    { source, index, .. } => vec![source, index],
             Instruction::Cast             { value, ..         } => vec![value],
+            Instruction::Select { cond, on_true, on_false, .. } => {
+                vec![cond, on_true, on_false]
+            }
         }
     }
 

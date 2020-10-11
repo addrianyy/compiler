@@ -2,7 +2,7 @@ mod print;
 
 use crate::lexer::{Keyword, Token, Literal, IntegerSuffix, Lexer};
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UnaryOp {
     Neg,
     Not,
@@ -10,7 +10,7 @@ pub enum UnaryOp {
     Deref,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BinaryOp {
     Add,
     Sub,
@@ -93,6 +93,10 @@ pub enum Ty {
 }
 
 impl Ty {
+    pub fn ptr(self) -> Ty {
+        Ty::Ptr(Box::new(self))
+    }
+
     pub fn strip_pointer(&self) -> Option<Ty> {
         if let Ty::Ptr(ty) = self {
             Some(*ty.clone())
@@ -133,6 +137,20 @@ impl Ty {
             _                             => return None,
         })
     }
+
+    pub fn is_signed(&self) -> bool {
+        match self {
+            Ty::I8 | Ty::I16 | Ty::I32 | Ty::I64 => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_pointer(&self) -> bool {
+        match self {
+            Ty::Ptr(ty) => true,
+            _           => false,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -163,6 +181,14 @@ pub enum Expr {
         value: Box<TypedExpr>,
         ty:    Ty,
     },
+}
+
+impl std::ops::Deref for TypedExpr {
+    type Target = Expr;
+
+    fn deref(&self) -> &Expr {
+        &self.expr
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

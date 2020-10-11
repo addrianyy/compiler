@@ -177,6 +177,10 @@ impl FunctionData {
                 write!(w, "{} = {} {} {} to {}", dst, cast, self.display_type(*value),
                        value, ty)?;
             }
+            Instruction::Select { dst, cond, on_true, on_false } => {
+                write!(w, "{} = select {} {}, {} {}, {}", dst, self.display_type(*cond),
+                       cond, self.display_type(*on_true), on_true, on_false)?;
+            }
         }
 
         Ok(())

@@ -3,7 +3,6 @@ use crate::ir;
 use crate::parser::{Body, Stmt, TypedExpr, Expr, Ty, UnaryOp, BinaryOp};
 use std::collections::BTreeMap;
 
-/*
 pub struct Compiler {
     ir:     ir::Module,
 }
@@ -31,6 +30,40 @@ struct GenExpr {
     ty:     Ty,
 }
 
+#[derive(Clone)]
+struct CodegenValue {
+    value:  ir::Value,
+    lvalue: bool,
+    ty:     Ty,
+}
+
+fn to_ir_type_internal(ty: &Ty, indirection: usize) -> ir::Type {
+    match ty {
+        Ty::I8  | Ty::U8  => ir::Type::U8 .with_indirection(indirection),
+        Ty::I16 | Ty::U16 => ir::Type::U16.with_indirection(indirection),
+        Ty::I32 | Ty::U32 => ir::Type::U32.with_indirection(indirection),
+        Ty::I64 | Ty::U64 => ir::Type::U64.with_indirection(indirection),
+        Ty::Ptr(inside)   => to_ir_type_internal(&inside, indirection + 1),
+        Ty::Void          => panic!("IR doesn't support void type."),
+    }
+}
+
+fn to_ir_type(ty: &Ty) -> ir::Type {
+    to_ir_type_internal(ty, 0)
+}
+
+impl CodegenValue {
+    fn extract_value(&self, ir: &mut ir::Module) -> ir::Value {
+        match self.lvalue {
+            true  => ir.load(self.value),
+            false => self.value,
+        }
+    }
+
+    fn ir_type(&self) -> ir::Type {
+        to_ir_type(&self.ty)
+    }
+}
 
 fn ty_to_irtype_internal(ty: &Ty, ptrlevel: usize) -> ir::Type {
     match ty {
@@ -443,215 +476,5 @@ impl Compiler {
         }
 
         panic!();
-    }
-}
-*/
-
-fn to_ir_type_internal(ty: &Ty, indirection: usize) -> ir::Type {
-    match ty {
-        Ty::I8  | Ty::U8  => ir::Type::U8 .with_indirection(indirection),
-        Ty::I16 | Ty::U16 => ir::Type::U16.with_indirection(indirection),
-        Ty::I32 | Ty::U32 => ir::Type::U32.with_indirection(indirection),
-        Ty::I64 | Ty::U64 => ir::Type::U64.with_indirection(indirection),
-        Ty::Ptr(inside)   => to_ir_type_internal(&inside, indirection + 1),
-        Ty::Void          => panic!("IR doesn't support void type."),
-    }
-}
-
-fn to_ir_type(ty: &Ty) -> ir::Type {
-    to_ir_type_internal(ty, 0)
-}
-
-#[derive(Copy, Clone, Eq, PartialEq)]
-enum ValueType {
-    Rvalue,
-    Lvalue,
-}
-
-#[derive(Clone)]
-struct CodegenValue {
-    value:      ir::Value,
-    value_type: ValueType,
-    ty:         Ty,
-}
-
-impl CodegenValue {
-    fn lvalue(ty: Ty, value: ir::Value) -> Self {
-        Self {
-            value,
-            ty,
-            value_type: ValueType::Lvalue,
-        }
-    }
-
-    fn rvalue(ty: Ty, value: ir::Value) -> Self {
-        Self {
-            value,
-            ty,
-            value_type: ValueType::Rvalue,
-        }
-    }
-
-    fn extract(&self, ir: &mut ir::Module) -> ir::Value {
-        match self.value_type {
-            ValueType::Lvalue => ir.load(self.value),
-            ValueType::Rvalue => self.value,
-        }
-    }
-
-    fn ir_type(&self) -> ir::Type {
-        to_ir_type(&self.ty)
-    }
-
-    fn is_lvalue(&self) -> bool {
-        self.value_type == ValueType::Lvalue
-    }
-
-    fn is_rvalue(&self) -> bool {
-        self.value_type == ValueType::Rvalue
-    }
-}
-
-struct Variables {
-    map: BTreeMap<String, CodegenValue>,
-}
-
-impl Variables {
-    fn get(&self, name: &str) -> CodegenValue {
-        self.map[name].clone()
-    }
-}
-
-pub struct Compiler {
-    ir:        ir::Module,
-    variables: Variables,
-}
-
-impl Compiler {
-    fn codegen_expression(&mut self, expression: &Expr) -> CodegenValue {
-        match expression {
-            Expr::Variable(variable) => {
-                self.variables.get(variable)
-            }
-            Expr::Unary { op, value } => {
-                let value = self.codegen_expression(&value);
-
-                match op {
-                    UnaryOp::Ref => {
-                        assert!(value.is_lvalue(), "Cannot get address of rvalue.");
-
-                        CodegenValue::rvalue(value.ty.ptr(), value.value)
-                    }
-                    UnaryOp::Deref => {
-                        let new_ty = value.ty.strip_pointer().expect("Cannot deref non-pointer.");
-
-                        // If value is lvalue we want to deref it and keep it lvalue.
-                        // If value is rvalue we just want to make it lvalue.
-                        let result = value.extract(&mut self.ir);
-
-                        CodegenValue::lvalue(new_ty, result)
-                    }
-                    _ => {
-                        assert!(value.ty.is_arithmetic_type(), "Unary operator can only be \
-                                applied on arithmetic types.");
-
-                        let op = match op {
-                            UnaryOp::Neg => ir::UnaryOp::Neg,
-                            UnaryOp::Not => ir::UnaryOp::Not,
-                            _            => unreachable!(),
-                        };
-
-                        let result = value.extract(&mut self.ir);
-                        let result = self.ir.arithmetic_unary(op, result);
-
-                        CodegenValue::rvalue(value.ty, result)
-                    }
-                }
-            }
-            Expr::Binary { left, op, right } => {
-                let left  = self.codegen_expression(&left);
-                let right = self.codegen_expression(&right);
-
-                match op {
-                    BinaryOp::Equal | BinaryOp::NotEqual | BinaryOp::Gt |
-                    BinaryOp::Lt    | BinaryOp::Gte      | BinaryOp::Lte => {
-                        assert!(left.ty == right.ty && left.ty != Ty::Void, "Cannot compare \
-                                two values with different types (or void types.");
-
-                        let mut left_value  = left.extract(&mut self.ir);
-                        let mut right_value = right.extract(&mut self.ir);
-
-                        if left.ty.is_pointer() {
-                            // IR doesn't allow comparing pointers. Convert them to integers.
-
-                            left_value = self.ir.cast(left_value, ir::Type::U64,
-                                                      ir::Cast::Bitcast);
-                            right_value = self.ir.cast(right_value, ir::Type::U64,
-                                                       ir::Cast::Bitcast);
-                        }
-
-                        let op_change = match op {
-                            BinaryOp::Lt  => Some(BinaryOp::Gt),
-                            BinaryOp::Lte => Some(BinaryOp::Gte),
-                            _             => None,
-                        };
-
-                        let mut op = *op;
-
-                        if let Some(new_op) = op_change {
-                            op = new_op;
-
-                            std::mem::swap(&mut left_value, &mut right_value);
-                        }
-
-                        let predicate = match (op, left.ty.is_signed()) {
-                            (BinaryOp::Equal,    _    ) => ir::IntPredicate::Equal,
-                            (BinaryOp::NotEqual, _    ) => ir::IntPredicate::NotEqual,
-                            (BinaryOp::Gt,       true ) => ir::IntPredicate::GtS,
-                            (BinaryOp::Gte,      true ) => ir::IntPredicate::GteS,
-                            (BinaryOp::Gt,       false) => ir::IntPredicate::GtU,
-                            (BinaryOp::Gte,      false) => ir::IntPredicate::GteU,
-                            _                           => unreachable!(),
-                        };
-
-                        let result = self.ir.int_compare(left_value, predicate, right_value);
-                        let zero   = self.ir.iconst(0u8, ir::Type::U8);
-                        let one    = self.ir.iconst(1u8, ir::Type::U8);
-                        let result = self.ir.select(result, one, zero);
-
-                        CodegenValue::rvalue(Ty::U8, result)
-                    }
-                    _ => {
-                        panic!()
-                    }
-                }
-            }
-            Expr::Array { array, index } => {
-                let array = self.codegen_expression(&array);
-                let index = self.codegen_expression(&index);
-
-                assert!(array.ty.is_nonvoid_ptr(),     "Array must be non-void pointer.");
-                assert!(index.ty.is_arithmetic_type(), "Index must be arithmetic type.");
-
-                let array_value = array.extract(&mut self.ir);
-                let index_value = index.extract(&mut self.ir);
-
-                let new_ty = array.ty.strip_pointer().expect("Cannot deref non-pointer.");
-                let result = self.ir.get_element_ptr(array_value, index_value);
-
-                CodegenValue::lvalue(new_ty, result)
-            }
-            Expr::Number { value, ty } => {
-                let ty    = ty.clone().unwrap_or(Ty::I32);
-                let value = self.ir.iconst(*value, to_ir_type(&ty));
-
-                CodegenValue::rvalue(ty, value)
-            }
-            _ => panic!(),
-        }
-    }
-
-    pub fn new(module: parser::ParsedModule) -> Self {
-        panic!()
     }
 }

@@ -49,6 +49,13 @@ impl Type {
     pub const U32: Type = Type { kind: TypeKind::U32, indirection: 0 };
     pub const U64: Type = Type { kind: TypeKind::U64, indirection: 0 };
 
+    pub fn with_indirection(self, indirection: usize) -> Type {
+        Self {
+            kind:        self.kind,
+            indirection: indirection,
+        }
+    }
+
     pub fn ptr(self) -> Self {
         assert!(self.kind != TypeKind::U1);
 
@@ -259,6 +266,15 @@ impl FunctionData {
                     .expect("Void function return value is used.")
                     .clone()
             }
+            Instruction::Select { on_true, on_false, .. } => {
+                let on_true  = get_type!(*on_true);
+                let on_false = get_type!(*on_false);
+
+                assert!(on_true == on_false, "Select instruction must have operands \
+                                              of the same type.");
+
+                on_true
+            }
             Instruction::StackAlloc    { ty, ..     } => ty.ptr(),
             Instruction::Const         { ty, ..     } => *ty,
             Instruction::GetElementPtr { source, .. } => get_type!(*source),
@@ -424,6 +440,16 @@ impl FunctionData {
                                 "Only normal types are allowed.");
                     }
                 }
+            }
+            Instruction::Select { dst, cond, on_true, on_false } => {
+                let dst       = get_type!(*dst);
+                let cond      = get_type!(*cond);
+                let on_true   = get_type!(*on_true);
+                let on_false  = get_type!(*on_false);
+
+                assert!(cond == Type::U1, "Select condition input must be U1.");
+                assert!(on_true == on_false && dst == on_true, "Select values and destination \
+                        must have the same type.");
             }
         }
     }

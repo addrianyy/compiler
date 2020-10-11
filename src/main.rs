@@ -11,8 +11,10 @@ fn main() {
     module.print(&mut std::io::stdout()).unwrap();
 
     let compiler = compiler::Compiler::new(module);
-
     */
+
+
+    /*
     let mut module = ir::Module::new();
 
     let func = module.create_function("abc123", Some(ir::Type::U16),
@@ -40,6 +42,8 @@ fn main() {
         module.switch_label(true_label);
 
         let c = module.iconst(12u32, ir::Type::U64);
+        let d = module.iconst(55u64, ir::Type::U64);
+        let lol = module.select(res, c, d);
         module.store(arg3, c);
         module.branch(merge_label);
     }
@@ -64,4 +68,5 @@ fn main() {
 
     module.dump_function_graph(func, "graphs/test.svg");
     module.dump_function_text(func, &mut std::io::stdout());
+    */
 }

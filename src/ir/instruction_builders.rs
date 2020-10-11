@@ -81,4 +81,8 @@ impl Module {
     pub fn cast(&mut self, value: Value, ty: Type, cast: Cast) -> Value {
         self.with_output(|dst| Instruction::Cast { dst, cast, value, ty })
     }
+
+    pub fn select(&mut self, cond: Value, on_true: Value, on_false: Value) -> Value {
+        self.with_output(|dst| Instruction::Select { dst, cond, on_true, on_false })
+    }
 }
