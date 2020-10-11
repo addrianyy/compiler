@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io::{self, Write};
 use std::rc::Rc;
 
-pub use instruction::{UnaryOp, BinaryOp, IntPredicate};
+pub use instruction::{UnaryOp, BinaryOp, IntPredicate, Cast};
 use instruction::Instruction;
 use graph::{FlowGraph, Dominators};
 
@@ -79,6 +79,20 @@ impl Type {
 
     pub fn is_normal_type(&self) -> bool {
         self.kind != TypeKind::U1
+    }
+
+    pub fn size(&self) -> usize {
+        if self.is_pointer() {
+            return 8;
+        }
+
+        match self.kind {
+            TypeKind::U1  => panic!("Cannot get size of U1."),
+            TypeKind::U8  => 1,
+            TypeKind::U16 => 2,
+            TypeKind::U32 => 4,
+            TypeKind::U64 => 8,
+        }
     }
 }
 
@@ -245,9 +259,10 @@ impl FunctionData {
                     .expect("Void function return value is used.")
                     .clone()
             }
-            Instruction::StackAlloc    { ty, ..    } => ty.ptr(),
-            Instruction::Const         { ty, ..    } => *ty,
-            Instruction::GetElementPtr { source, ..} => get_type!(*source),
+            Instruction::StackAlloc    { ty, ..     } => ty.ptr(),
+            Instruction::Const         { ty, ..     } => *ty,
+            Instruction::GetElementPtr { source, .. } => get_type!(*source),
+            Instruction::Cast          { ty, ..     } => *ty,
             _ => {
                 panic!("Unexpected value creator: {:?}.", creator);
             }
@@ -381,6 +396,34 @@ impl FunctionData {
                 assert!(dst == source, "GEP destination and source must be the same type.");
                 assert!(dst.is_pointer() && dst.can_be_in_memory(),
                         "GEP input type is not valid pointer.");
+            }
+            Instruction::Cast { dst, cast, value, ty } => {
+                let dst   = get_type!(*dst);
+                let value = get_type!(*value);
+
+                assert!(dst == *ty, "{} destination must be the same type as cast type.", cast);
+
+                match cast {
+                    Cast::ZeroExtend | Cast::SignExtend | Cast::Truncate => {
+                        assert!(value.is_arithmetic() && ty.is_arithmetic(),
+                                "Both types in {} must be arithmetic.", cast);
+
+                        if *cast == Cast::Truncate {
+                            assert!(value.size() > ty.size(), "{} must cast from bigger \
+                                    integer to smaller one.", cast);
+                        } else {
+                            assert!(value.size() < ty.size(), "{} must cast from smaller \
+                                    integer to bigger one.", cast);
+                        }
+                    }
+                    Cast::Bitcast => {
+                        assert!(value.size() == ty.size(), "{} must cast between values \
+                                with the same size.", cast);
+
+                        assert!(value.is_normal_type() && ty.is_normal_type(), 
+                                "Only normal types are allowed.");
+                    }
+                }
             }
         }
     }

@@ -31,6 +31,14 @@ pub enum IntPredicate {
     GteS,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Cast {
+    ZeroExtend,
+    SignExtend,
+    Truncate,
+    Bitcast,
+}
+
 #[derive(Debug)]
 pub enum Instruction {
     ArithmeticUnary {
@@ -89,6 +97,12 @@ pub enum Instruction {
         source: Value,
         index:  Value,
     },
+    Cast {
+        dst:   Value,
+        cast:  Cast,
+        value: Value,
+        ty:    Type,
+    },
 }
 
 impl Instruction {
@@ -106,6 +120,7 @@ impl Instruction {
             Instruction::Return           { ..      } => None,
             Instruction::Const            { dst, .. } => Some(dst),
             Instruction::GetElementPtr    { dst, .. } => Some(dst),
+            Instruction::Cast             { dst, .. } => Some(dst),
         }
     }
 
@@ -123,6 +138,7 @@ impl Instruction {
             Instruction::Return           { value, ..         } => value.into_iter().collect(),
             Instruction::Const            { ..                } => vec![],
             Instruction::GetElementPtr    { source, index, .. } => vec![source, index],
+            Instruction::Cast             { value, ..         } => vec![value],
         }
     }
 

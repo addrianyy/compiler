@@ -2,7 +2,7 @@ use std::io::{self, Write};
 use std::fmt;
 
 use super::{FunctionData, Instruction, Value, Label, BinaryOp, UnaryOp, IntPredicate, 
-            Type, TypeKind};
+            Type, TypeKind, Cast};
 
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -56,6 +56,19 @@ impl fmt::Display for IntPredicate {
             IntPredicate::GteU     => "ugte", 
             IntPredicate::GtS      => "sgt", 
             IntPredicate::GteS     => "sgte", 
+        };
+
+        write!(f, "{}", name)
+    }
+}
+
+impl fmt::Display for Cast {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self {
+            Cast::ZeroExtend => "zext",
+            Cast::SignExtend => "sext",
+            Cast::Truncate   => "trunc",
+            Cast::Bitcast    => "bitcast",
         };
 
         write!(f, "{}", name)
@@ -159,6 +172,10 @@ impl FunctionData {
             Instruction::GetElementPtr { dst, source, index } => {
                 write!(w, "{} = getelementptr {} {}, {} {}", dst, self.display_type(*dst),
                        source, self.display_type(*index), index)?;
+            }
+            Instruction::Cast { dst, cast, value, ty } => {
+                write!(w, "{} = {} {} {} to {}", dst, cast, self.display_type(*value),
+                       value, ty)?;
             }
         }
 

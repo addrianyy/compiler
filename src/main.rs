@@ -54,6 +54,10 @@ fn main() {
 
     module.switch_label(merge_label);
     let c = module.iconst(1337u32, ir::Type::U16);
+    let x = module.cast(c, ir::Type::U32, ir::Cast::ZeroExtend);
+    let d = module.cast(x, ir::Type::U8, ir::Cast::Truncate);
+    let d = module.iconst(1337u32, ir::Type::U64);
+    let u = module.cast(d, ir::Type::U64.ptr().ptr(), ir::Cast::Bitcast);
     module.ret(Some(c));
 
     module.finalize();

@@ -1,4 +1,5 @@
-use super::{Module, Instruction, Value, Label, Function, Type, UnaryOp, BinaryOp, IntPredicate};
+use super::{Module, Instruction, Value, Label, Function, Type, UnaryOp, BinaryOp,
+           IntPredicate, Cast};
 
 impl Module {
     fn insert(&mut self, instruction: Instruction) {
@@ -75,5 +76,9 @@ impl Module {
 
     pub fn get_element_ptr(&mut self, source: Value, index: Value) -> Value {
         self.with_output(|dst| Instruction::GetElementPtr { dst, source, index })
+    }
+
+    pub fn cast(&mut self, value: Value, ty: Type, cast: Cast) -> Value {
+        self.with_output(|dst| Instruction::Cast { dst, cast, value, ty })
     }
 }
