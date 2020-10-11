@@ -1,6 +1,5 @@
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Keyword {
-    Function,
     Void,
     U8,
     U16,
@@ -13,15 +12,13 @@ pub enum Keyword {
     For,
     While,
     If,
-    Let,
-    Return,
     Else,
+    Return,
 }
 
 impl Keyword {
     fn from_ident(ident: &str) -> Option<Keyword> {
         Some(match ident {
-            "fn"     => Keyword::Function,
             "void"   => Keyword::Void,
             "u8"     => Keyword::U8,
             "u16"    => Keyword::U16,
@@ -35,7 +32,6 @@ impl Keyword {
             "while"  => Keyword::While,
             "if"     => Keyword::If,
             "else"   => Keyword::Else,
-            "let"    => Keyword::Let,
             "return" => Keyword::Return,
             _        => return None,
         })
@@ -73,7 +69,6 @@ pub enum Token {
     Colon,
     Semicolon,
     Comma,
-    Arrow,
 
     ParenOpen,
     ParenClose,
@@ -127,7 +122,6 @@ impl Lexer {
             (">>=", Token::ShrAssign),
             ("<<=", Token::ShlAssign),
 
-            ("->", Token::Arrow),
             ("==", Token::Equal),
             ("!=", Token::NotEqual),
             (">=", Token::Gte),

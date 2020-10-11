@@ -483,12 +483,10 @@ impl Parser {
     }
 
     fn parse_declaration(&mut self) -> Stmt {
-        let _       = self.lexer.eat_expect(&Token::Keyword(Keyword::Let));
-        let name    = self.lexer.eat_identifier().to_string();
-        let _       = self.lexer.eat_expect(&Token::Colon);
         let decl_ty = self.parse_ty();
-        let mut ty  = decl_ty.clone();
+        let name    = self.lexer.eat_identifier().to_string();
 
+        let mut ty    = decl_ty.clone();
         let mut array = None;
 
         if self.lexer.current() == &Token::BracketOpen {
@@ -565,9 +563,9 @@ impl Parser {
 
     fn parse_statement(&mut self) -> Stmt {
         match self.lexer.current() {
-            Token::Keyword(Keyword::Let)    => self.parse_declaration(),
-            Token::Keyword(Keyword::If)     => self.parse_if(),
-            Token::Keyword(Keyword::Return) => {
+            x if Ty::from_token(x).is_some() => self.parse_declaration(),
+            Token::Keyword(Keyword::If)      => self.parse_if(),
+            Token::Keyword(Keyword::Return)  => {
                 let _ = self.lexer.eat();
 
                 let value = if self.lexer.current() != &Token::Semicolon {
@@ -620,25 +618,16 @@ impl Parser {
     }
 
     fn parse_function(&mut self) -> Func {
-        self.lexer.eat_expect(&Token::Keyword(Keyword::Function));
-
-        let name     = self.lexer.eat_identifier().to_string();
-        let mut args = Vec::new();
+        let return_ty = self.parse_ty();
+        let name      = self.lexer.eat_identifier().to_string();
+        let mut args  = Vec::new();
 
         self.parse_argument_list(|parser| {
-            let name = parser.lexer.eat_identifier().to_string();
-            let _    = parser.lexer.eat_expect(&Token::Colon);
             let ty   = parser.parse_ty();
+            let name = parser.lexer.eat_identifier().to_string();
 
             args.push((name, ty));
         });
-
-        let mut return_ty = Ty::Void;
-
-        if self.lexer.current() == &Token::Arrow {
-            let _     = self.lexer.eat();
-            return_ty = self.parse_ty();
-        }
 
         let body = self.parse_body();
 

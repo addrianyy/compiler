@@ -36,7 +36,7 @@ fn save_svg_graph(graph_desc: &str, output_path: &str) {
 }
 
 impl FunctionData {
-    fn function_prototype(&self) -> String {
+    fn prototype_representation(&self) -> String {
         let return_type;
 
         match self.prototype.return_type {
@@ -79,7 +79,7 @@ impl FunctionData {
             let targets    = self.targets(label);
 
             let name = match label {
-                Label(0) => self.function_prototype(),
+                Label(0) => self.prototype_representation(),
                 _        => format!("{}", label),
             };
 
@@ -117,19 +117,25 @@ impl FunctionData {
     }
 
     pub fn dump_text<W: Write>(&self, w: &mut W) -> io::Result<()> {
-        writeln!(w, "{} {{", self.function_prototype())?;
+        writeln!(w, "{} {{", self.prototype_representation())?;
 
         let labels = self.traverse_bfs(Label(0), true);
         let indent = "  ";
 
+        let mut first = true;
+
         for label in labels.into_iter() {
+            if !first {
+                writeln!(w)?;
+            }
+
+            first = false;
+
             writeln!(w, "{}:", label)?;
 
             for inst in &self.blocks[&label] {
                 writeln!(w, "{}{}", indent, self.instruction_string(inst))?;
             }
-
-            writeln!(w)?;
         }
 
         writeln!(w, "}}")?;

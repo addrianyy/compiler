@@ -1,2 +1,3 @@
-fn main(x: u32, y: i64**) -> void {
+void main(u32 x, i64** y) {
+    u8* test = 13u8;
 }

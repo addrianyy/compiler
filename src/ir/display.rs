@@ -6,7 +6,7 @@ use super::{FunctionData, Instruction, Value, Label, BinaryOp, UnaryOp, IntPredi
 
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "v{}", self.0)
+        write!(f, "%{}", self.0)
     }
 }
 
@@ -51,10 +51,10 @@ impl fmt::Display for IntPredicate {
         let name = match self {
             IntPredicate::Equal    => "equal", 
             IntPredicate::NotEqual => "not_equal", 
-            IntPredicate::GtU      => "gt_u", 
-            IntPredicate::GteU     => "gte_u", 
-            IntPredicate::GtS      => "gt_s", 
-            IntPredicate::GteS     => "gte_s", 
+            IntPredicate::GtU      => "ugt", 
+            IntPredicate::GteU     => "ugte", 
+            IntPredicate::GtS      => "sgt", 
+            IntPredicate::GteS     => "sgte", 
         };
 
         write!(f, "{}", name)
@@ -82,42 +82,73 @@ impl fmt::Display for Type {
 }
 
 impl FunctionData {
+    fn display_type(&self, value: Value) -> String {
+        match self.type_info.as_ref() {
+            Some(type_info) => format!("{}", type_info[&value]),
+            None            => String::from("unk"),
+        }
+    }
+
     pub(super) fn print_instruction<W: Write>(&self, w: &mut W, 
                                               instruction: &Instruction) -> io::Result<()> {
         match instruction {
             Instruction::ArithmeticUnary { dst, op, value } => {
-                write!(w, "{} = {} {}", dst, op, value)?;
+                write!(w, "{} = {} {} {}", dst, op, self.display_type(*value), value)?;
             }
             Instruction::ArithmeticBinary { dst, a, op, b } => {
-                write!(w, "{} = {} {}, {}", dst, op, a, b)?;
+                write!(w, "{} = {} {} {}, {}", dst, op, self.display_type(*a), a, b)?;
             }
             Instruction::IntCompare { dst, a, pred, b } => {
-                write!(w, "{} = icmp {}, {}, {}", dst, a, b, pred)?;
+                write!(w, "{} = icmp {} {} {}, {}", dst, pred, self.display_type(*a), a, b)?;
             }
             Instruction::Load { dst, ptr } => {
-                write!(w, "{} = load {}", dst, ptr)?;
+                write!(w, "{} = load {}, {} {}", dst, self.display_type(*dst),
+                       self.display_type(*ptr), ptr)?;
             }
             Instruction::Store { ptr, value } => {
-                write!(w, "store {}, {}", ptr, value)?;
+                write!(w, "store {} {}, {} {}", self.display_type(*ptr), ptr,
+                       self.display_type(*value), value)?;
             }
             Instruction::Call { dst, func, args } => {
-                let function_name = &self.function_info.as_ref()
-                    .unwrap()[&func].name;
+                let prototype   = self.function_prototype(*func);
+                let return_type = match prototype.return_type {
+                    Some(return_type) => format!("{}", return_type),
+                    None              => String::from("void"),
+                };
 
-                write!(w, "call {}", function_name)?;
+                if let Some(dst) = dst {
+                    write!(w, "{} = ", dst)?;
+                }
+
+                write!(w, "call {} {}(", return_type, prototype.name)?;
+
+                for (index, arg) in args.iter().enumerate() {
+                    write!(w, "{} {}", self.display_type(*arg), arg)?;
+
+                    if index != prototype.arguments.len() - 1 {
+                        write!(w, ", ")?;
+                    }
+                }
+
+                write!(w, ")")?;
             }
             Instruction::Branch { target } => {
                 write!(w, "branch {}", target)?;
             }
             Instruction::BranchCond { value, on_true, on_false } => {
-                write!(w, "bcond {}, {}, {}", value, on_true, on_false)?;
+                write!(w, "bcond {} {}, {}, {}", self.display_type(*value),
+                       value, on_true, on_false)?;
             }
             Instruction::StackAlloc { dst, ty, size } => {
-                write!(w, "{} = stackalloc {} {}", dst, ty, size)?;
+                write!(w, "{} = stackalloc {}", dst, ty)?;
+
+                if *size != 1 {
+                    write!(w, ", {}", size)?;
+                }
             }
             Instruction::Return { value } => {
                 match value {
-                    Some(value) => write!(w, "ret {}", value)?,
+                    Some(value) => write!(w, "ret {} {}", self.display_type(*value), value)?,
                     None        => write!(w, "ret void")?,
                 }
             }

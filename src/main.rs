@@ -11,12 +11,12 @@ fn main() {
     module.print(&mut std::io::stdout()).unwrap();
 
     let compiler = compiler::Compiler::new(module);
-    */
 
+    */
     let mut module = ir::Module::new();
 
-    let func = module.create_function("abc123", Some(ir::Type::make_u16()),
-                                      vec![ir::Type::make_u64().ptr(); 3]);
+    let func = module.create_function("abc123", Some(ir::Type::U16),
+                                      vec![ir::Type::U64.ptr(); 3]);
 
     module.switch_function(func);
 
@@ -25,7 +25,7 @@ fn main() {
     let arg3 = module.argument(2);
     let v1   = module.load(arg1);
     let v2   = module.load(arg2);
-    let c    = module.iconst(999u32, ir::Type::make_u64());
+    let c    = module.iconst(999u32, ir::Type::U64);
     let v1   = module.arithmetic_binary(v1, ir::BinaryOp::Xor, c);
     let res  = module.int_compare(v1, ir::IntPredicate::GtS, v2);
 
@@ -38,7 +38,7 @@ fn main() {
     {
         module.switch_label(true_label);
 
-        let c = module.iconst(12u32, ir::Type::make_u64());
+        let c = module.iconst(12u32, ir::Type::U64);
         module.store(arg3, c);
         module.branch(merge_label);
     }
@@ -46,14 +46,16 @@ fn main() {
     {
         module.switch_label(false_label);
 
-        let c = module.iconst(19u32, ir::Type::make_u64());
+        let c = module.iconst(19u32, ir::Type::U64);
         module.store(arg3, c);
         module.branch(merge_label);
     }
 
     module.switch_label(merge_label);
-    let c = module.iconst(1337u32, ir::Type::make_u16());
+    let c = module.iconst(1337u32, ir::Type::U16);
     module.ret(Some(c));
+
+    module.finalize();
 
     module.dump_function_graph(func, "graphs/test.svg");
     module.dump_function_text(func, &mut std::io::stdout());

@@ -1,15 +1,18 @@
 mod display;
 mod graph;
 mod dump;
+mod instruction;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{self, Write};
 use std::rc::Rc;
 
+pub use instruction::{UnaryOp, BinaryOp, IntPredicate};
+use instruction::Instruction;
+use graph::FlowGraph;
+
 type Map<K, V> = BTreeMap<K, V>;
 type Set<T>    = BTreeSet<T>;
-
-use graph::FlowGraph;
 
 #[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct Value(usize);
@@ -19,6 +22,9 @@ pub struct Function(usize);
 
 #[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct Label(usize);
+
+#[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+pub struct Location(Label, usize);
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 enum TypeKind {
@@ -35,24 +41,16 @@ pub struct Type {
     indirection: usize,
 }
 
-macro_rules! type_constructor {
-    ($name: ident, $kind: expr) => {
-        pub fn $name() -> Self {
-            Self {
-                kind:        $kind,
-                indirection: 0,
-            }
-        }
-    }
-}
-
 impl Type {
-    type_constructor!(make_u8,  TypeKind::U8);
-    type_constructor!(make_u16, TypeKind::U16);
-    type_constructor!(make_u32, TypeKind::U32);
-    type_constructor!(make_u64, TypeKind::U64);
+    pub const U1:  Type = Type { kind: TypeKind::U1,  indirection: 0 };
+    pub const U8:  Type = Type { kind: TypeKind::U8,  indirection: 0 };
+    pub const U16: Type = Type { kind: TypeKind::U16, indirection: 0 };
+    pub const U32: Type = Type { kind: TypeKind::U32, indirection: 0 };
+    pub const U64: Type = Type { kind: TypeKind::U64, indirection: 0 };
 
     pub fn ptr(self) -> Self {
+        assert!(self.kind != TypeKind::U1);
+
         Self {
             kind:        self.kind,
             indirection: self.indirection + 1,
@@ -65,90 +63,18 @@ impl Type {
             indirection: self.indirection.checked_sub(1)?,
         })
     }
-}
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum UnaryOp {
-    Neg,
-    Not,
-}
+    pub fn is_arithmetic(&self) -> bool {
+        self.indirection == 0 && self.kind != TypeKind::U1
+    }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum BinaryOp {
-    Add,
-    Sub,
-    Mul,
-    Mod,
-    Div,
-    Shr,
-    Shl,
-    And,
-    Or,
-    Xor,
-}
+    pub fn can_be_in_memory(&self) -> bool {
+        self.kind != TypeKind::U1
+    }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum IntPredicate {
-    Equal,
-    NotEqual,
-    GtU,
-    GteU,
-    GtS,
-    GteS,
-}
-
-enum Instruction {
-    ArithmeticUnary {
-        dst:   Value, 
-        op:    UnaryOp,
-        value: Value,
-    },
-    ArithmeticBinary {
-        dst: Value, 
-        a:   Value,
-        op:  BinaryOp,
-        b:   Value
-    },
-    IntCompare {
-        dst:  Value,
-        a:    Value,
-        pred: IntPredicate,
-        b:    Value,
-    },
-    Load {
-        dst: Value,
-        ptr: Value,
-    },
-    Store {
-        ptr:   Value,
-        value: Value,
-    },
-    Call {
-        dst:  Option<Value>,
-        func: Function,
-        args: Vec<Value>,
-    },
-    Branch {
-        target: Label,
-    },
-    BranchCond {
-        value:    Value,
-        on_true:  Label,
-        on_false: Label,
-    },
-    StackAlloc {
-        dst:  Value,
-        ty:   Type,
-        size: usize,
-    },
-    Return {
-        value: Option<Value>,
-    },
-    Const {
-        dst: Value,
-        ty:  Type,
-        imm: u64,
-    },
+    pub fn is_normal_type(&self) -> bool {
+        self.kind != TypeKind::U1
+    }
 }
 
 type BasicBlock         = Vec<Instruction>;
@@ -169,6 +95,11 @@ struct FunctionData {
     next_label:      Label,
     function_info:   Option<CrossFunctionInfo>,
     type_info:       Option<TypeInfo>,
+}
+
+struct TypeContext {
+    creators:  Map<Value, Location>,
+    type_info: TypeInfo,
 }
 
 impl FunctionData {
@@ -240,7 +171,237 @@ impl FunctionData {
         }
     }
 
+    fn value_creators(&self) -> Map<Value, Location> {
+        let mut creators = Map::new();
+
+        for (label, body) in &self.blocks {
+            for (inst_id, inst) in body.iter().enumerate() {
+                if let Some(value) = inst.created_value() {
+                    creators.insert(value, Location(*label, inst_id));
+                }
+            }
+        }
+
+        creators
+    }
+
+    fn function_prototype(&self, func: Function) -> &FunctionPrototype {
+        self.function_info
+            .as_ref()
+            .expect("Cannot propagate types without CFI.")
+            .get(&func)
+            .expect("Unknown function is being called.")
+    }
+
+    fn infer_value_type(&self, value: Value, cx: &mut TypeContext) -> Type {
+        macro_rules! get_type {
+            ($value: expr) => {
+                self.infer_value_type($value, cx)
+            }
+        }
+
+        if let Some(&ty) = cx.type_info.get(&value) {
+            return ty;
+        }
+
+        let creator = cx.creators.get(&value).expect("Value is used without being created.");
+        let creator = &self.blocks[&creator.0][creator.1];
+
+        let ty = match creator {
+            Instruction::ArithmeticUnary { value, .. } => {
+                get_type!(*value)
+            }
+            Instruction::ArithmeticBinary { a, b, .. } => {
+                let a = get_type!(*a);
+                let b = get_type!(*b);
+
+                assert!(a == b, "Binary arithmetic instruction must have operands \
+                                 of the same type.");
+
+                a
+            }
+            Instruction::IntCompare { a, b, .. } => {
+                let a = get_type!(*a);
+                let b = get_type!(*b);
+
+                assert!(a == b, "Int compare instruction must have operands \
+                                 of the same type.");
+                Type::U1
+            }
+            Instruction::Load { ptr, .. } => {
+                get_type!(*ptr)
+                    .strip_ptr()
+                    .expect("Cannot load non-pointer value.")
+            }
+            Instruction::Call { func, .. } => {
+                self.function_prototype(*func)
+                    .return_type
+                    .expect("Void function return value is used.")
+                    .clone()
+            }
+            Instruction::StackAlloc { ty, .. } => ty.ptr(),
+            Instruction::Const      { ty, .. } => *ty,
+            _ => {
+                panic!("Unexpected value creator: {:?}.", creator);
+            }
+        };
+
+        assert!(cx.type_info.insert(value, ty).is_none(),
+                "Value has type infered multiple times.");
+
+        ty
+    }
+
+    fn typecheck(&self, inst: &Instruction, cx: &mut TypeContext) {
+        macro_rules! get_type {
+            ($value: expr) => {
+                self.infer_value_type($value, cx)
+            }
+        }
+
+        match inst {
+            Instruction::ArithmeticUnary { dst, value, .. } => {
+                let dst   = get_type!(*dst);
+                let value = get_type!(*value);
+
+                assert!(dst == value, "Unary arithmetic instruction requires all \
+                        operands to be of the same type");
+
+                assert!(dst.is_arithmetic(), "Unary arithmetic instruction can be \
+                        only done on arithmetic types.");
+            }
+            Instruction::ArithmeticBinary { dst, a, b, .. } => {
+                let dst = get_type!(*dst);
+                let a   = get_type!(*a);
+                let b   = get_type!(*b);
+
+                assert!(dst == a && a == b, "Binary arithmetic instruction requires all \
+                        operands to be of the same type");
+
+                assert!(dst.is_arithmetic(), "Binary arithmetic instruction can be \
+                        only done on arithmetic types.");
+            }
+            Instruction::IntCompare { dst, a, b, .. } => {
+                let dst = get_type!(*dst);
+                let a   = get_type!(*a);
+                let b   = get_type!(*b);
+
+                assert!(dst == Type::U1, "Int compare instruction requires \
+                        destination type to be U1.");
+
+                assert!(a == b, "Int compare instruction requires all \
+                        input operands to be of the same type");
+
+                assert!(a.is_arithmetic() || a == Type::U1, "Int compare instruction can be \
+                        only done on arithmetic types or U1.");
+            }
+            Instruction::Load { dst, ptr } => {
+                let dst = get_type!(*dst);
+                let ptr = get_type!(*ptr);
+
+                let stripped = ptr.strip_ptr()
+                    .expect("Load instruction can only load from pointers.");
+
+                assert!(dst == stripped,
+                        "Load instruction destination must have pointee type.");
+
+                assert!(ptr.can_be_in_memory(), "Invalid in-memory type.");
+            }
+            Instruction::Store { ptr, value } => {
+                let ptr   = get_type!(*ptr);
+                let value = get_type!(*value);
+
+                let stripped = ptr.strip_ptr()
+                    .expect("Store instruction can only store to pointers.");
+
+                assert!(value == stripped,
+                        "Store instruction value must have pointee type.");
+
+                assert!(ptr.can_be_in_memory(), "Invalid in-memory type.");
+            }
+            Instruction::Call { dst, func, args } => {
+                let prototype = self.function_prototype(*func);
+
+                if let Some(dst) = dst {
+                    let return_type = prototype.return_type
+                        .expect("Cannot take the return value of void function.");
+
+                    assert!(get_type!(*dst) == return_type,
+                            "Function call return value doesn't match.");
+                }
+
+                assert!(args.len() == prototype.arguments.len(), "Function call with invalid \
+                        argument count.");
+
+                for (index, arg) in args.iter().enumerate() {
+                    assert!(get_type!(*arg) == prototype.arguments[index],
+                            "Function call with invalid arguments.");
+                }
+            }
+            Instruction::Branch { .. } => {
+            }
+            Instruction::BranchCond { value, .. } => {
+                let value = get_type!(*value);
+
+                assert!(value == Type::U1, "Conditional branch input must be U1.");
+            }
+            Instruction::StackAlloc { dst, ty, size } => {
+                let dst = get_type!(*dst);
+
+                assert!(*size > 0, "Stack alloc cannot allocate 0 sized array.");
+                assert!(dst.strip_ptr().expect("Stack alloc destination must be pointer.") == *ty,
+                        "Stack alloc destination must be pointer to input type.");
+
+                assert!(dst.can_be_in_memory(), "Invalid in-memory type.");
+            }
+            Instruction::Return { value } => {
+                let value = value.map(|value| get_type!(value));
+
+                assert!(value == self.prototype.return_type, "Return instruction operand type \
+                        must be the same function as function return type.");
+            }
+            Instruction::Const { dst, ty, .. } => {
+                let dst = get_type!(*dst);
+
+                assert!(ty.is_normal_type(), "Only normal types are allowed.");
+                assert!(dst == *ty, "Const value instruction operand types must be the same.");
+            }
+        }
+    }
+
+    fn build_type_info(&mut self) {
+        let mut cx = TypeContext {
+            type_info: Map::new(),
+            creators:  self.value_creators(),
+        };
+
+        for (index, value) in self.argument_values.iter().enumerate() {
+            assert!(cx.type_info.insert(*value, self.prototype.arguments[index]).is_none(),
+                    "Function arguments defined multiple times.");
+        }
+
+        for (_label, body) in &self.blocks {
+            for inst in body {
+                if let Some(value) = inst.created_value() {
+                    let _ = self.infer_value_type(value, &mut cx);
+                }
+
+                for value in inst.read_values() {
+                    let _ = self.infer_value_type(value, &mut cx);
+                }
+
+                self.typecheck(inst, &mut cx);
+            }
+        }
+
+        self.type_info = Some(cx.type_info);
+    }
+
     fn finalize(&mut self) {
+        assert!(self.prototype.return_type != Some(Type::U1),
+                "Functions cannot return U1.");
+
+        self.build_type_info();
     }
 }
 
