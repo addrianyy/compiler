@@ -148,7 +148,7 @@ impl FunctionData {
             type_info:       None,
         };
 
-        let entry = data.allocate_label();
+        let _entry = data.allocate_label();
 
         for index in 0..argument_count {
             data.argument_values[index] = data.allocate_value();

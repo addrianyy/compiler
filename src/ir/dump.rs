@@ -1,10 +1,9 @@
 use std::io::{self, Write};
 
-use super::{FunctionData, Instruction, Label, Map, Set};
+use super::{FunctionData, Instruction, Label};
 
 fn save_svg_graph(graph_desc: &str, output_path: &str) {
     use std::process::{Command, Stdio};
-    use std::io::Write;
 
     let mut process = Command::new("dot")
         .args(&["-Tsvg", "-o", output_path])
@@ -95,7 +94,6 @@ impl FunctionData {
 
             dotgraph.push_str("\"];\n");
 
-            let targets     = self.targets(label);
             let conditional = targets.len() == 2;
 
             for (i, target) in targets.iter().enumerate() {

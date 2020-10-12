@@ -78,7 +78,7 @@ impl Expr {
                 writeln!(w, "{}Right:", i)?;
                 right.print(w, indent + 1)?;
             }
-            Expr::Number { value, ty } => {
+            Expr::Number { value, .. } => {
                 writeln!(w, "{}{}", i, value)?;
             }
             Expr::Array { array, index } => {
