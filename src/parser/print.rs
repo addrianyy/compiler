@@ -1,7 +1,7 @@
 use std::io::{self, Write};
 use std::fmt;
 
-use super::{Ty, Stmt, Expr, TypedExpr, Body, Func, FuncProto, ParsedModule};
+use super::{Ty, Stmt, Expr, TypedExpr, Body, Function, FunctionPrototype, ParsedModule};
 
 const INDENT_STRING:  &str = "    ";
 const SUBITEM_INDENT: &str = "  ";
@@ -187,7 +187,7 @@ impl Stmt {
     }
 }
 
-impl FuncProto {
+impl FunctionPrototype {
     pub fn print<W: Write>(&self, w: &mut W) -> io::Result<()> {
         writeln!(w, "Name:     {}", self.name)?;
         writeln!(w, "ReturnTy: {}", self.return_ty)?;
@@ -201,9 +201,9 @@ impl FuncProto {
     }
 }
 
-impl Func {
+impl Function {
     pub fn print<W: Write>(&self, w: &mut W) -> io::Result<()> {
-        self.proto.print(w)?;
+        self.prototype.print(w)?;
 
         writeln!(w, "Body:")?;
         print_body(&self.body, w, 1)?;

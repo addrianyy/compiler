@@ -1,7 +1,13 @@
+i32 meme(i32 x) {
+    return x;
+}
+
 void main() {
     u8 test[128];
 
     test[11] *= 55u8;
+
+    i32 lol = meme(12i32);
 
     return;
 }

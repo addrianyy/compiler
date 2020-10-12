@@ -187,6 +187,8 @@ impl FunctionData {
     fn targets(&self, label: Label) -> Vec<Label> {
         let block = &self.blocks[&label];
 
+        assert!(!block.is_empty(), "Block {} is empty.", label);
+
         block[block.len() - 1].targets().unwrap_or_else(|| {
             panic!("Block {} doesn't end in terminator.", label);
         })

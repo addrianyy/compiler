@@ -1,465 +1,34 @@
+use std::collections::BTreeMap;
+use std::cmp::Ordering;
+
 use crate::parser;
 use crate::ir;
-use crate::parser::{Body, Stmt, TypedExpr, Expr, Ty, UnaryOp, BinaryOp};
-use std::collections::BTreeMap;
-
-/*
-pub struct Compiler {
-    ir:     ir::Module,
-}
-
-struct Cx {
-    vars:  BTreeMap<String, Ty>,
-    funcs: BTreeMap<String, (Ty, Vec<Ty>)>,
-}
-
-/*
-#[derive(Clone)]
-struct Var {
-    value:  ir::Value,
-    rvalue: bool,
-    ty:     Ty,
-}
-*/
-
-type Var = GenExpr;
-
-#[derive(Clone)]
-struct GenExpr {
-    value:  ir::Value,
-    rvalue: bool,
-    ty:     Ty,
-}
-
-
-fn ty_to_irtype_internal(ty: &Ty, ptrlevel: usize) -> ir::Type {
-    match ty {
-        Ty::I8  | Ty::U8  => ir::Type::U8.with_indirection(ptrlevel), 
-        Ty::I16 | Ty::U16 => ir::Type::U16.with_indirection(ptrlevel),
-        Ty::I32 | Ty::U32 => ir::Type::U32.with_indirection(ptrlevel),
-        Ty::I64 | Ty::U64 => ir::Type::U64.with_indirection(ptrlevel),
-        Ty::Ptr(p)        => ty_to_irtype_internal(&p, ptrlevel + 1),
-        Ty::Void => panic!(),
-    }
-}
-
-fn ty_to_irtype(ty: &Ty) -> ir::Type {
-    ty_to_irtype_internal(ty, 0)
-}
-
-struct CodegenContext {
-    vars: BTreeMap<String, Var>,
-}
-
-fn constprop_expr(expr: &Expr) -> Option<u64> {
-    match expr {
-        Expr::Number { value, .. } => Some(*value),
-        _ => None,
-    }
-}
-
-impl Compiler {
-    fn get_type(cx: &CodegenContext, expr: &Expr) -> Ty {
-        match expr {
-            Expr::Variable(name) => {
-                cx.vars[name].ty.clone()
-            }
-            Expr::Unary { op, value } => {
-                let ty = Self::get_type(cx, &value.expr);
-
-                match op {
-                    UnaryOp::Ref   => Ty::Ptr(Box::new(ty)),
-                    UnaryOp::Deref => ty.strip_pointer().unwrap(),
-                    _ => {
-                        assert!(ty.is_arithmetic_type());
-                        ty
-
-                    }
-                }
-            }
-            Expr::Binary { left, op, right } => {
-                let left  = Self::get_type(cx, &left.expr);
-                let right = Self::get_type(cx, &right.expr);
-
-                match op {
-                    BinaryOp::Equal | BinaryOp::NotEqual | BinaryOp::Gt |
-                    BinaryOp::Lt    | BinaryOp::Gte      | BinaryOp::Lte => {
-                        assert!(left == right && left != Ty::Void);
-
-                        Ty::U8
-                    }
-                    BinaryOp::Add | BinaryOp::Sub => {
-                        assert!(left.is_arithmetic_type() || right.is_arithmetic_type());
-
-                        if left != right {
-                            return match (left.is_nonvoid_ptr(), right.is_nonvoid_ptr()) {
-                                (true, false) => {
-                                    left
-                                }
-                                (false, true) => {
-                                    right
-                                }
-                                _ => panic!(),
-                            };
-                        }
-
-                        left
-                    }
-                    _ => {
-                        assert!(left == right && left.is_arithmetic_type());
-
-                        left
-                    }
-                }
-            }
-            Expr::Call { target, args } => {
-                /*
-                let func = &cx.funcs[target];
-
-                assert!(args.len() == func.1.len());
-
-                for index in 0..args.len() {
-                    assert!(Self::get_type(cx, &args[index].expr) == func.1[index]);
-                }
-
-                func.0.clone()
-                */
-
-                panic!()
-            }
-            Expr::Array { array, index } => {
-                let array = Self::get_type(cx, &array.expr);
-                let index = Self::get_type(cx, &index.expr);
-
-                assert!(index.is_arithmetic_type());
-                assert!(array.is_nonvoid_ptr());
-
-                array.strip_pointer().unwrap()
-            }
-            Expr::Cast { value, ty } => {
-                ty.clone()
-            }
-            Expr::Number { value, ty } => {
-                ty.as_ref().unwrap().clone()
-            }
-            _ => panic!()
-        }
-    }
-
-    /*
-    fn handle_function(body: &mut Body, cx: &mut Cx, return_ty: &Ty) {
-        let mut added = Vec::new();
-
-        for stmt in body {
-            match stmt {
-                Stmt::Assign { variable, value } => {
-                    assert!(Self::get_type(cx, &variable.expr) == 
-                            Self::get_type(cx, &value.expr));
-                }
-                Stmt::While { condition, body } => {
-                    assert!(!Self::get_type(cx, &condition.expr).is_void());
-                    Self::handle_function(body, cx, return_ty);
-                }
-                Stmt::If { arms, default } => {
-                    for (condition, body) in arms {
-                        assert!(!Self::get_type(cx, &condition.expr).is_void());
-                        Self::handle_function(body, cx, return_ty);
-                    }
-
-                    if let Some(default) = default.as_mut() {
-                        Self::handle_function(default, cx, return_ty);
-                    }
-                }
-                Stmt::Expr(expr) => {
-                    let _ = Self::get_type(cx, &expr.expr);
-                }
-                Stmt::Return(value) => {
-                    if let Some(value) = value.as_mut() {
-                        assert!(&Self::get_type(cx, &value.expr) == return_ty);
-                    }
-                }
-                Stmt::Declare { ty, decl_ty, name, value, array } => {
-                    added.push(name.clone());
-
-                    assert!(cx.vars.insert(name.clone(), ty.clone()).is_none());
-                    assert!(array.is_none());
-                    if let Some(value) = value {
-                        assert!(&Self::get_type(cx, &value.expr) == ty);
-                    }
-                }
-            }
-        }
-
-        for added in added {
-            cx.vars.remove(&added);
-        }
-    }
-    */
-
-    fn codegen_expr(&mut self, expr: &Expr, cx: &mut CodegenContext) -> GenExpr {
-        macro_rules! extract {
-            ($e: expr) => {
-                if $e.rvalue {
-                    self.ir.load($e.value)
-                } else {
-                    $e.value
-                }
-            }
-        }
-
-        match expr {
-            Expr::Variable(name) => {
-                cx.vars[name].clone()
-            }
-            Expr::Unary { op, value } => {
-                let value = self.codegen_expr(&value.expr, cx);
-
-                match op {
-                    UnaryOp::Ref => {
-                        assert!(value.rvalue, "Tried to get address of non-rvalue");
-
-                        GenExpr {
-                            value:  value.value,
-                            ty:     Ty::Ptr(Box::new(value.ty)),
-                            rvalue: false,
-                        }
-                    }
-                    UnaryOp::Deref => {
-                        let new_value = extract!(value);
-
-                        GenExpr {
-                            value:  new_value,
-                            rvalue: true,
-                            ty:     value.ty.strip_pointer().unwrap(),
-                        }
-                    }
-                    _ => {
-                        assert!(value.ty.is_arithmetic_type());
-
-                        let op = match op {
-                            UnaryOp::Neg => ir::UnaryOp::Neg,
-                            UnaryOp::Not => ir::UnaryOp::Not,
-                            _            => panic!(),
-                        };
-
-                        let new_value = extract!(value);
-                        let new_value = self.ir.arithmetic_unary(op, new_value);
-
-                        GenExpr {
-                            value:  new_value,
-                            rvalue: false,
-                            ty:     value.ty,
-                        }
-                    }
-                }
-            }
-            Expr::Binary { left, op, right } => {
-                let left  = self.codegen_expr(&left.expr, cx);
-                let right = self.codegen_expr(&right.expr, cx);
-
-                match op {
-                    BinaryOp::Equal | BinaryOp::NotEqual | BinaryOp::Gt |
-                    BinaryOp::Lt    | BinaryOp::Gte      | BinaryOp::Lte => {
-                        panic!()
-                    }
-                    BinaryOp::Add | BinaryOp::Sub => {
-                        panic!()
-                    }
-                    _ => {
-                        assert!(left.ty == right.ty && left.ty.is_arithmetic_type());
-
-                        let a = extract!(left);
-                        let b = extract!(right);
-
-                        let op = match op {
-                            BinaryOp::Mul => ir::BinaryOp::Mul,
-                            BinaryOp::Mod => ir::BinaryOp::Mod,
-                            BinaryOp::Div => ir::BinaryOp::Div,
-                            BinaryOp::Shr => {
-                                if left.ty.is_signed() {
-                                    ir::BinaryOp::Sar
-                                } else {
-                                    ir::BinaryOp::Shr
-                                }
-                            }
-                            BinaryOp::Shl => ir::BinaryOp::Shl,
-                            BinaryOp::And => ir::BinaryOp::And,
-                            BinaryOp::Or  => ir::BinaryOp::Or,
-                            BinaryOp::Xor => ir::BinaryOp::Xor,
-                            _             => panic!(),
-                        };
-
-                        let res = self.ir.arithmetic_binary(a, op, b);
-
-                        GenExpr {
-                            value:  res,
-                            rvalue: false,
-                            ty:     left.ty,
-                        }
-                    }
-                }
-            }
-            Expr::Number { value, ty } => {
-                let ty    = ty.clone().unwrap_or(Ty::I32);
-                let value = self.ir.iconst(*value, ty_to_irtype(&ty));
-
-                GenExpr {
-                    value,
-                    rvalue: false,
-                    ty,
-                }
-            }
-            Expr::Array { array, index } => {
-                let array = self.codegen_expr(&array.expr, cx);
-                let index = self.codegen_expr(&index.expr, cx);
-
-                assert!(index.ty.is_arithmetic_type());
-                assert!(array.ty.is_nonvoid_ptr());
-
-                let array_v = extract!(array);
-                let index_v = extract!(index);
-
-                let value = self.ir.get_element_ptr(array_v, index_v);
-
-                GenExpr {
-                    value,
-                    rvalue: true,
-                    ty:     array.ty.strip_pointer().unwrap(),
-                }
-            }
-            _ => panic!(),
-        }
-    }
-
-    fn codegen_body(&mut self, body: &Body, cx: &mut CodegenContext) {
-        macro_rules! extract {
-            ($e: expr) => {
-                if $e.rvalue {
-                    self.ir.load($e.value)
-                } else {
-                    $e.value
-                }
-            }
-        }
-
-        for stmt in body {
-            match stmt {
-                Stmt::Expr(expr) => {
-                    self.codegen_expr(&expr.expr, cx);
-                }
-                Stmt::Assign { variable, value } => {
-                    let value    = self.codegen_expr(&value.expr, cx);
-                    let value    = extract!(value);
-                    let variable = self.codegen_expr(&variable.expr, cx);
-
-                    assert!(variable.rvalue);
-
-                    self.ir.store(variable.value, value);
-                }
-                Stmt::Declare { ty, decl_ty, name, value, array } => {
-                    let size = if let Some(array) = array {
-                        constprop_expr(&array.expr).unwrap()
-                    } else {
-                        1
-                    };
-
-                    let mut var = self.ir.stack_alloc(ty_to_irtype(decl_ty), size as usize);
-
-                    let rvalue = size == 1;
-
-                    if let Some(value) = value {
-                        let value = self.codegen_expr(&value.expr, cx);
-                        let value = extract!(value);
-
-                        self.ir.store(var, value);
-                    }
-
-                    cx.vars.insert(name.to_string(), Var {
-                        value: var,
-                        rvalue,
-                        ty:    ty.clone(),
-                    });
-                }
-                Stmt::Return(value) => {
-                    let res = value.as_ref().map(|v| {
-                        let v = self.codegen_expr(&v.expr, cx);
-                        extract!(v)
-                    });
-
-                    self.ir.ret(res);
-                }
-                _ => panic!(),
-            }
-        }
-    }
-
-    pub fn new(mut module: parser::ParsedModule) -> Self {
-        /*
-        let mut cx = Cx {
-            vars:  BTreeMap::new(),
-            funcs: BTreeMap::new(),
-        };
-
-        for func in &module.functions {
-            let mut types = Vec::new();
-
-            for (name, ty) in &func.proto.args {
-                types.push(ty.clone());
-            }
-
-            assert!(cx.funcs.insert(func.proto.name.clone(), (func.proto.return_ty.clone(), types))
-                    .is_none());
-            
-        }
-
-        for func in &mut module.functions {
-            cx.vars.clear();
-
-            for (name, ty) in &func.proto.args {
-                assert!(cx.vars.insert(name.clone(), ty.clone()).is_none());
-            }
-
-            Self::handle_function(&mut func.body, &mut cx, &func.proto.return_ty);
-        }
-        */
-
-        let mut compiler = Compiler {
-            ir:    ir::Module::new(),
-        };
-
-        let mut cx = CodegenContext {
-            vars: BTreeMap::new(),
-        };
-
-        let ir_func = compiler.ir.create_function("test", None, Vec::new());
-        compiler.ir.switch_function(ir_func);
-
-        for func in &mut module.functions {
-            compiler.codegen_body(&func.body, &mut cx);
-            compiler.ir.finalize();
-            compiler.ir.dump_function_text(ir_func, &mut std::io::stdout());
-
-            panic!();
-        }
-
-        panic!();
-    }
-}
-*/
-
-fn to_ir_type_internal(ty: &Ty, indirection: usize) -> ir::Type {
-    match ty {
-        Ty::I8  | Ty::U8  => ir::Type::U8 .with_indirection(indirection),
-        Ty::I16 | Ty::U16 => ir::Type::U16.with_indirection(indirection),
-        Ty::I32 | Ty::U32 => ir::Type::U32.with_indirection(indirection),
-        Ty::I64 | Ty::U64 => ir::Type::U64.with_indirection(indirection),
-        Ty::Ptr(inside)   => to_ir_type_internal(&inside, indirection + 1),
-        Ty::Void          => panic!("IR doesn't support void type."),
-    }
-}
+use crate::parser::{Body, Stmt, Expr, Ty, UnaryOp, BinaryOp};
 
 fn to_ir_type(ty: &Ty) -> ir::Type {
+    fn to_ir_type_internal(ty: &Ty, indirection: usize) -> ir::Type {
+        match ty {
+            Ty::I8  | Ty::U8  => ir::Type::U8 .with_indirection(indirection),
+            Ty::I16 | Ty::U16 => ir::Type::U16.with_indirection(indirection),
+            Ty::I32 | Ty::U32 => ir::Type::U32.with_indirection(indirection),
+            Ty::I64 | Ty::U64 => ir::Type::U64.with_indirection(indirection),
+            Ty::Ptr(inside)   => to_ir_type_internal(&inside, indirection + 1),
+            Ty::Void          => panic!("IR doesn't support void type."),
+        }
+    }
+
     to_ir_type_internal(ty, 0)
+}
+
+fn constant_expression(expression: &Expr) -> Option<u64> {
+    // TODO: handle more expressions.
+
+    match expression {
+        Expr::Number { value, .. } => {
+            Some(*value)
+        }
+        _ => None,
+    }
 }
 
 #[derive(Copy, Clone, Eq, PartialEq)]
@@ -512,35 +81,120 @@ impl CodegenValue {
     }
 }
 
+#[derive(Clone)]
+struct CodegenFunction {
+    function:  ir::Function,
+    return_ty: Ty,
+    args:      Vec<Ty>,
+}
+
 struct Variables {
-    map: BTreeMap<String, CodegenValue>,
+    map:   BTreeMap<String, CodegenValue>,
+    scope: Vec<Vec<String>>,
 }
 
 impl Variables {
+    fn new() -> Self {
+        Self {
+            map:   BTreeMap::new(),
+            scope: Vec::new(),
+        }
+    }
+
     fn get(&self, name: &str) -> CodegenValue {
-        self.map[name].clone()
+        self.map.get(name)
+            .unwrap_or_else(|| panic!("Unknown variable {} referenced."))
+            .clone()
+    }
+    
+    fn clear(&mut self) {
+        self.map.clear()
+    }
+
+    fn insert(&mut self, name: &str, value: CodegenValue) {
+        let last = self.scope.len() - 1;
+        self.scope[last].push(name.to_owned());
+
+        assert!(self.map.insert(name.to_owned(), value).is_none(), 
+                "Mutliple variables with the same name.");
+    }
+
+    fn enter_scope(&mut self) {
+        self.scope.push(Vec::new());
+    }
+
+    fn exit_scope(&mut self) {
+        for name in self.scope.pop().unwrap() {
+            self.map.remove(&name);
+        }
+    }
+}
+
+struct Functions {
+    map: BTreeMap<String, CodegenFunction>,
+}
+
+impl Functions {
+    fn new() -> Self {
+        Self {
+            map: BTreeMap::new(),
+        }
+    }
+
+    fn get(&self, name: &str) -> &CodegenFunction {
+        &self.map[name]
     }
 }
 
 pub struct Compiler {
     ir:        ir::Module,
     variables: Variables,
+    functions: Functions,
 }
 
 impl Compiler {
-    fn codegen_expression(&mut self, expression: &Expr) -> CodegenValue {
+    fn int_cast(&mut self, value: ir::Value, orig_ty: &Ty, target_ty: &Ty) -> ir::Value {
+        assert!(!orig_ty.is_pointer() && !target_ty.is_pointer(), "Cannot intcast pointers.");
+
+        let cast = match orig_ty.size().cmp(&target_ty.size()) {
+            Ordering::Greater => {
+                Some(ir::Cast::Truncate)
+            }
+            Ordering::Less => {
+                match orig_ty.is_signed() {
+                    true  => Some(ir::Cast::SignExtend),
+                    false => Some(ir::Cast::ZeroExtend),
+                }
+            }
+            Ordering::Equal => {
+                None
+            }
+        };
+
+        match cast {
+            Some(cast) => self.ir.cast(value, to_ir_type(target_ty), cast),
+            None       => value,
+        }
+    }
+
+    fn codegen_nonvoid_expression(&mut self, expression: &Expr) -> CodegenValue {
+        self.codegen_expression(expression)
+            .expect("Expected non-void expression, got void one.")
+    }
+
+    fn codegen_expression(&mut self, expression: &Expr) -> Option<CodegenValue> {
         match expression {
             Expr::Variable(variable) => {
-                self.variables.get(variable)
+                Some(self.variables.get(variable))
             }
             Expr::Unary { op, value } => {
-                let value = self.codegen_expression(&value);
+                let value = self.codegen_nonvoid_expression(&value);
 
                 match op {
                     UnaryOp::Ref => {
                         assert!(value.is_lvalue(), "Cannot get address of rvalue.");
 
-                        CodegenValue::rvalue(value.ty.ptr(), value.value)
+                        Some(CodegenValue::rvalue(value.ty.ptr(), value.value))
                     }
                     UnaryOp::Deref => {
                         let new_ty = value.ty.strip_pointer().expect("Cannot deref non-pointer.");
@@ -549,7 +203,7 @@ impl Compiler {
                         // If value is rvalue we just want to make it lvalue.
                         let result = value.extract(&mut self.ir);
 
-                        CodegenValue::lvalue(new_ty, result)
+                        Some(CodegenValue::lvalue(new_ty, result))
                     }
                     _ => {
                         assert!(value.ty.is_arithmetic_type(), "Unary operator can only be \
@@ -564,13 +218,18 @@ impl Compiler {
                         let result = value.extract(&mut self.ir);
                         let result = self.ir.arithmetic_unary(op, result);
 
-                        CodegenValue::rvalue(value.ty, result)
+                        Some(CodegenValue::rvalue(value.ty, result))
                     }
                 }
             }
             Expr::Binary { left, op, right } => {
-                let left  = self.codegen_expression(&left);
-                let right = self.codegen_expression(&right);
+                let left  = self.codegen_nonvoid_expression(&left);
+                let right = self.codegen_nonvoid_expression(&right);
+
+                let left_value  = left.extract(&mut self.ir);
+                let right_value = right.extract(&mut self.ir);
+
+                let pointers = left.ty.is_pointer() || right.ty.is_pointer();
 
                 match op {
                     BinaryOp::Equal | BinaryOp::NotEqual | BinaryOp::Gt |
@@ -578,8 +237,8 @@ impl Compiler {
                         assert!(left.ty == right.ty && left.ty != Ty::Void, "Cannot compare \
                                 two values with different types (or void types.");
 
-                        let mut left_value  = left.extract(&mut self.ir);
-                        let mut right_value = right.extract(&mut self.ir);
+                        let mut left_value  = left_value;
+                        let mut right_value = right_value;
 
                         if left.ty.is_pointer() {
                             // IR doesn't allow comparing pointers. Convert them to integers.
@@ -619,16 +278,46 @@ impl Compiler {
                         let one    = self.ir.iconst(1u8, ir::Type::U8);
                         let result = self.ir.select(result, one, zero);
 
-                        CodegenValue::rvalue(Ty::U8, result)
+                        Some(CodegenValue::rvalue(Ty::U8, result))
+                    }
+                    BinaryOp::Add | BinaryOp::Sub if pointers => {
+                        // TODO: Special case: add/sub on pointers
+                        panic!()
                     }
                     _ => {
-                        panic!()
+                        assert!(left.ty == right.ty && left.ty.is_arithmetic_type(), "Cannot \
+                                apply binary operator to values of different types or \
+                                non-arithmetic values.");
+
+                        let op = match op {
+                            BinaryOp::Add => ir::BinaryOp::Add,
+                            BinaryOp::Sub => ir::BinaryOp::Sub,
+                            BinaryOp::Mul => ir::BinaryOp::Mul,
+                            BinaryOp::Mod => ir::BinaryOp::Mod,
+                            BinaryOp::Div => ir::BinaryOp::Div,
+                            BinaryOp::Shr => {
+                                if left.ty.is_signed() {
+                                    ir::BinaryOp::Sar
+                                } else {
+                                    ir::BinaryOp::Shr
+                                }
+                            }
+                            BinaryOp::Shl => ir::BinaryOp::Shl,
+                            BinaryOp::And => ir::BinaryOp::And,
+                            BinaryOp::Or  => ir::BinaryOp::Or,
+                            BinaryOp::Xor => ir::BinaryOp::Xor,
+                            _             => unreachable!(),
+                        };
+
+                        let result = self.ir.arithmetic_binary(left_value, op, right_value);
+
+                        Some(CodegenValue::rvalue(left.ty, result))
                     }
                 }
             }
             Expr::Array { array, index } => {
-                let array = self.codegen_expression(&array);
-                let index = self.codegen_expression(&index);
+                let array = self.codegen_nonvoid_expression(&array);
+                let index = self.codegen_nonvoid_expression(&index);
 
                 assert!(array.ty.is_nonvoid_ptr(),     "Array must be non-void pointer.");
                 assert!(index.ty.is_arithmetic_type(), "Index must be arithmetic type.");
@@ -639,19 +328,213 @@ impl Compiler {
                 let new_ty = array.ty.strip_pointer().expect("Cannot deref non-pointer.");
                 let result = self.ir.get_element_ptr(array_value, index_value);
 
-                CodegenValue::lvalue(new_ty, result)
+                Some(CodegenValue::lvalue(new_ty, result))
             }
             Expr::Number { value, ty } => {
                 let ty    = ty.clone().unwrap_or(Ty::I32);
                 let value = self.ir.iconst(*value, to_ir_type(&ty));
 
-                CodegenValue::rvalue(ty, value)
+                Some(CodegenValue::rvalue(ty, value))
             }
-            _ => panic!(),
+            Expr::Cast { value, ty } => {
+                let value = self.codegen_nonvoid_expression(&value);
+
+                let orig_ty   = value.ty.clone();
+                let target_ty = ty.clone();
+                let extracted = value.extract(&mut self.ir);
+                
+                let integer   = !orig_ty.is_pointer() && !target_ty.is_pointer();
+                let same_size = orig_ty.size() == target_ty.size();
+
+                let target_ty_ir = to_ir_type(&target_ty);
+
+                let result = if integer {
+                    self.int_cast(extracted, &orig_ty, &target_ty)
+                } else if same_size {
+                    self.ir.cast(extracted, target_ty_ir, ir::Cast::Bitcast)
+                } else {
+                    match (orig_ty.is_pointer(), target_ty.is_pointer()) {
+                        (true, false) => {
+                            let x = self.ir.cast(extracted, ir::Type::U64, ir::Cast::Bitcast);
+                            self.int_cast(x, &Ty::U64, &target_ty)
+                        }
+                        (false, true) => {
+                            let x = self.int_cast(extracted, &orig_ty, &Ty::U64);
+                            self.ir.cast(x, target_ty_ir, ir::Cast::Bitcast)
+                        }
+                        _ => unreachable!(),
+                    }
+                };
+
+                Some(CodegenValue::rvalue(target_ty, result))
+            }
+            Expr::Call { target, args } => {
+                let function = self.functions.get(target).clone();
+
+                assert!(function.args.len() == args.len(),
+                        "Number of arguments mismatch in call.");
+
+                let mut generated_args = Vec::new();
+
+                for index in 0..args.len() {
+                    let value = self.codegen_nonvoid_expression(&args[index]);
+
+                    assert!(value.ty == function.args[index], "Invalid type of parameter \
+                            passed to function {}.", target);
+
+                    generated_args.push(value.extract(&mut self.ir));
+                }
+
+                self.ir.call(function.function, generated_args).map(|value| {
+                    CodegenValue::rvalue(function.return_ty.clone(), value)
+                })
+            }
         }
     }
 
+    fn codegen_body(&mut self, body: &Body, return_ty: &Ty) {
+        self.variables.enter_scope();
+
+        for statement in body {
+            match statement {
+                Stmt::Expr(expression) => {
+                    self.codegen_expression(expression);
+                }
+                Stmt::Declare { ty, decl_ty, name, value, array } => {
+                    let (size, array) = match array {
+                        Some(array) => {
+                            (constant_expression(array)
+                                .expect("Array size must be constant.") as usize, true)
+                        }
+                        None => (1, false),
+                    };
+
+                    let variable = self.ir.stack_alloc(to_ir_type(decl_ty), size);
+
+                    if let Some(value) = value {
+                        let value = self.codegen_nonvoid_expression(value);
+
+                        assert!(!array, "Arrays cannot have initializers.");
+                        assert!(value.ty == *ty, "Initializer doesn't have the same \
+                                type as variable.");
+
+                        let extracted = value.extract(&mut self.ir);
+
+                        self.ir.store(variable, extracted);
+                    }
+
+                    let value = match array {
+                        true  => CodegenValue::rvalue(ty.clone(), variable),
+                        false => CodegenValue::lvalue(ty.clone(), variable),
+                    };
+
+                    self.variables.insert(name, value);
+                }
+                Stmt::Assign { variable, value } => {
+                    let variable = self.codegen_nonvoid_expression(variable);
+                    let value    = self.codegen_nonvoid_expression(value);
+
+                    assert!(variable.ty == value.ty, "Cannot assign value of different type.");
+                    assert!(variable.is_lvalue(), "Cannot assign to rvalue.");
+
+                    let extracted = value.extract(&mut self.ir);
+
+                    self.ir.store(variable.value, extracted);
+                }
+                Stmt::Return(value) => {
+                    match value {
+                        Some(value) => {
+                            let value     = self.codegen_nonvoid_expression(value);
+                            let extracted = value.extract(&mut self.ir);
+
+                            assert!(return_ty == &value.ty, "Function return type differs.");
+
+                            self.ir.ret(Some(extracted));
+                        }
+                        None => {
+                            assert!(return_ty == &Ty::Void, "Cannot return void from \
+                                    non-void function.");
+
+                            self.ir.ret(None);
+                        }
+                    }
+                }
+                _ => panic!(),
+            }
+        }
+
+        self.variables.exit_scope();
+    }
+
     pub fn new(module: parser::ParsedModule) -> Self {
+        let mut compiler = Compiler {
+            ir:        ir::Module::new(),
+            variables: Variables::new(),
+            functions: Functions::new(),
+        };
+
+        for function in &module.functions {
+            let mut args    = Vec::new();
+            let mut args_ir = Vec::new();
+
+            for (_, ty) in &function.prototype.args {
+                args.push(ty.clone());
+                args_ir.push(to_ir_type(ty));
+            }
+
+            let return_ty = match &function.prototype.return_ty {
+                Ty::Void => None,
+                x        => Some(to_ir_type(&x)),
+            };
+
+            let name    = &function.prototype.name;
+            let ir_func = compiler.ir.create_function(name, return_ty, args_ir);
+
+            let codegen_func = CodegenFunction {
+                return_ty: function.prototype.return_ty.clone(),
+                function:  ir_func,
+                args,
+            };
+
+            assert!(compiler.functions.map.insert(name.clone(), codegen_func).is_none(),
+                    "Multiple functions with the same name.");
+        }
+
+        for function in &module.functions {
+            compiler.variables.clear();
+
+            let return_ty = &function.prototype.return_ty;
+            let ir_func   = compiler.functions.get(&function.prototype.name);
+
+            compiler.ir.switch_function(ir_func.function);
+
+            compiler.variables.enter_scope();
+
+            for (index, (arg_name, arg_ty)) in function.prototype.args.iter().enumerate() {
+                // Move arguments from registers to stack to make sure that they are lvalues.
+
+                let storage = compiler.ir.stack_alloc(to_ir_type(arg_ty), 1);
+                let value   = compiler.ir.argument(index);
+
+                compiler.ir.store(storage, value);
+
+                let variable = CodegenValue::lvalue(arg_ty.clone(), storage);
+
+                compiler.variables.insert(arg_name, variable);
+            }
+            
+            compiler.codegen_body(&function.body, return_ty);
+
+            compiler.variables.exit_scope();
+        }
+
+        compiler.ir.finalize();
+
+        for function in compiler.functions.map.values() {
+            compiler.ir.dump_function_text(function.function,
+                                           &mut std::io::stdout()).unwrap();
+        }
+
         panic!()
     }
 }

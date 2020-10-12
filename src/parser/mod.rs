@@ -138,6 +138,17 @@ impl Ty {
         })
     }
 
+    pub fn size(&self) -> usize {
+        match self {
+            Ty::Ptr(_)        => 8,
+            Ty::I8  | Ty::U8  => 1,
+            Ty::I16 | Ty::U16 => 2,
+            Ty::I32 | Ty::U32 => 4,
+            Ty::I64 | Ty::U64 => 8,
+            Ty::Void          => unreachable!(),
+        }
+    }
+
     pub fn is_signed(&self) -> bool {
         match self {
             Ty::I8 | Ty::I16 | Ty::I32 | Ty::I64 => true,
@@ -227,21 +238,21 @@ pub enum Stmt {
 pub type Body = Vec<Stmt>;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FuncProto {
+pub struct FunctionPrototype {
     pub name:      String,
     pub args:      Vec<(String, Ty)>,
     pub return_ty: Ty,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Func {
-    pub proto: FuncProto,
-    pub body:  Body,
+pub struct Function {
+    pub prototype: FunctionPrototype,
+    pub body:      Body,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ParsedModule {
-    pub functions: Vec<Func>,
+    pub functions: Vec<Function>,
 }
 
 struct Parser {
@@ -643,7 +654,7 @@ impl Parser {
         body
     }
 
-    fn parse_function(&mut self) -> Func {
+    fn parse_function(&mut self) -> Function {
         let return_ty = self.parse_ty();
         let name      = self.lexer.eat_identifier().to_string();
         let mut args  = Vec::new();
@@ -657,8 +668,8 @@ impl Parser {
 
         let body = self.parse_body();
 
-        Func {
-            proto: FuncProto {
+        Function {
+            prototype: FunctionPrototype {
                 name,
                 args,
                 return_ty,
@@ -667,7 +678,7 @@ impl Parser {
         }
     }
 
-    fn parse_functions(&mut self) -> Vec<Func> {
+    fn parse_functions(&mut self) -> Vec<Function> {
         let mut functions = Vec::new();
 
         while self.lexer.current() != &Token::Eof {
