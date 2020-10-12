@@ -11,6 +11,22 @@ fn main() {
 
     let compiler = compiler::Compiler::new(module);
 
+    /*
+    let mut ir = ir::Module::new();
+
+    let func = ir.create_function("abc123", Some(ir::Type::U64), vec![]);
+    ir.switch_function(func);
+
+
+    let c    = ir.iconst(999u32, ir::Type::U64);
+    let x    = ir.iconst(1324u32, ir::Type::U64);
+    let d    = ir.arithmetic_binary(c, ir::BinaryOp::Add, x);
+    ir.ret(Some(d));
+
+    ir.finalize();
+    ir.dump_function_text(func, &mut std::io::stdout()).unwrap();
+    ir.test();
+    */
 
     /*
     let mut module = ir::Module::new();

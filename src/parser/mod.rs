@@ -227,6 +227,8 @@ pub enum Stmt {
     },
     Return(Option<TypedExpr>),
     Expr(TypedExpr),
+    Break,
+    Continue,
 }
 
 pub type Body = Vec<Stmt>;
@@ -616,6 +618,14 @@ impl Parser {
                     condition: cond,
                     body,
                 }
+            }
+            Token::Keyword(Keyword::Continue) => {
+                self.lexer.eat();
+                Stmt::Continue
+            }
+            Token::Keyword(Keyword::Break) => {
+                self.lexer.eat();
+                Stmt::Break
             }
             _ => self.parse_expression_statement(),
         }

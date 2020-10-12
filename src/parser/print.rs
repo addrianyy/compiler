@@ -181,6 +181,8 @@ impl Stmt {
             Stmt::Expr(value) => {
                 value.print(w, indent)?;
             }
+            Stmt::Break    => writeln!(w, "{}BreakStmt", j)?,
+            Stmt::Continue => writeln!(w, "{}ContinueStmt", j)?,
         }
 
         Ok(())

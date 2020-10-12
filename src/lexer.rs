@@ -13,27 +13,31 @@ pub enum Keyword {
     While,
     If,
     Else,
+    Break,
+    Continue,
     Return,
 }
 
 impl Keyword {
     fn from_ident(ident: &str) -> Option<Keyword> {
         Some(match ident {
-            "void"   => Keyword::Void,
-            "u8"     => Keyword::U8,
-            "u16"    => Keyword::U16,
-            "u32"    => Keyword::U32,
-            "u64"    => Keyword::U64,
-            "i8"     => Keyword::I8,
-            "i16"    => Keyword::I16,
-            "i32"    => Keyword::I32,
-            "i64"    => Keyword::I64,
-            "for"    => Keyword::For,
-            "while"  => Keyword::While,
-            "if"     => Keyword::If,
-            "else"   => Keyword::Else,
-            "return" => Keyword::Return,
-            _        => return None,
+            "void"     => Keyword::Void,
+            "u8"       => Keyword::U8,
+            "u16"      => Keyword::U16,
+            "u32"      => Keyword::U32,
+            "u64"      => Keyword::U64,
+            "i8"       => Keyword::I8,
+            "i16"      => Keyword::I16,
+            "i32"      => Keyword::I32,
+            "i64"      => Keyword::I64,
+            "for"      => Keyword::For,
+            "while"    => Keyword::While,
+            "if"       => Keyword::If,
+            "else"     => Keyword::Else,
+            "break"    => Keyword::Break,
+            "continue" => Keyword::Continue,
+            "return"   => Keyword::Return,
+            _          => return None,
         })
     }
 }
@@ -147,7 +151,7 @@ impl Lexer {
             ("&",  Token::And),
             ("|",  Token::Or),
             ("^",  Token::Xor),
-            ("!",  Token::Not),
+            ("~",  Token::Not),
             ("=",  Token::Assign),
 
             ("(",  Token::ParenOpen),

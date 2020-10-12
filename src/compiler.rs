@@ -148,10 +148,17 @@ impl Functions {
     }
 }
 
+#[derive(Copy, Clone)]
+struct Loop {
+    continue_label: ir::Label,
+    break_label:    ir::Label,
+}
+
 pub struct Compiler {
     ir:        ir::Module,
     variables: Variables,
     functions: Functions,
+    loops:     Vec<Loop>,
 }
 
 impl Compiler {
@@ -421,10 +428,35 @@ impl Compiler {
         }
     }
 
-    fn codegen_body(&mut self, body: &Body, return_ty: &Ty) {
+    fn codegen_condition(&mut self, condition: &Expr) -> ir::Value {
+        let condition = self.codegen_nonvoid_expression(condition);
+        let mut ty    = condition.ty.clone();
+        let mut value = condition.extract(&mut self.ir);
+
+        if ty.is_pointer() {
+            value = self.ir.cast(value, ir::Type::U64, ir::Cast::Bitcast);
+            ty    = Ty::U64;
+        }
+
+        let zero = self.ir.iconst(0u32, to_ir_type(&ty));
+
+        self.ir.int_compare(value, ir::IntPredicate::NotEqual, zero)
+    }
+
+    fn current_loop(&self) -> Loop {
+        assert!(!self.loops.is_empty(), "Not in loop.");
+
+        self.loops[self.loops.len() - 1]
+    }
+
+    fn codegen_body(&mut self, body: &Body, return_ty: &Ty, depth: u32) {
         self.variables.enter_scope();
 
+        let mut terminated = false;
+
         for statement in body {
+            assert!(!terminated, "There is more code after terminator instruction.");
+
             match statement {
                 Stmt::Assign { variable, value } => {
                     let variable = self.codegen_nonvoid_expression(variable);
@@ -467,7 +499,71 @@ impl Compiler {
 
                     self.variables.insert(name, value);
                 }
+                Stmt::While { condition, body } => {
+                    let loop_head = self.ir.create_label();
+                    let loop_body = self.ir.create_label();
+                    let loop_end  = self.ir.create_label();
+
+                    self.ir.branch(loop_head);
+
+                    self.ir.switch_label(loop_head);
+                    let condition = self.codegen_condition(condition);
+                    self.ir.branch_cond(condition, loop_body, loop_end);
+
+                    self.ir.switch_label(loop_body);
+
+                    self.loops.push(Loop {
+                        continue_label: loop_head,
+                        break_label:    loop_end,
+                    });
+
+                    self.codegen_body(body, return_ty, depth + 1);
+                    
+                    self.loops.pop();
+
+                    if !self.ir.is_terminated(None) {
+                        self.ir.branch(loop_head);
+                    }
+
+                    self.ir.switch_label(loop_end);
+                }
+                Stmt::If { arms, default } => {
+                    let if_end = self.ir.create_label();
+
+                    for (condition, body) in arms {
+                        let on_true  = self.ir.create_label();
+                        let on_false = self.ir.create_label();
+
+                        let condition = self.codegen_condition(condition);
+
+                        self.ir.branch_cond(condition, on_true, on_false);
+
+                        self.ir.switch_label(on_true);
+                        
+                        self.codegen_body(body, return_ty, depth + 1);
+
+                        if !self.ir.is_terminated(None) {
+                            self.ir.branch(if_end);
+                        }
+
+                        self.ir.switch_label(on_false);
+                    }
+
+                    if let Some(default) = default {
+                        self.codegen_body(default, return_ty, depth + 1);
+
+                        if !self.ir.is_terminated(None) {
+                            self.ir.branch(if_end);
+                        }
+                    } else {
+                        self.ir.branch(if_end);
+                    }
+
+                    self.ir.switch_label(if_end);
+                }
                 Stmt::Return(value) => {
+                    terminated = true;
+
                     match value {
                         Some(value) => {
                             let value     = self.codegen_nonvoid_expression(value);
@@ -485,11 +581,30 @@ impl Compiler {
                         }
                     }
                 }
+                Stmt::Break => {
+                    terminated = true;
+
+                    let target = self.current_loop().break_label;
+
+                    self.ir.branch(target);
+                }
+                Stmt::Continue => {
+                    terminated = true;
+
+                    let target = self.current_loop().continue_label;
+
+                    self.ir.branch(target);
+                }
                 Stmt::Expr(expression) => {
                     self.codegen_expression(expression);
                 }
-                _ => panic!(),
             }
+        }
+
+        if depth == 0 && !terminated {
+            assert!(return_ty == &Ty::Void, "Non-void function without return.");
+
+            self.ir.ret(None);
         }
 
         self.variables.exit_scope();
@@ -500,6 +615,7 @@ impl Compiler {
             ir:        ir::Module::new(),
             variables: Variables::new(),
             functions: Functions::new(),
+            loops:     Vec::new(),
         };
 
         for function in &module.functions {
@@ -531,6 +647,7 @@ impl Compiler {
 
         for function in &module.functions {
             compiler.variables.clear();
+            compiler.loops.clear();
 
             let return_ty = &function.prototype.return_ty;
             let ir_func   = compiler.functions.get(&function.prototype.name);
@@ -552,7 +669,7 @@ impl Compiler {
                 compiler.variables.insert(arg_name, variable);
             }
             
-            compiler.codegen_body(&function.body, return_ty);
+            compiler.codegen_body(&function.body, return_ty, 0);
 
             compiler.variables.exit_scope();
         }
@@ -566,6 +683,7 @@ impl Compiler {
 
             println!();
         }
+        compiler.ir.test();
 
         panic!()
     }
