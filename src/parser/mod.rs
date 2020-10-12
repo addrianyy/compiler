@@ -150,17 +150,11 @@ impl Ty {
     }
 
     pub fn is_signed(&self) -> bool {
-        match self {
-            Ty::I8 | Ty::I16 | Ty::I32 | Ty::I64 => true,
-            _ => false,
-        }
+        matches!(self, Ty::I8 | Ty::I16 | Ty::I32 | Ty::I64)
     }
 
     pub fn is_pointer(&self) -> bool {
-        match self {
-            Ty::Ptr(ty) => true,
-            _           => false,
-        }
+        matches!(self, Ty::Ptr(_))
     }
 }
 
@@ -214,14 +208,6 @@ pub enum Stmt {
         variable: TypedExpr, 
         value:    TypedExpr,
     },
-    While {
-        condition: TypedExpr,
-        body:      Body,
-    },
-    If {
-        arms:    Vec<(TypedExpr, Body)>,
-        default: Option<Body>,
-    },
     Declare {
         /// Actual type.
         ty:       Ty,
@@ -230,6 +216,14 @@ pub enum Stmt {
         name:     String,
         value:    Option<TypedExpr>,
         array:    Option<TypedExpr>,
+    },
+    While {
+        condition: TypedExpr,
+        body:      Body,
+    },
+    If {
+        arms:    Vec<(TypedExpr, Body)>,
+        default: Option<Body>,
     },
     Return(Option<TypedExpr>),
     Expr(TypedExpr),

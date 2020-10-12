@@ -6,7 +6,7 @@ use super::{FunctionData, Instruction, Value, Label, BinaryOp, UnaryOp, IntPredi
 
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "%{}", self.0)
+        write!(f, "%{}", self.0 as i64)
     }
 }
 
@@ -30,17 +30,19 @@ impl fmt::Display for UnaryOp {
 impl fmt::Display for BinaryOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let name = match self {
-            BinaryOp::Add => "add",
-            BinaryOp::Sub => "sub",
-            BinaryOp::Mul => "mul",
-            BinaryOp::Mod => "mod",
-            BinaryOp::Div => "div",
-            BinaryOp::Shr => "shr",
-            BinaryOp::Shl => "shl",
-            BinaryOp::Sar => "sar",
-            BinaryOp::And => "and",
-            BinaryOp::Or  => "or",
-            BinaryOp::Xor => "xor",
+            BinaryOp::Add  => "add",
+            BinaryOp::Sub  => "sub",
+            BinaryOp::Mul  => "mul",
+            BinaryOp::ModS => "smod",
+            BinaryOp::DivS => "sdiv",
+            BinaryOp::ModU => "umod",
+            BinaryOp::DivU => "udiv",
+            BinaryOp::Shr  => "shr",
+            BinaryOp::Shl  => "shl",
+            BinaryOp::Sar  => "sar",
+            BinaryOp::And  => "and",
+            BinaryOp::Or   => "or",
+            BinaryOp::Xor  => "xor",
         };
 
         write!(f, "{}", name)

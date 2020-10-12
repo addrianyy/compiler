@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 use std::cmp::Ordering;
 
-use crate::parser;
 use crate::ir;
+use crate::parser;
 use crate::parser::{Body, Stmt, Expr, Ty, UnaryOp, BinaryOp};
 
 fn to_ir_type(ty: &Ty) -> ir::Type {
@@ -103,7 +103,7 @@ impl Variables {
 
     fn get(&self, name: &str) -> CodegenValue {
         self.map.get(name)
-            .unwrap_or_else(|| panic!("Unknown variable {} referenced."))
+            .unwrap_or_else(|| panic!("Unknown variable {} referenced.", name))
             .clone()
     }
     
@@ -141,8 +141,10 @@ impl Functions {
         }
     }
 
-    fn get(&self, name: &str) -> &CodegenFunction {
-        &self.map[name]
+    fn get(&self, name: &str) -> CodegenFunction {
+        self.map.get(name)
+            .unwrap_or_else(|| panic!("Unknown function {} referenced.", name))
+            .clone()
     }
 }
 
@@ -223,11 +225,11 @@ impl Compiler {
                 }
             }
             Expr::Binary { left, op, right } => {
-                let left  = self.codegen_nonvoid_expression(&left);
-                let right = self.codegen_nonvoid_expression(&right);
+                let mut left  = self.codegen_nonvoid_expression(&left);
+                let mut right = self.codegen_nonvoid_expression(&right);
 
-                let left_value  = left.extract(&mut self.ir);
-                let right_value = right.extract(&mut self.ir);
+                let mut left_value  = left.extract(&mut self.ir);
+                let mut right_value = right.extract(&mut self.ir);
 
                 let pointers = left.ty.is_pointer() || right.ty.is_pointer();
 
@@ -236,9 +238,6 @@ impl Compiler {
                     BinaryOp::Lt    | BinaryOp::Gte      | BinaryOp::Lte => {
                         assert!(left.ty == right.ty && left.ty != Ty::Void, "Cannot compare \
                                 two values with different types (or void types.");
-
-                        let mut left_value  = left_value;
-                        let mut right_value = right_value;
 
                         if left.ty.is_pointer() {
                             // IR doesn't allow comparing pointers. Convert them to integers.
@@ -281,8 +280,25 @@ impl Compiler {
                         Some(CodegenValue::rvalue(Ty::U8, result))
                     }
                     BinaryOp::Add | BinaryOp::Sub if pointers => {
-                        // TODO: Special case: add/sub on pointers
-                        panic!()
+                        if *op == BinaryOp::Add && right.ty.is_pointer() {
+                            std::mem::swap(&mut left, &mut right);
+                            std::mem::swap(&mut left_value, &mut right_value);
+                        }
+
+                        assert!(left.ty.is_nonvoid_ptr(), "Add/sub left operand \
+                                must be pointer.");
+                        assert!(right.ty.is_arithmetic_type(), "Add/sub right operand \
+                                must be arithmetic.");
+
+                        right_value = self.int_cast(right_value, &right.ty, &Ty::U64);
+
+                        if *op == BinaryOp::Sub {
+                            right_value = self.ir.arithmetic_unary(ir::UnaryOp::Neg, right_value);
+                        }
+
+                        let result = self.ir.get_element_ptr(left_value, right_value);
+
+                        Some(CodegenValue::rvalue(left.ty, result))
                     }
                     _ => {
                         assert!(left.ty == right.ty && left.ty.is_arithmetic_type(), "Cannot \
@@ -293,8 +309,20 @@ impl Compiler {
                             BinaryOp::Add => ir::BinaryOp::Add,
                             BinaryOp::Sub => ir::BinaryOp::Sub,
                             BinaryOp::Mul => ir::BinaryOp::Mul,
-                            BinaryOp::Mod => ir::BinaryOp::Mod,
-                            BinaryOp::Div => ir::BinaryOp::Div,
+                            BinaryOp::Mod => {
+                                if left.ty.is_signed() {
+                                    ir::BinaryOp::ModS
+                                } else {
+                                    ir::BinaryOp::ModU
+                                }
+                            }
+                            BinaryOp::Div => {
+                                if left.ty.is_signed() {
+                                    ir::BinaryOp::DivS
+                                } else {
+                                    ir::BinaryOp::DivU
+                                }
+                            }
                             BinaryOp::Shr => {
                                 if left.ty.is_signed() {
                                     ir::BinaryOp::Sar
@@ -324,6 +352,7 @@ impl Compiler {
 
                 let array_value = array.extract(&mut self.ir);
                 let index_value = index.extract(&mut self.ir);
+                let index_value = self.int_cast(index_value, &index.ty, &Ty::U64);
 
                 let new_ty = array.ty.strip_pointer().expect("Cannot deref non-pointer.");
                 let result = self.ir.get_element_ptr(array_value, index_value);
@@ -369,7 +398,7 @@ impl Compiler {
                 Some(CodegenValue::rvalue(target_ty, result))
             }
             Expr::Call { target, args } => {
-                let function = self.functions.get(target).clone();
+                let function = self.functions.get(target);
 
                 assert!(function.args.len() == args.len(),
                         "Number of arguments mismatch in call.");
@@ -397,8 +426,16 @@ impl Compiler {
 
         for statement in body {
             match statement {
-                Stmt::Expr(expression) => {
-                    self.codegen_expression(expression);
+                Stmt::Assign { variable, value } => {
+                    let variable = self.codegen_nonvoid_expression(variable);
+                    let value    = self.codegen_nonvoid_expression(value);
+
+                    assert!(variable.ty == value.ty, "Cannot assign value of different type.");
+                    assert!(variable.is_lvalue(), "Cannot assign to rvalue.");
+
+                    let extracted = value.extract(&mut self.ir);
+
+                    self.ir.store(variable.value, extracted);
                 }
                 Stmt::Declare { ty, decl_ty, name, value, array } => {
                     let (size, array) = match array {
@@ -430,17 +467,6 @@ impl Compiler {
 
                     self.variables.insert(name, value);
                 }
-                Stmt::Assign { variable, value } => {
-                    let variable = self.codegen_nonvoid_expression(variable);
-                    let value    = self.codegen_nonvoid_expression(value);
-
-                    assert!(variable.ty == value.ty, "Cannot assign value of different type.");
-                    assert!(variable.is_lvalue(), "Cannot assign to rvalue.");
-
-                    let extracted = value.extract(&mut self.ir);
-
-                    self.ir.store(variable.value, extracted);
-                }
                 Stmt::Return(value) => {
                     match value {
                         Some(value) => {
@@ -458,6 +484,9 @@ impl Compiler {
                             self.ir.ret(None);
                         }
                     }
+                }
+                Stmt::Expr(expression) => {
+                    self.codegen_expression(expression);
                 }
                 _ => panic!(),
             }
@@ -529,10 +558,13 @@ impl Compiler {
         }
 
         compiler.ir.finalize();
+        compiler.ir.optimize();
 
         for function in compiler.functions.map.values() {
             compiler.ir.dump_function_text(function.function,
                                            &mut std::io::stdout()).unwrap();
+
+            println!();
         }
 
         panic!()

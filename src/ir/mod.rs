@@ -524,6 +524,12 @@ impl FunctionData {
         self.build_type_info();
     }
 
+    fn optimize(&mut self) {
+        // TODO
+
+        self.validate_ssa();
+    }
+
     fn validate_path(&self, dominators: &Dominators, start: Location, end: Location) -> bool {
         let start_label = start.0;
         let end_label   = end.0;
@@ -647,5 +653,11 @@ impl Module {
 
     pub fn dump_function_text<W: Write>(&self, function: Function, w: &mut W) -> io::Result<()> {
         self.function(function).dump_text(w)
+    }
+
+    pub fn optimize(&mut self) {
+        for data in self.functions.values_mut() {
+            data.optimize();
+        }
     }
 }
