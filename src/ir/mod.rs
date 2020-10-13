@@ -597,7 +597,6 @@ impl FunctionData {
     }
 
     fn lifetimes(&self) -> BTreeMap<Location, Vec<bool>> {
-
         let mut lifetimes = BTreeMap::new();
         let creators      = self.value_creators();
 

@@ -3,21 +3,20 @@ use std::cmp::Ordering;
 
 use crate::ir;
 use crate::parser;
-use crate::parser::{Body, Stmt, Expr, Ty, UnaryOp, BinaryOp};
+use crate::parser::{Body, Stmt, Expr, Ty, UnaryOp, BinaryOp, TyKind};
 
 fn to_ir_type(ty: &Ty) -> ir::Type {
-    fn to_ir_type_internal(ty: &Ty, indirection: usize) -> ir::Type {
-        match ty {
-            Ty::I8  | Ty::U8  => ir::Type::U8 .with_indirection(indirection),
-            Ty::I16 | Ty::U16 => ir::Type::U16.with_indirection(indirection),
-            Ty::I32 | Ty::U32 => ir::Type::U32.with_indirection(indirection),
-            Ty::I64 | Ty::U64 => ir::Type::U64.with_indirection(indirection),
-            Ty::Ptr(inside)   => to_ir_type_internal(&inside, indirection + 1),
-            Ty::Void          => panic!("IR doesn't support void type."),
-        }
-    }
+    let (kind, indirection) = ty.destructure();
 
-    to_ir_type_internal(ty, 0)
+    let ty = match kind {
+        TyKind::I8  | TyKind::U8  => ir::Type::U8,
+        TyKind::I16 | TyKind::U16 => ir::Type::U16,
+        TyKind::I32 | TyKind::U32 => ir::Type::U32,
+        TyKind::I64 | TyKind::U64 => ir::Type::U64,
+        TyKind::Void              => panic!("IR doesn't support void type."),
+    };
+
+    ty.with_indirection(indirection)
 }
 
 fn constant_expression(expression: &Expr) -> Option<u64> {
@@ -628,8 +627,8 @@ impl Compiler {
             }
 
             let return_ty = match &function.prototype.return_ty {
-                Ty::Void => None,
-                x        => Some(to_ir_type(&x)),
+                &Ty::Void => None,
+                x         => Some(to_ir_type(&x)),
             };
 
             let name    = &function.prototype.name;

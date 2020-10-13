@@ -1,4 +1,3 @@
-mod lexer;
 mod parser;
 mod compiler;
 mod ir;

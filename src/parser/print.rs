@@ -1,7 +1,7 @@
 use std::io::{self, Write};
 use std::fmt;
 
-use super::{Ty, Stmt, Expr, TypedExpr, Body, Function, FunctionPrototype, ParsedModule};
+use super::{Ty, Stmt, Expr, TypedExpr, Body, Function, FunctionPrototype, ParsedModule, TyKind};
 
 const INDENT_STRING:  &str = "    ";
 const SUBITEM_INDENT: &str = "  ";
@@ -16,17 +16,20 @@ fn print_body<W: Write>(body: &Body, w: &mut W, indent: usize) -> io::Result<()>
 
 impl fmt::Display for Ty {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Ty::U8          => write!(f, "u8")?,
-            Ty::U16         => write!(f, "u16")?,
-            Ty::U32         => write!(f, "u32")?,
-            Ty::U64         => write!(f, "u64")?,
-            Ty::I8          => write!(f, "i8")?,
-            Ty::I16         => write!(f, "i16")?,
-            Ty::I32         => write!(f, "i32")?,
-            Ty::I64         => write!(f, "i64")?,
-            Ty::Void        => write!(f, "void")?,
-            Ty::Ptr(inside) => write!(f, "{}*", inside)?,
+        match self.kind {
+            TyKind::U8   => write!(f, "u8")?,
+            TyKind::U16  => write!(f, "u16")?,
+            TyKind::U32  => write!(f, "u32")?,
+            TyKind::U64  => write!(f, "u64")?,
+            TyKind::I8   => write!(f, "i8")?,
+            TyKind::I16  => write!(f, "i16")?,
+            TyKind::I32  => write!(f, "i32")?,
+            TyKind::I64  => write!(f, "i64")?,
+            TyKind::Void => write!(f, "void")?,
+        }
+
+        for _ in 0..self.indirection {
+            write!(f, "*")?;
         }
 
         Ok(())

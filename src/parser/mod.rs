@@ -1,83 +1,117 @@
 mod print;
+mod lexer;
+mod ast;
 
-use crate::lexer::{Keyword, Token, Literal, IntegerSuffix, Lexer};
+use lexer::{Keyword, Token, Literal, IntegerSuffix, Lexer};
+pub use ast::{UnaryOp, BinaryOp, Expr, TypedExpr, Stmt, Body};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum UnaryOp {
-    Neg,
-    Not,
-    Ref,
-    Deref,
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum TyKind {
+    U8,
+    U16,
+    U32,
+    U64,
+    I8,
+    I16,
+    I32,
+    I64,
+    Void,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum BinaryOp {
-    Add,
-    Sub,
-    Mul,
-    Mod,
-    Div,
-    Shr,
-    Shl,
-    And,
-    Or,
-    Xor,
-    Equal,
-    NotEqual,
-    Gt,
-    Lt,
-    Gte,
-    Lte,
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct Ty {
+    kind:        TyKind,
+    indirection: usize,
 }
 
-impl UnaryOp {
-    fn from_token(token: &Token) -> Option<UnaryOp> {
+impl Ty {
+    pub const U8:   Ty = Ty { kind: TyKind::U8,   indirection: 0 };
+    pub const U16:  Ty = Ty { kind: TyKind::U16,  indirection: 0 };
+    pub const U32:  Ty = Ty { kind: TyKind::U32,  indirection: 0 };
+    pub const U64:  Ty = Ty { kind: TyKind::U64,  indirection: 0 };
+    pub const I8:   Ty = Ty { kind: TyKind::I8,   indirection: 0 };
+    pub const I16:  Ty = Ty { kind: TyKind::I16,  indirection: 0 };
+    pub const I32:  Ty = Ty { kind: TyKind::I32,  indirection: 0 };
+    pub const I64:  Ty = Ty { kind: TyKind::I64,  indirection: 0 };
+    pub const Void: Ty = Ty { kind: TyKind::Void, indirection: 0 };
+
+    fn from_token(token: &Token) -> Option<Self> {
         Some(match token {
-            Token::Sub => UnaryOp::Neg,
-            Token::Not => UnaryOp::Not,
-            Token::And => UnaryOp::Ref,
-            Token::Mul => UnaryOp::Deref,
-            _          => return None,
-        })
-    }
-}
-
-impl BinaryOp {
-    fn from_token(token: &Token) -> Option<BinaryOp> {
-        Some(match token {
-            Token::Add      => BinaryOp::Add,
-            Token::Sub      => BinaryOp::Sub,
-            Token::Mul      => BinaryOp::Mul,
-            Token::Div      => BinaryOp::Div,
-            Token::Shr      => BinaryOp::Shr,
-            Token::Shl      => BinaryOp::Shl,
-            Token::And      => BinaryOp::And,
-            Token::Or       => BinaryOp::Or,
-            Token::Xor      => BinaryOp::Xor,
-            Token::Equal    => BinaryOp::Equal,
-            Token::NotEqual => BinaryOp::NotEqual,
-            Token::Gt       => BinaryOp::Gt,
-            Token::Lt       => BinaryOp::Lt,
-            Token::Gte      => BinaryOp::Gte,
-            Token::Lte      => BinaryOp::Lte,
-            _               => return None,
+            Token::Keyword(Keyword::U8)   => Ty::U8,
+            Token::Keyword(Keyword::U16)  => Ty::U16,
+            Token::Keyword(Keyword::U32)  => Ty::U32,
+            Token::Keyword(Keyword::U64)  => Ty::U64,
+            Token::Keyword(Keyword::I8)   => Ty::I8,
+            Token::Keyword(Keyword::I16)  => Ty::I16,
+            Token::Keyword(Keyword::I32)  => Ty::I32,
+            Token::Keyword(Keyword::I64)  => Ty::I64,
+            Token::Keyword(Keyword::Void) => Ty::Void,
+            _                             => return None,
         })
     }
 
-    fn precedence(&self) -> i32 {
-        match self {
-            BinaryOp::Mul   | BinaryOp::Mod | BinaryOp::Div                => 60,
-            BinaryOp::Add   | BinaryOp::Sub                                => 50,
-            BinaryOp::Shl   | BinaryOp::Shr                                => 40,
-            BinaryOp::Gt    | BinaryOp::Lt | BinaryOp::Gte | BinaryOp::Lte => 35,
-            BinaryOp::Equal | BinaryOp::NotEqual                           => 33,
-            BinaryOp::And                                                  => 30,
-            BinaryOp::Xor                                                  => 20,
-            BinaryOp::Or                                                   => 10,
+    pub fn ptr(&self) -> Ty {
+        Ty {
+            kind:        self.kind,
+            indirection: self.indirection + 1,
         }
     }
+
+    pub fn is_arithmetic_type(&self) -> bool {
+        self.indirection == 0 && self.kind != TyKind::Void
+    }
+
+    pub fn is_pointer(&self) -> bool {
+        self.indirection > 0
+    }
+
+    pub fn size(&self) -> usize {
+        if self.is_pointer() {
+            return 8;
+        }
+
+        match self.kind {
+            TyKind::I8  | TyKind::U8  => 1,
+            TyKind::I16 | TyKind::U16 => 2,
+            TyKind::I32 | TyKind::U32 => 4,
+            TyKind::I64 | TyKind::U64 => 8,
+            TyKind::Void              => unreachable!(),
+        }
+    }
+
+    pub fn strip_pointer(&self) -> Option<Ty> {
+        Some(Ty {
+            kind:        self.kind,
+            indirection: self.indirection.checked_sub(1)?,
+        })
+    }
+
+    pub fn is_signed(&self) -> bool {
+        if self.indirection > 0 {
+            return false;
+        }
+
+        matches!(self.kind, TyKind::I8 | TyKind::I16 | TyKind::I32 | TyKind::I64)
+    }
+
+    pub fn is_nonvoid_ptr(&self) -> bool {
+        if self.indirection == 0 {
+            return false;
+        }
+
+        if self.indirection == 1 && self.kind == TyKind::Void {
+            return false;
+        }
+
+        true
+    }
+
+    pub fn destructure(&self) -> (TyKind, usize) {
+        (self.kind, self.indirection)
+    }
 }
 
+/*
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Ty {
     U8,
@@ -157,81 +191,8 @@ impl Ty {
         matches!(self, Ty::Ptr(_))
     }
 }
+*/
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Expr {
-    Variable(String),
-    Unary {
-        op:    UnaryOp,
-        value: Box<TypedExpr>,
-    },
-    Binary {
-        left:  Box<TypedExpr>,
-        op:    BinaryOp,
-        right: Box<TypedExpr>,
-    },
-    Number {
-        value: u64,
-        ty:    Option<Ty>,
-    },
-    Array {
-        array: Box<TypedExpr>,
-        index: Box<TypedExpr>,
-    },
-    Call {
-        target: String,
-        args:   Vec<TypedExpr>,
-    },
-    Cast {
-        value: Box<TypedExpr>,
-        ty:    Ty,
-    },
-}
-
-impl std::ops::Deref for TypedExpr {
-    type Target = Expr;
-
-    fn deref(&self) -> &Expr {
-        &self.expr
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct TypedExpr {
-    pub ty:   Option<Ty>,
-    pub expr: Expr,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Stmt {
-    Assign {
-        variable: TypedExpr, 
-        value:    TypedExpr,
-    },
-    Declare {
-        /// Actual type.
-        ty:       Ty,
-        /// Declaration type.
-        decl_ty:  Ty,
-        name:     String,
-        value:    Option<TypedExpr>,
-        array:    Option<TypedExpr>,
-    },
-    While {
-        condition: TypedExpr,
-        body:      Body,
-    },
-    If {
-        arms:    Vec<(TypedExpr, Body)>,
-        default: Option<Body>,
-    },
-    Return(Option<TypedExpr>),
-    Expr(TypedExpr),
-    Break,
-    Continue,
-}
-
-pub type Body = Vec<Stmt>;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FunctionPrototype {
@@ -272,7 +233,7 @@ impl Parser {
                 break;
             }
 
-            ty    = Ty::Ptr(Box::new(ty));
+            ty    = ty.ptr();
             let _ = self.lexer.eat();
         }
 
@@ -526,7 +487,7 @@ impl Parser {
             let _ = self.lexer.eat();
 
             array = Some(self.parse_expression());
-            ty    = Ty::Ptr(Box::new(ty));
+            ty    = ty.ptr();
 
             self.lexer.eat_expect(&Token::BracketClose);
         }
