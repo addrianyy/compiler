@@ -131,7 +131,6 @@ impl X86Backend {
 
         let mut free_storage_end_offset = 0;
         let mut frame_size              = 0;
-        let mut argument_frame_size     = 0;
 
         // Position stack slots.
         for index in 0..regalloc.slots {
@@ -160,28 +159,20 @@ impl X86Backend {
             let body = &func.blocks[&label];
 
             for (inst_id, inst) in body.iter().enumerate() {
-                match inst {
-                    Instruction::StackAlloc { ty, size, .. } => {
-                        let size = ty.size() * size;
-                        let size = (size + 7) & !7;
+                if let Instruction::StackAlloc { ty, size, .. } = inst {
+                    let size = ty.size() * size;
+                    let size = (size + 7) & !7;
 
-                        free_storage_end_offset -= size as i64;
-                        frame_size              += size;
+                    free_storage_end_offset -= size as i64;
+                    frame_size              += size;
 
-                        stackallocs.insert(Location(label, inst_id), free_storage_end_offset);
-                    }
-                    Instruction::Call { args, .. } => {
-                        // Always add shadow stack space.
-                        let size = usize::max(args.len() * 8, 0x20);
-
-                        argument_frame_size = usize::max(argument_frame_size, size);
-                    }
-                    _ => (),
+                    stackallocs.insert(Location(label, inst_id), free_storage_end_offset);
                 }
             }
         }
 
-        frame_size += argument_frame_size;
+        // We can't just add argument stack area size to frame size because in the prologue
+        // we are saving registers.
 
         // Make sure alignment is correct (again).
         assert!(free_storage_end_offset % 8 == 0);
@@ -643,7 +634,10 @@ impl X86Backend {
                         });
                     }
                     Instruction::Call { dst, func: target, args } => {
-                        // Space for arguments is already there.
+                        // Always add shadow stack space.
+                        let arguments_stack_size = usize::max(args.len() * 8, 0x20) as i64;
+
+                        asm.sub(&[Reg(Rsp), Imm(arguments_stack_size)]);
                         
                         for (index, arg) in args.iter().enumerate() {
                             let arg = r.resolve(*arg);
@@ -665,6 +659,8 @@ impl X86Backend {
                         }
 
                         asm.call(&[Label(&format!("function_{}", target.0))]);
+
+                        asm.add(&[Reg(Rsp), Imm(arguments_stack_size)]);
 
                         if let Some(dst) = dst {
                             let ty   = func.value_type(*dst);
