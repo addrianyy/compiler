@@ -1,3 +1,7 @@
+i32 memez(i32 test) {
+    return test + 12;
+}
+
 i32 main(u8* buffer) {
     i32 index = 0;
 
@@ -6,5 +10,5 @@ i32 main(u8* buffer) {
         index += 1;
     }
 
-    return 123;
+    return memez(33);
 }

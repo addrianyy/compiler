@@ -131,6 +131,7 @@ impl X86Backend {
 
         let mut free_storage_end_offset = 0;
         let mut frame_size              = 0;
+        let mut argument_frame_size     = 0;
 
         // Position stack slots.
         for index in 0..regalloc.slots {
@@ -159,17 +160,28 @@ impl X86Backend {
             let body = &func.blocks[&label];
 
             for (inst_id, inst) in body.iter().enumerate() {
-                if let Instruction::StackAlloc { ty, size, .. } = inst {
-                    let size = ty.size() * size;
-                    let size = (size + 7) & !7;
+                match inst {
+                    Instruction::StackAlloc { ty, size, .. } => {
+                        let size = ty.size() * size;
+                        let size = (size + 7) & !7;
 
-                    free_storage_end_offset -= size as i64;
-                    frame_size              += size;
+                        free_storage_end_offset -= size as i64;
+                        frame_size              += size;
 
-                    stackallocs.insert(Location(label, inst_id), free_storage_end_offset);
+                        stackallocs.insert(Location(label, inst_id), free_storage_end_offset);
+                    }
+                    Instruction::Call { args, .. } => {
+                        // Always add shadow stack space.
+                        let size = usize::max(args.len() * 8, 0x20);
+
+                        argument_frame_size = usize::max(argument_frame_size, size);
+                    }
+                    _ => (),
                 }
             }
         }
+
+        frame_size += argument_frame_size;
 
         // Make sure alignment is correct (again).
         assert!(free_storage_end_offset % 8 == 0);
@@ -623,18 +635,48 @@ impl X86Backend {
                             asm.cmp(&[cond, Imm(0)]);
                         });
 
-                        // Here because cmovne doesn't support 8 bit size.
+                        // Here because there is no 8 bit cmovne instruction.
                         asm.cmovne(&[Reg(Rax), on_true]);
 
                         asm.with_size(size, |asm| {
                             asm.mov(&[dst, Reg(Rax)]);
                         });
                     }
-                    Instruction::Call { .. } => {
-                        panic!("Call is not supported yet.");
+                    Instruction::Call { dst, func: target, args } => {
+                        // Space for arguments is already there.
+                        
+                        for (index, arg) in args.iter().enumerate() {
+                            let arg = r.resolve(*arg);
+
+                            // Using correct size doesn't really matter here.
+                            if let Some(&register) = ARGUMENT_REGISTERS.get(index) {
+                                asm.mov(&[Reg(register), arg]);
+                            } else {
+                                let offset = index * 8;
+                                let stack  = Mem(Some(Rsp), None, offset as i64);
+
+                                if arg.is_memory() {
+                                    asm.mov(&[Reg(Rax), arg]);
+                                    asm.mov(&[stack, Reg(Rax)]);
+                                } else {
+                                    asm.mov(&[stack, arg]);
+                                }
+                            }
+                        }
+
+                        asm.call(&[Label(&format!("function_{}", target.0))]);
+
+                        if let Some(dst) = dst {
+                            let ty   = func.value_type(*dst);
+                            let size = type_to_operand_size(ty, true);
+
+                            asm.with_size(size, |asm| {
+                                asm.mov(&[r.resolve(*dst), Reg(Rax)]);
+                            });
+                        }
                     }
                     Instruction::Alias { .. } | Instruction::Nop => {
-                        panic!("This shouldn't happen.");
+                        panic!("This should never happen...");
                     }
                 }
             }
@@ -676,6 +718,7 @@ impl super::Backend for X86Backend {
         {
             let offset = 16 + index * 8;
 
+            // Using correct size doesn't really matter here.
             self.asm.mov(&[Mem(Some(Rbp), None, offset as i64), Reg(*register)]);
         }
 
