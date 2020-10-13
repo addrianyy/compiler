@@ -3,15 +3,16 @@ mod graph;
 mod dump;
 mod instruction;
 mod instruction_builders;
-mod backend;
-mod execmem;
+mod codegen;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{self, Write};
 use std::rc::Rc;
 
 pub use instruction::{UnaryOp, BinaryOp, IntPredicate, Cast};
+pub use codegen::MachineCode;
 use instruction::Instruction;
+use codegen::Backend;
 use graph::{FlowGraph, Dominators};
 
 type Map<K, V> = BTreeMap<K, V>;
@@ -852,7 +853,15 @@ impl Module {
         }
     }
 
-    pub fn test(&mut self) {
-        let mut back = backend::X86Backend::new(self);
+    pub fn generate_machine_code(&self) -> MachineCode {
+        let mut backend = codegen::x86backend::X86Backend::new(self);
+
+        for (function, data) in &self.functions {
+            backend.generate_function(*function, data);
+        }
+
+        let (buffer, functions) = backend.finalize();
+
+        MachineCode::new(&buffer, functions)
     }
 }

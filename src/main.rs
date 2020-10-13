@@ -7,6 +7,29 @@ fn main() {
     let parsed   = parser::parse(&source);
     let compiled = compiler::compile(&parsed);
 
+    let mcode = compiled.ir.generate_machine_code();
+    
+    for (prototype, function) in &compiled.functions {
+        let buffer = mcode.function_buffer(*function);
+        let name   = &prototype.name;
+
+        std::fs::write(format!("mcode/{}.bin", name), buffer).unwrap();
+
+        if name == "main" {
+            let mut buffer = [1u8, 2u8, 3u8, 0u8];
+            
+            type Func = extern "win64" fn(*mut u8) -> i32;
+
+            let result = unsafe {
+                let func = mcode.function_ptr::<Func>(*function);
+
+                func(buffer.as_mut_ptr())
+            };
+
+            println!("return value: {}. buffer: {:?}", result, buffer);
+        }
+    }
+
     /*
     let mut ir = ir::Module::new();
 
