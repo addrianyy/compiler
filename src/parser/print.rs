@@ -1,11 +1,11 @@
 use std::io::{self, Write};
 
-use super::{Stmt, Expr, Body, Function, FunctionPrototype, ParsedModule};
+use super::{Stmt, Expr, BodyRef, Function, FunctionPrototype, ParsedModule};
 
 const INDENT_STRING:  &str = "    ";
 const SUBITEM_INDENT: &str = "  ";
 
-fn print_body<W: Write>(body: &Body, w: &mut W, indent: usize) -> io::Result<()> {
+fn print_body<W: Write>(body: BodyRef, w: &mut W, indent: usize) -> io::Result<()> {
     for stmt in body {
         stmt.print(w, indent)?;
     }

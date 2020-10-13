@@ -4,7 +4,7 @@ mod ast;
 mod ty;
 
 use lexer::{Keyword, Token, Literal, IntegerSuffix, Lexer};
-pub use ast::{UnaryOp, BinaryOp, Expr, TypedExpr, Stmt, Body};
+pub use ast::{UnaryOp, BinaryOp, Expr, TypedExpr, Stmt, Body, BodyRef};
 pub use ty::{TyKind, Ty};
 
 #[derive(Clone, Debug, PartialEq, Eq)]

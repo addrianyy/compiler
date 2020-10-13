@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::cmp::Ordering;
 
 pub use crate::parser::{FunctionPrototype, Ty};
-use crate::parser::{Body, Stmt, Expr, UnaryOp, BinaryOp, TyKind, ParsedModule};
+use crate::parser::{BodyRef, Stmt, Expr, UnaryOp, BinaryOp, TyKind, ParsedModule};
 use crate::ir;
 
 fn to_ir_type(ty: &Ty) -> ir::Type {
@@ -452,7 +452,7 @@ impl Compiler {
         self.ir.int_compare(value, ir::IntPredicate::NotEqual, zero)
     }
 
-    fn codegen_body(&mut self, body: &Body, return_ty: &Ty, depth: u32) {
+    fn codegen_body(&mut self, body: BodyRef, return_ty: &Ty, depth: u32) {
         self.variables.enter_scope();
 
         let mut terminated = false;

@@ -1,4 +1,4 @@
-use super::{FunctionData, Value, Location, Label, Dominators, Map};
+use super::{FunctionData, Value, Location, Label, Dominators, Map, Instruction};
 
 impl FunctionData {
     pub(super) fn dominates(&self, dominators: &Dominators,
@@ -26,6 +26,22 @@ impl FunctionData {
         }
 
         self.dominates(dominators, start_label, end_label)
+    }
+
+    pub(super) fn instruction(&self, location: Location) -> &Instruction {
+        &self.blocks[&location.0][location.1]
+    }
+
+    pub(super) fn instruction_mut(&mut self, location: Location) -> &mut Instruction {
+        &mut self.blocks.get_mut(&location.0).unwrap()[location.1]
+    }
+
+    pub(super) fn for_each_instruction(&self, mut callback: impl FnMut(Location, &Instruction)) {
+        for label in self.reachable_labels() {
+            for (inst_id, inst) in self.blocks[&label].iter().enumerate() {
+                callback(Location(label, inst_id), inst)
+            }
+        }
     }
 
     pub(super) fn validate_ssa(&self) {

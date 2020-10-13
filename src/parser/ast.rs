@@ -41,7 +41,6 @@ pub enum BinaryOp {
     Lte,
 }
 
-
 impl BinaryOp {
     pub(super) fn from_token(token: &Token) -> Option<BinaryOp> {
         Some(match token {
@@ -160,4 +159,5 @@ impl std::ops::Deref for TypedExpr {
     }
 }
 
-pub type Body = Vec<Stmt>;
+pub type Body        = Vec<Stmt>;
+pub type BodyRef<'a> = &'a [Stmt];

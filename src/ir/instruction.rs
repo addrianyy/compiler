@@ -111,6 +111,11 @@ pub enum Instruction {
         on_true:  Value,
         on_false: Value,
     },
+    Alias {
+        dst:   Value,
+        value: Value,
+    },
+    Nop,
 }
 
 impl Instruction {
@@ -130,6 +135,8 @@ impl Instruction {
             Instruction::GetElementPtr    { dst, .. } => Some(dst),
             Instruction::Cast             { dst, .. } => Some(dst),
             Instruction::Select           { dst, .. } => Some(dst),
+            Instruction::Alias            { dst, .. } => Some(dst),
+            Instruction::Nop                          => None,
         }
     }
 
@@ -151,8 +158,41 @@ impl Instruction {
             Instruction::Const            { ..                } => vec![],
             Instruction::GetElementPtr    { source, index, .. } => vec![source, index],
             Instruction::Cast             { value, ..         } => vec![value],
+            Instruction::Alias            { value, ..         } => vec![value],
+            Instruction::Nop                                    => vec![],
             Instruction::Select { cond, on_true, on_false, .. } => {
                 vec![cond, on_true, on_false]
+            }
+        }
+    }
+
+    pub fn transform_inputs(&mut self, mut f: impl FnMut(&mut Value)) {
+        match self {
+            Instruction::ArithmeticUnary  { value, ..         } => { f(value); }
+            Instruction::ArithmeticBinary { a, b, ..          } => { f(a); f(b); }
+            Instruction::IntCompare       { a, b, ..          } => { f(a); f(b); }
+            Instruction::Load             { ptr, ..           } => { f(ptr); }
+            Instruction::Store            { ptr, value        } => { f(ptr); f(value); }
+            Instruction::Call             { ref mut args, ..  } => {
+                for arg in args {
+                    f(arg);
+                }
+            }
+            Instruction::Branch           { ..                } => {},
+            Instruction::BranchCond       { value, ..         } => f(value),
+            Instruction::StackAlloc       { ..                } => {},
+            Instruction::Return           { value, ..         } => {
+                if let Some(value) = value {
+                    f(value);
+                }
+            }
+            Instruction::Const            { ..                } => {},
+            Instruction::GetElementPtr    { source, index, .. } => { f(source); f(index); }
+            Instruction::Cast             { value, ..         } => f(value),
+            Instruction::Alias            { value, ..         } => f(value),
+            Instruction::Nop                                    => {},
+            Instruction::Select { cond, on_true, on_false, .. } => {
+                f(cond); f(on_true); f(on_false);
             }
         }
     }
@@ -163,6 +203,17 @@ impl Instruction {
             Instruction::Branch     { target }                => Some(vec![*target]),
             Instruction::BranchCond { on_true, on_false, .. } => Some(vec![*on_true, *on_false]),
             _                                                 => None,
+        }
+    }
+
+    pub fn is_volatile(&self) -> bool {
+        match self {
+            Instruction::Return { .. } | Instruction::Call { .. } | 
+            Instruction::Store { .. }  | Instruction::Branch { .. } |
+            Instruction::BranchCond { .. }  => {
+                true
+            }
+            _ => false,
         }
     }
 }

@@ -183,6 +183,12 @@ impl FunctionData {
                 write!(w, "{} = select {} {}, {} {}, {}", dst, self.display_type(*cond),
                        cond, self.display_type(*on_true), on_true, on_false)?;
             }
+            Instruction::Alias { dst, value } => {
+                write!(w, "{} = alias {} {}", dst, self.display_type(*value), value)?;
+            }
+            Instruction::Nop => {
+                write!(w, "nop")?;
+            }
         }
 
         Ok(())

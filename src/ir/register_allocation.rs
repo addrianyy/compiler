@@ -49,7 +49,8 @@ impl FunctionData {
             for target_label in self.traverse_bfs(label, false) {
                 for inst in &self.blocks[&target_label] {
                     for input in inst.read_values() {
-                        if creators[&input].0 != target_label {
+                        // Make sure to not include arguments.
+                        if !self.is_value_argument(input) && creators[&input].0 != target_label {
                             used[input.0] = true;
                         }
                     }
@@ -111,6 +112,7 @@ impl FunctionData {
         for label in labels {
             // If there is not register allocation state for this block then take one
             // from immediate dominator (as we can only use values originating from it).
+            #[allow(clippy::map_entry)]
             if !block_alloc_state.contains_key(&label) {
                 let idom   = dominators[&label];
                 let allocs = block_alloc_state[&idom].clone();
@@ -134,7 +136,9 @@ impl FunctionData {
                 }
 
                 for (value, place) in to_free {
-                    block_allocs.0.remove(&value);
+                    if !matches!(place, Place::Argument(_)) {
+                        block_allocs.0.remove(&value);
+                    }
 
                     match place {
                         Place::StackSlot(value) => {
@@ -151,8 +155,9 @@ impl FunctionData {
                 if let Some(output) = inst.created_value() {
                     // We will try to allocate output value at the same register as 
                     // first input. This will help to generate better code by backend.
-                    let first_input = inst.read_values().get(0).map(|value| {
-                        inst_allocs[&value]
+                    let first_input = inst.read_values().get(0).and_then(|value| {
+                        // Fix for arguments.
+                        inst_allocs.get(&value).cloned()
                     });
 
                     let preg = if let Some(Place::Register(register)) = first_input {

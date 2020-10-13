@@ -18,6 +18,7 @@ const AVAILABLE_REGISTERS: &[asm::Reg] = &[
     R13,
     R14,
     R15,
+    Rbx,
 ];
 
 const ARGUMENT_REGISTERS: &[asm::Reg] = &[
@@ -631,6 +632,9 @@ impl X86Backend {
                     }
                     Instruction::Call { .. } => {
                         panic!("Call is not supported yet.");
+                    }
+                    Instruction::Alias { .. } | Instruction::Nop => {
+                        panic!("This shouldn't happen.");
                     }
                 }
             }

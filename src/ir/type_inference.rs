@@ -64,6 +64,7 @@ impl FunctionData {
             Instruction::Const         { ty, ..     } => *ty,
             Instruction::GetElementPtr { source, .. } => get_type!(*source),
             Instruction::Cast          { ty, ..     } => *ty,
+            Instruction::Alias         { value, ..  } => get_type!(*value),
             _ => {
                 panic!("Unexpected value creator: {:?}.", creator);
             }
@@ -235,6 +236,12 @@ impl FunctionData {
                 assert!(cond == Type::U1, "Select condition input must be U1.");
                 assert!(on_true == on_false && dst == on_true, "Select values and destination \
                         must have the same type.");
+            }
+            Instruction::Nop => {
+            }
+            Instruction::Alias { dst, value } => {
+                assert!(get_type!(*dst) == get_type!(*value), "Alias can only alias values \
+                        of the same type.");
             }
         }
     }

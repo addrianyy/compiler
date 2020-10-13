@@ -8,6 +8,7 @@ mod ty;
 mod analysis;
 mod type_inference;
 mod register_allocation;
+mod passes;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{self, Write};
@@ -18,7 +19,7 @@ pub use instruction::{UnaryOp, BinaryOp, IntPredicate, Cast};
 pub use codegen::MachineCode;
 use instruction::Instruction;
 use codegen::Backend;
-use graph::{FlowGraph, Dominators};
+use graph::Dominators;
 
 #[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct Value(usize);
@@ -156,9 +157,30 @@ impl FunctionData {
     }
 
     fn optimize(&mut self) {
-        // TODO
+        let passes: &[Box<dyn passes::Pass>]  = &[
+            Box::new(passes::TestPass),
+            Box::new(passes::RemoveDeadCodePass),
+            Box::new(passes::RemoveAliasesPass),
+            Box::new(passes::RemoveNopsPass),
+        ];
+
+        loop {
+            let mut did_something = false;
+
+            for pass in passes {
+                did_something |= pass.run_on_function(self)
+            }
+
+            if !did_something {
+                break;
+            }
+        }
 
         self.validate_ssa();
+    }
+
+    pub(super) fn value_count(&self) -> usize {
+        self.next_value.0
     }
 }
 
