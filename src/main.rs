@@ -17,6 +17,8 @@ fn main() {
 
         std::fs::write(format!("mcode/{}.bin", name), buffer).unwrap();
 
+        compiled.ir.dump_function_text(*function, &mut std::io::stdout()).unwrap();
+
         if name == "main" {
             let mut buffer = [1u8, 2u8, 3u8, 0u8];
             

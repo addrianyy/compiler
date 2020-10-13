@@ -186,20 +186,17 @@ impl X86Backend {
         let asm  = &mut self.asm;
         let func = cx.func;
 
-        for label in cx.func.reachable_labels() {
+        let labels = cx.func.reachable_labels();
+
+        for (index, &label) in labels.iter().enumerate() {
             asm.label(&format!(".{}", label));
 
-            let body = &cx.func.blocks[&label];
+            let body       = &cx.func.blocks[&label];
+            let next_label = labels.get(index + 1).copied();
 
             for (inst_id, inst) in body.iter().enumerate() {
                 let location = Location(label, inst_id);
                 let r        = cx.resolver(location);
-
-                macro_rules! resolve_value {
-                    ($value: expr) => {{
-                        r.resolve($value)
-                    }}
-                }
 
                 match inst {
                     Instruction::Const { dst, ty, imm } => {
@@ -362,101 +359,85 @@ impl X86Backend {
                             }
                         });
                     }
-                    Instruction::IntCompare { dst, a, pred, b } => {
-                        let ty = func.value_type(*a);
-
-                        asm.with_size(type_to_operand_size(ty, false), |asm| {
-                            asm.xor(&[Reg(Rcx), Reg(Rcx)]);
-                            asm.mov(&[Reg(Rdx), Imm(1)]);
-
-                            asm.mov(&[Reg(Rax), resolve_value!(*a)]);
-                            asm.cmp(&[Reg(Rax), resolve_value!(*b)]);
-
-                            let operands = &[Reg(Rcx), Reg(Rdx)];
-
-                            asm.with_size(OperandSize::Bits64, |asm| {
-                                match pred {
-                                    IntPredicate::Equal    => asm.cmove(operands),
-                                    IntPredicate::NotEqual => asm.cmovne(operands),
-                                    IntPredicate::GtS      => asm.cmovg(operands),
-                                    IntPredicate::GteS     => asm.cmovge(operands),
-                                    IntPredicate::GtU      => asm.cmova(operands),
-                                    IntPredicate::GteU     => asm.cmovae(operands),
-                                }
-                            });
-
-                            asm.mov(&[resolve_value!(*dst), Reg(Rcx)]);
-                        });
-                    }
                     Instruction::Load { dst, ptr } => {
-                        let ty = func.value_type(*dst);
+                        let ty   = func.value_type(*dst);
+                        let size = type_to_operand_size(ty, true);
 
-                        asm.mov(&[Reg(Rax), resolve_value!(*ptr)]);
+                        let dst = r.resolve(*dst);
+                        let ptr = r.resolve(*ptr);
 
-                        asm.with_size(type_to_operand_size(ty, true), |asm| {
-                            asm.mov(&[Reg(Rax), Mem(Some(Rax), None, 0)]);
-                            asm.mov(&[resolve_value!(*dst), Reg(Rax)]);
+                        let ptr = match ptr {
+                            Reg(register) => Mem(Some(register), None, 0),
+                            _             => {
+                                asm.mov(&[Reg(Rax), ptr]);
+
+                                Mem(Some(Rax), None, 0)
+                            }
+                        };
+
+                        asm.with_size(size, |asm| {
+                            if dst.is_memory() {
+                                asm.mov(&[Reg(Rdx), ptr]);
+                                asm.mov(&[dst, Reg(Rdx)]);
+                            } else {
+                                asm.mov(&[dst, ptr]);
+                            }
                         });
                     }
                     Instruction::Store { ptr, value } => {
-                        let ty = func.value_type(*value);
+                        let ty   = func.value_type(*value);
+                        let size = type_to_operand_size(ty, true);
 
-                        asm.mov(&[Reg(Rax), resolve_value!(*ptr)]);
+                        let value = r.resolve(*value);
+                        let ptr   = r.resolve(*ptr);
 
-                        asm.with_size(type_to_operand_size(ty, true), |asm| {
-                            asm.mov(&[Reg(Rcx), resolve_value!(*value)]);
-                            asm.mov(&[Mem(Some(Rax), None, 0), Reg(Rcx)]);
+                        let ptr = match ptr {
+                            Reg(register) => Mem(Some(register), None, 0),
+                            _             => {
+                                asm.mov(&[Reg(Rax), ptr]);
+
+                                Mem(Some(Rax), None, 0)
+                            }
+                        };
+
+                        asm.with_size(size, |asm| {
+                            if value.is_memory() {
+                                asm.mov(&[Reg(Rdx), value]);
+                                asm.mov(&[ptr, Reg(Rdx)]);
+                            } else {
+                                asm.mov(&[ptr, value]);
+                            }
                         });
-                    }
-                    Instruction::Branch { target } => {
-                        let target = format!(".{}", target);
-                        asm.jmp(&[Label(&target)]);
-                    }
-                    Instruction::BranchCond { value, on_true, on_false } => {
-                        let on_true  = format!(".{}", on_true);
-                        let on_false = format!(".{}", on_false);
-
-                        asm.with_size(OperandSize::Bits8, |asm| {
-                            asm.cmp(&[resolve_value!(*value), Imm(0)]);
-                        });
-
-                        asm.jne(&[Label(&on_true)]);
-                        asm.jmp(&[Label(&on_false)]);
-                    }
-                    Instruction::StackAlloc { dst, .. } => {
-                        let offset = cx.x86_data.stackallocs[&location];
-                        
-                        asm.lea(&[Reg(Rax), Mem(Some(Rbp), None, offset)]);
-                        asm.mov(&[resolve_value!(*dst), Reg(Rax)]);
-                    }
-                    Instruction::GetElementPtr { dst, source, index } => {
-                        asm.mov(&[Reg(Rax), resolve_value!(*source)]);
-
-                        let operands = &[Reg(Rcx), resolve_value!(*index)];
-
-                        match func.value_type(*index).size() {
-                            1 => asm.movsxb(operands),
-                            2 => asm.movsxw(operands),
-                            4 => asm.movsxd(operands),
-                            8 => asm.mov(operands),
-                            _ => unreachable!(),
-                        }
-
-                        let scale = func.value_type(*source).strip_ptr().unwrap().size();
-
-                        asm.lea(&[Reg(Rax), Mem(Some(Rax), Some((Rcx, scale)), 0)]);
-                        asm.mov(&[resolve_value!(*dst), Reg(Rax)]);
                     }
                     Instruction::Cast { dst, cast, value, ty } => {
-                        match cast {
-                            Cast::Bitcast => {
-                                asm.mov(&[Reg(Rax), resolve_value!(*value)]);
-                                asm.mov(&[resolve_value!(*dst), Reg(Rax)]);
-                            }
-                            _ => {
-                                asm.with_size(type_to_operand_size(*ty, false), |asm| {
-                                    let operands  = &[Reg(Rax), resolve_value!(*value)];
-                                    let orig_size = func.value_type(*value).size();
+                        let size      = type_to_operand_size(*ty, true);
+                        let orig_size = func.value_type(*value).size();
+
+                        let dst   = r.resolve(*dst);
+                        let value = r.resolve(*value);
+
+                        asm.with_size(size, |asm| {
+                            match cast {
+                                Cast::Bitcast if value == dst => {
+                                }
+                                Cast::Truncate if value == dst => {
+                                }
+                                Cast::Bitcast => {
+                                    if dst.is_memory() && value.is_memory() {
+                                        asm.mov(&[Reg(Rax), value]);
+                                        asm.mov(&[dst, Reg(Rax)]);
+                                    } else {
+                                        asm.mov(&[dst, value]);
+                                    }
+                                }
+                                _ => {
+                                    let operands = if dst.is_memory() {
+                                        [Reg(Rax), value]
+                                    } else {
+                                        [dst, value]
+                                    };
+
+                                    let operands = &operands;
 
                                     match cast {
                                         Cast::Truncate => {
@@ -485,9 +466,74 @@ impl X86Backend {
                                         _ => unreachable!(),
                                     }
 
-                                    asm.mov(&[resolve_value!(*dst), Reg(Rax)]);
-                                });
+                                    if dst.is_memory() {
+                                        asm.mov(&[dst, Reg(Rax)]);
+                                    }
+                                }
                             }
+                        })
+                    }
+                    Instruction::StackAlloc { dst, .. } => {
+                        let offset = cx.x86_data.stackallocs[&location];
+                        let dst    = r.resolve(*dst);
+
+                        let operand = if dst.is_memory() {
+                            Reg(Rax)
+                        } else {
+                            dst
+                        };
+                        
+                        asm.lea(&[operand, Mem(Some(Rbp), None, offset)]);
+
+                        if dst.is_memory() {
+                            asm.mov(&[dst, Reg(Rax)]);
+                        }
+                    }
+                    Instruction::GetElementPtr { dst, source, index } => {
+                        let index_size = func.value_type(*index).size();
+                        let scale      = func.value_type(*source)
+                            .strip_ptr()
+                            .unwrap()
+                            .size();
+
+                        let dst    = r.resolve(*dst);
+                        let source = r.resolve(*source);
+                        let index  = r.resolve(*index);
+
+                        let index = match index {
+                            Reg(register) if index_size == 8 => {
+                                register
+                            }
+                            _ => {
+                                let operands = &[Reg(Rcx), index];
+
+                                match index_size {
+                                    1 => asm.movsxb(operands),
+                                    2 => asm.movsxw(operands),
+                                    4 => asm.movsxd(operands),
+                                    8 => asm.mov(operands),
+                                    _ => unreachable!(),
+                                }
+
+                                Rcx
+                            }
+                        };
+
+                        let source = if let Reg(register) = source {
+                            register
+                        } else {
+                            asm.mov(&[Reg(Rax), source]);
+
+                            Rax
+                        };
+
+                        let operand = Mem(Some(source), Some((index, scale)), 0);
+
+                        if dst.is_memory() {
+                            asm.lea(&[Reg(Rdx), operand]);
+                            asm.mov(&[dst, Reg(Rdx)]);
+                        } else {
+                            asm.lea(&[dst, operand]);
                         }
                     }
                     Instruction::Return { value } => {
@@ -495,31 +541,97 @@ impl X86Backend {
                             let ty = func.value_type(*value);
 
                             asm.with_size(type_to_operand_size(ty, true), |asm| {
-                                asm.mov(&[Reg(Rax), resolve_value!(*value)]);
+                                asm.mov(&[Reg(Rax), r.resolve(*value)]);
                             });
                         }
 
-                        asm.jmp(&[Label(".exit")]);
+                        if index + 1 != labels.len() {
+                            asm.jmp(&[Label(".exit")]);
+                        }
+                    }
+                    Instruction::Branch { target } => {
+                        if Some(*target) != next_label {
+                            let target = format!(".{}", target);
+
+                            asm.jmp(&[Label(&target)]);
+                        }
+                    }
+                    Instruction::BranchCond { value, on_true, on_false } => {
+                        let on_true_s  = format!(".{}", on_true);
+                        let on_false_s = format!(".{}", on_false);
+
+                        asm.with_size(OperandSize::Bits8, |asm| {
+                            asm.cmp(&[r.resolve(*value), Imm(0)]);
+                        });
+
+                        if Some(*on_true) == next_label {
+                            asm.je(&[Label(&on_false_s)]);
+                        } else if Some(*on_false) == next_label {
+                            asm.jne(&[Label(&on_true_s)]);
+                        } else {
+                            asm.jne(&[Label(&on_true_s)]);
+                            asm.jmp(&[Label(&on_false_s)]);
+                        }
+                    }
+                    Instruction::IntCompare { dst, a, pred, b } => {
+                        let ty   = func.value_type(*a);
+                        let size = type_to_operand_size(ty, false);
+
+                        let dst = r.resolve(*dst);
+                        let a   = r.resolve(*a);
+                        let b   = r.resolve(*b);
+
+                        asm.with_size(size, |asm| {
+                            asm.xor(&[Reg(Rcx), Reg(Rcx)]);
+
+                            if a.is_memory() && b.is_memory() {
+                                asm.mov(&[Reg(Rax), a]);
+                                asm.cmp(&[Reg(Rax), b]);
+                            } else {
+                                asm.cmp(&[a, b]);
+                            }
+
+                            let operands = &[Reg(Rcx)];
+
+                            match pred {
+                                IntPredicate::Equal    => asm.sete(operands),
+                                IntPredicate::NotEqual => asm.setne(operands),
+                                IntPredicate::GtS      => asm.setg(operands),
+                                IntPredicate::GteS     => asm.setge(operands),
+                                IntPredicate::GtU      => asm.seta(operands),
+                                IntPredicate::GteU     => asm.setae(operands),
+                            }
+
+                            asm.mov(&[dst, Reg(Rcx)]);
+                        });
                     }
                     Instruction::Select { dst, cond, on_true, on_false } => {
-                        let ty = func.value_type(*on_true);
+                        let ty   = func.value_type(*on_true);
+                        let size = type_to_operand_size(ty, false);
 
-                        asm.with_size(type_to_operand_size(ty, false), |asm| {
-                            asm.mov(&[Reg(Rax), resolve_value!(*on_false)]);
+                        let dst      = r.resolve(*dst);
+                        let on_false = r.resolve(*on_false);
+                        let on_true  = r.resolve(*on_true);
+                        let cond     = r.resolve(*cond);
+
+                        asm.with_size(size, |asm| {
+                            asm.mov(&[Reg(Rax), on_false]);
                         });
 
                         asm.with_size(OperandSize::Bits8, |asm| {
-                            asm.cmp(&[resolve_value!(*cond), Imm(0)]);
+                            asm.cmp(&[cond, Imm(0)]);
                         });
 
                         // Here because cmovne doesn't support 8 bit size.
-                        asm.cmovne(&[Reg(Rax), resolve_value!(*on_true)]);
+                        asm.cmovne(&[Reg(Rax), on_true]);
 
-                        asm.with_size(type_to_operand_size(ty, false), |asm| {
-                            asm.mov(&[resolve_value!(*dst), Reg(Rax)]);
+                        asm.with_size(size, |asm| {
+                            asm.mov(&[dst, Reg(Rax)]);
                         });
                     }
-                    _ => panic!("{:?}", inst),
+                    Instruction::Call { .. } => {
+                        panic!("Call is not supported yet.");
+                    }
                 }
             }
         }
