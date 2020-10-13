@@ -3,7 +3,9 @@ use std::cmp::Ordering;
 
 use crate::ir;
 use crate::parser;
-use crate::parser::{Body, Stmt, Expr, Ty, UnaryOp, BinaryOp, TyKind};
+use crate::parser::{Body, Stmt, Expr, UnaryOp, BinaryOp, TyKind, ParsedModule};
+
+pub use crate::parser::{FunctionPrototype, Ty};
 
 fn to_ir_type(ty: &Ty) -> ir::Type {
     let (kind, indirection) = ty.destructure();
@@ -67,14 +69,12 @@ impl CodegenValue {
         }
     }
 
-    fn ir_type(&self) -> ir::Type {
-        to_ir_type(&self.ty)
-    }
-
+    #[allow(unused)]
     fn is_lvalue(&self) -> bool {
         self.value_type == ValueType::Lvalue
     }
 
+    #[allow(unused)]
     fn is_rvalue(&self) -> bool {
         self.value_type == ValueType::Rvalue
     }
@@ -112,6 +112,7 @@ impl Variables {
 
     fn insert(&mut self, name: &str, value: CodegenValue) {
         let last = self.scope.len() - 1;
+
         self.scope[last].push(name.to_owned());
 
         assert!(self.map.insert(name.to_owned(), value).is_none(), 
@@ -153,7 +154,12 @@ struct Loop {
     break_label:    ir::Label,
 }
 
-pub struct Compiler {
+pub struct CompiledModule {
+    pub ir:        ir::Module,
+    pub functions: Vec<(FunctionPrototype, ir::Function)>,
+}
+
+struct Compiler {
     ir:        ir::Module,
     variables: Variables,
     functions: Functions,
@@ -161,6 +167,12 @@ pub struct Compiler {
 }
 
 impl Compiler {
+    fn current_loop(&self) -> Loop {
+        assert!(!self.loops.is_empty(), "Not in loop.");
+
+        self.loops[self.loops.len() - 1]
+    }
+
     fn int_cast(&mut self, value: ir::Value, orig_ty: &Ty, target_ty: &Ty) -> ir::Value {
         assert!(!orig_ty.is_pointer() && !target_ty.is_pointer(), "Cannot intcast pointers.");
 
@@ -442,12 +454,6 @@ impl Compiler {
         self.ir.int_compare(value, ir::IntPredicate::NotEqual, zero)
     }
 
-    fn current_loop(&self) -> Loop {
-        assert!(!self.loops.is_empty(), "Not in loop.");
-
-        self.loops[self.loops.len() - 1]
-    }
-
     fn codegen_body(&mut self, body: &Body, return_ty: &Ty, depth: u32) {
         self.variables.enter_scope();
 
@@ -609,13 +615,15 @@ impl Compiler {
         self.variables.exit_scope();
     }
 
-    pub fn new(module: parser::ParsedModule) -> Self {
+    fn compile(module: &ParsedModule) -> CompiledModule {
         let mut compiler = Compiler {
             ir:        ir::Module::new(),
             variables: Variables::new(),
             functions: Functions::new(),
             loops:     Vec::new(),
         };
+
+        let mut result_functions = Vec::new();
 
         for function in &module.functions {
             let mut args    = Vec::new();
@@ -633,6 +641,8 @@ impl Compiler {
 
             let name    = &function.prototype.name;
             let ir_func = compiler.ir.create_function(name, return_ty, args_ir);
+
+            result_functions.push((function.prototype.clone(), ir_func));
 
             let codegen_func = CodegenFunction {
                 return_ty: function.prototype.return_ty.clone(),
@@ -674,16 +684,14 @@ impl Compiler {
         }
 
         compiler.ir.finalize();
-        compiler.ir.optimize();
 
-        for function in compiler.functions.map.values() {
-            compiler.ir.dump_function_text(function.function,
-                                           &mut std::io::stdout()).unwrap();
-
-            println!();
+        CompiledModule {
+            functions: result_functions,
+            ir:        compiler.ir,
         }
-        compiler.ir.test();
-
-        panic!()
     }
+}
+
+pub fn compile(module: &ParsedModule) -> CompiledModule {
+    Compiler::compile(module)
 }

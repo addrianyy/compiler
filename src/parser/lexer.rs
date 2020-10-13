@@ -414,6 +414,7 @@ impl Lexer {
     }
 
     #[track_caller]
+    #[allow(unused)]
     pub fn eat_keyword(&mut self) -> &Keyword {
         let token = self.eat();
 

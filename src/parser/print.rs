@@ -1,7 +1,6 @@
 use std::io::{self, Write};
-use std::fmt;
 
-use super::{Ty, Stmt, Expr, TypedExpr, Body, Function, FunctionPrototype, ParsedModule, TyKind};
+use super::{Stmt, Expr, Body, Function, FunctionPrototype, ParsedModule};
 
 const INDENT_STRING:  &str = "    ";
 const SUBITEM_INDENT: &str = "  ";
@@ -12,34 +11,6 @@ fn print_body<W: Write>(body: &Body, w: &mut W, indent: usize) -> io::Result<()>
     }
 
     Ok(())
-}
-
-impl fmt::Display for Ty {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self.kind {
-            TyKind::U8   => write!(f, "u8")?,
-            TyKind::U16  => write!(f, "u16")?,
-            TyKind::U32  => write!(f, "u32")?,
-            TyKind::U64  => write!(f, "u64")?,
-            TyKind::I8   => write!(f, "i8")?,
-            TyKind::I16  => write!(f, "i16")?,
-            TyKind::I32  => write!(f, "i32")?,
-            TyKind::I64  => write!(f, "i64")?,
-            TyKind::Void => write!(f, "void")?,
-        }
-
-        for _ in 0..self.indirection {
-            write!(f, "*")?;
-        }
-
-        Ok(())
-    }
-}
-
-impl TypedExpr {
-    pub fn print<W: Write>(&self, w: &mut W, indent: usize) -> io::Result<()> {
-        self.expr.print(w, indent)
-    }
 }
 
 impl Expr {
@@ -218,6 +189,7 @@ impl Function {
 }
 
 impl ParsedModule {
+    #[allow(unused)]
     pub fn print<W: Write>(&self, w: &mut W) -> io::Result<()> {
         for func in &self.functions {
             func.print(w)?;

@@ -836,10 +836,12 @@ impl Module {
         self.finalized = true;
     }
 
+    #[allow(unused)]
     pub fn dump_function_graph(&self, function: Function, path: &str) {
         self.function(function).dump_graph(path)
     }
 
+    #[allow(unused)]
     pub fn dump_function_text<W: Write>(&self, function: Function, w: &mut W) -> io::Result<()> {
         self.function(function).dump_text(w)
     }

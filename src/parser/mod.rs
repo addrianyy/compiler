@@ -1,198 +1,11 @@
 mod print;
 mod lexer;
 mod ast;
+mod ty;
 
 use lexer::{Keyword, Token, Literal, IntegerSuffix, Lexer};
 pub use ast::{UnaryOp, BinaryOp, Expr, TypedExpr, Stmt, Body};
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum TyKind {
-    U8,
-    U16,
-    U32,
-    U64,
-    I8,
-    I16,
-    I32,
-    I64,
-    Void,
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct Ty {
-    kind:        TyKind,
-    indirection: usize,
-}
-
-impl Ty {
-    pub const U8:   Ty = Ty { kind: TyKind::U8,   indirection: 0 };
-    pub const U16:  Ty = Ty { kind: TyKind::U16,  indirection: 0 };
-    pub const U32:  Ty = Ty { kind: TyKind::U32,  indirection: 0 };
-    pub const U64:  Ty = Ty { kind: TyKind::U64,  indirection: 0 };
-    pub const I8:   Ty = Ty { kind: TyKind::I8,   indirection: 0 };
-    pub const I16:  Ty = Ty { kind: TyKind::I16,  indirection: 0 };
-    pub const I32:  Ty = Ty { kind: TyKind::I32,  indirection: 0 };
-    pub const I64:  Ty = Ty { kind: TyKind::I64,  indirection: 0 };
-    pub const Void: Ty = Ty { kind: TyKind::Void, indirection: 0 };
-
-    fn from_token(token: &Token) -> Option<Self> {
-        Some(match token {
-            Token::Keyword(Keyword::U8)   => Ty::U8,
-            Token::Keyword(Keyword::U16)  => Ty::U16,
-            Token::Keyword(Keyword::U32)  => Ty::U32,
-            Token::Keyword(Keyword::U64)  => Ty::U64,
-            Token::Keyword(Keyword::I8)   => Ty::I8,
-            Token::Keyword(Keyword::I16)  => Ty::I16,
-            Token::Keyword(Keyword::I32)  => Ty::I32,
-            Token::Keyword(Keyword::I64)  => Ty::I64,
-            Token::Keyword(Keyword::Void) => Ty::Void,
-            _                             => return None,
-        })
-    }
-
-    pub fn ptr(&self) -> Ty {
-        Ty {
-            kind:        self.kind,
-            indirection: self.indirection + 1,
-        }
-    }
-
-    pub fn is_arithmetic_type(&self) -> bool {
-        self.indirection == 0 && self.kind != TyKind::Void
-    }
-
-    pub fn is_pointer(&self) -> bool {
-        self.indirection > 0
-    }
-
-    pub fn size(&self) -> usize {
-        if self.is_pointer() {
-            return 8;
-        }
-
-        match self.kind {
-            TyKind::I8  | TyKind::U8  => 1,
-            TyKind::I16 | TyKind::U16 => 2,
-            TyKind::I32 | TyKind::U32 => 4,
-            TyKind::I64 | TyKind::U64 => 8,
-            TyKind::Void              => unreachable!(),
-        }
-    }
-
-    pub fn strip_pointer(&self) -> Option<Ty> {
-        Some(Ty {
-            kind:        self.kind,
-            indirection: self.indirection.checked_sub(1)?,
-        })
-    }
-
-    pub fn is_signed(&self) -> bool {
-        if self.indirection > 0 {
-            return false;
-        }
-
-        matches!(self.kind, TyKind::I8 | TyKind::I16 | TyKind::I32 | TyKind::I64)
-    }
-
-    pub fn is_nonvoid_ptr(&self) -> bool {
-        if self.indirection == 0 {
-            return false;
-        }
-
-        if self.indirection == 1 && self.kind == TyKind::Void {
-            return false;
-        }
-
-        true
-    }
-
-    pub fn destructure(&self) -> (TyKind, usize) {
-        (self.kind, self.indirection)
-    }
-}
-
-/*
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Ty {
-    U8,
-    U16,
-    U32,
-    U64,
-    I8,
-    I16,
-    I32,
-    I64,
-    Void,
-    Ptr(Box<Ty>),
-}
-
-impl Ty {
-    pub fn ptr(self) -> Ty {
-        Ty::Ptr(Box::new(self))
-    }
-
-    pub fn strip_pointer(&self) -> Option<Ty> {
-        if let Ty::Ptr(ty) = self {
-            Some(*ty.clone())
-        } else {
-            None
-        }
-    }
-
-    pub fn is_arithmetic_type(&self) -> bool {
-        match self {
-            Ty::Ptr(..) | Ty::Void => false,
-            _                      => true,
-        }
-    }
-
-    pub fn is_nonvoid_ptr(&self) -> bool {
-        match self {
-            Ty::Ptr(ty) => **ty != Ty::Void,
-            _           => false,
-        }
-    }
-
-    pub fn is_void(&self) -> bool {
-        matches!(self, Ty::Void)
-    }
-
-    fn from_token(token: &Token) -> Option<Self> {
-        Some(match token {
-            Token::Keyword(Keyword::U8)   => Ty::U8,
-            Token::Keyword(Keyword::U16)  => Ty::U16,
-            Token::Keyword(Keyword::U32)  => Ty::U32,
-            Token::Keyword(Keyword::U64)  => Ty::U64,
-            Token::Keyword(Keyword::I8)   => Ty::I8,
-            Token::Keyword(Keyword::I16)  => Ty::I16,
-            Token::Keyword(Keyword::I32)  => Ty::I32,
-            Token::Keyword(Keyword::I64)  => Ty::I64,
-            Token::Keyword(Keyword::Void) => Ty::Void,
-            _                             => return None,
-        })
-    }
-
-    pub fn size(&self) -> usize {
-        match self {
-            Ty::Ptr(_)        => 8,
-            Ty::I8  | Ty::U8  => 1,
-            Ty::I16 | Ty::U16 => 2,
-            Ty::I32 | Ty::U32 => 4,
-            Ty::I64 | Ty::U64 => 8,
-            Ty::Void          => unreachable!(),
-        }
-    }
-
-    pub fn is_signed(&self) -> bool {
-        matches!(self, Ty::I8 | Ty::I16 | Ty::I32 | Ty::I64)
-    }
-
-    pub fn is_pointer(&self) -> bool {
-        matches!(self, Ty::Ptr(_))
-    }
-}
-*/
-
+pub use ty::{TyKind, Ty};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FunctionPrototype {
@@ -269,13 +82,10 @@ impl Parser {
             args.push(parser.parse_expression());
         });
 
-        TypedExpr {
-            expr: Expr::Call {
-                target,
-                args,
-            },
-            ty: None,
-        }
+        TypedExpr::new(Expr::Call {
+            target,
+            args,
+        })
     }
 
     fn parse_primary_expression(&mut self) -> TypedExpr {
@@ -303,13 +113,10 @@ impl Parser {
                 let value = *value;
                 let _     = self.lexer.eat();
 
-                TypedExpr {
-                    expr: Expr::Number {
-                        value,
-                        ty: ty.clone(),
-                    },
-                    ty,
-                }
+                TypedExpr::new(Expr::Number {
+                    value,
+                    ty: ty.clone(),
+                })
             }
             Token::Literal(..) => {
                 panic!("Literal {:?} is not supported. Only number literals are supported.", 
@@ -322,10 +129,7 @@ impl Parser {
                 if self.lexer.current() == &Token::ParenOpen {
                     self.parse_call_expression(ident)
                 } else {
-                    TypedExpr {
-                        expr: Expr::Variable(ident),
-                        ty:   None,
-                    }
+                    TypedExpr::new(Expr::Variable(ident))
                 }
             }
             Token::ParenOpen => {
@@ -336,13 +140,10 @@ impl Parser {
                     let _    = self.lexer.eat_expect(&Token::ParenClose);
                     let expr = self.parse_primary_expression();
 
-                    TypedExpr {
-                        expr: Expr::Cast {
-                            value: Box::new(expr),
-                            ty,
-                        },
-                        ty: None,
-                    }
+                    TypedExpr::new(Expr::Cast {
+                        value: Box::new(expr),
+                        ty,
+                    })
                 } else {
                     self.lexer.restore(1);
                     self.parse_paren_expression()
@@ -356,13 +157,10 @@ impl Parser {
             let index = self.parse_expression();
             let _     = self.lexer.eat_expect(&Token::BracketClose);
 
-            result = TypedExpr {
-                expr: Expr::Array {
-                    array: Box::new(result),
-                    index: Box::new(index),
-                },
-                ty: None,
-            }
+            result = TypedExpr::new(Expr::Array {
+                array: Box::new(result),
+                index: Box::new(index),
+            });
         }
 
         result
@@ -390,14 +188,11 @@ impl Parser {
                 right = self.parse_binary_expression(next_precedence + 1, right);
             }
 
-            left = TypedExpr {
-                expr: Expr::Binary {
-                    left:  Box::new(left),
-                    right: Box::new(right),
-                    op,
-                },
-                ty: None,
-            };
+            left = TypedExpr::new(Expr::Binary {
+                left:  Box::new(left),
+                right: Box::new(right),
+                op,
+            });
         }
     }
 
@@ -420,13 +215,10 @@ impl Parser {
         let _    = self.lexer.eat();
         let expr = self.parse_primary_expression();
 
-        TypedExpr { 
-            expr: Expr::Unary {
-                op, 
-                value: Box::new(expr),
-            },
-            ty: None,
-        }
+        TypedExpr::new(Expr::Unary {
+            op, 
+            value: Box::new(expr),
+        })
     }
 
     fn parse_expression_statement(&mut self) -> Stmt {
@@ -462,14 +254,11 @@ impl Parser {
 
             stmt = Some(Stmt::Assign {
                 variable: expr.clone(),
-                value:    TypedExpr {
-                    expr: Expr::Binary {
-                        left:  Box::new(expr.clone()),
-                        op:    combined,
-                        right: Box::new(second),
-                    },
-                    ty: None,
-                }
+                value:    TypedExpr::new(Expr::Binary {
+                    left:  Box::new(expr.clone()),
+                    op:    combined,
+                    right: Box::new(second),
+                })
             });
         }
 

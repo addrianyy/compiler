@@ -1,5 +1,5 @@
-use super::Ty;
-use super::lexer::{Token, Keyword};
+use super::ty::Ty;
+use super::lexer::Token;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UnaryOp {
@@ -141,6 +141,15 @@ pub enum Stmt {
 pub struct TypedExpr {
     pub ty:   Option<Ty>,
     pub expr: Expr,
+}
+
+impl TypedExpr {
+    pub(super) fn new(expr: Expr) -> Self {
+        Self {
+            ty: None,
+            expr,
+        }
+    }
 }
 
 impl std::ops::Deref for TypedExpr {
