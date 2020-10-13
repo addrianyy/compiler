@@ -115,7 +115,7 @@ impl Parser {
 
                 TypedExpr::new(Expr::Number {
                     value,
-                    ty: ty.clone(),
+                    ty,
                 })
             }
             Token::Literal(..) => {
@@ -135,7 +135,7 @@ impl Parser {
             Token::ParenOpen => {
                 let _ = self.lexer.eat();
 
-                if let Some(_) = Ty::from_token(self.lexer.current()) {
+                if Ty::from_token(self.lexer.current()).is_some() {
                     let ty   = self.parse_ty();
                     let _    = self.lexer.eat_expect(&Token::ParenClose);
                     let expr = self.parse_primary_expression();
@@ -198,9 +198,8 @@ impl Parser {
 
     fn parse_expression(&mut self) -> TypedExpr {
         let left = self.parse_primary_expression();
-        let expr = self.parse_binary_expression(0, left);
 
-        expr
+        self.parse_binary_expression(0, left)
     }
 
     fn parse_paren_expression(&mut self) -> TypedExpr {
@@ -269,7 +268,7 @@ impl Parser {
         let decl_ty = self.parse_ty();
         let name    = self.lexer.eat_identifier().to_string();
 
-        let mut ty    = decl_ty.clone();
+        let mut ty    = decl_ty;
         let mut array = None;
 
         if self.lexer.current() == &Token::BracketOpen {

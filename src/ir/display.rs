@@ -2,7 +2,7 @@ use std::io::{self, Write};
 use std::fmt;
 
 use super::{FunctionData, Instruction, Value, Label, BinaryOp, UnaryOp, IntPredicate, 
-            Type, TypeKind, Cast};
+            Type, Cast, ty::TypeKind};
 
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

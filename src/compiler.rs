@@ -1,11 +1,9 @@
 use std::collections::BTreeMap;
 use std::cmp::Ordering;
 
-use crate::ir;
-use crate::parser;
-use crate::parser::{Body, Stmt, Expr, UnaryOp, BinaryOp, TyKind, ParsedModule};
-
 pub use crate::parser::{FunctionPrototype, Ty};
+use crate::parser::{Body, Stmt, Expr, UnaryOp, BinaryOp, TyKind, ParsedModule};
+use crate::ir;
 
 fn to_ir_type(ty: &Ty) -> ir::Type {
     let (kind, indirection) = ty.destructure();
@@ -386,8 +384,8 @@ impl Compiler {
             Expr::Cast { value, ty } => {
                 let value = self.codegen_nonvoid_expression(&value);
 
-                let orig_ty   = value.ty.clone();
-                let target_ty = ty.clone();
+                let orig_ty   = value.ty;
+                let target_ty = *ty;
                 let extracted = value.extract(&mut self.ir);
                 
                 let integer   = !orig_ty.is_pointer() && !target_ty.is_pointer();
@@ -423,8 +421,8 @@ impl Compiler {
 
                 let mut generated_args = Vec::new();
 
-                for index in 0..args.len() {
-                    let value = self.codegen_nonvoid_expression(&args[index]);
+                for (index, arg) in args.iter().enumerate() {
+                    let value = self.codegen_nonvoid_expression(arg);
 
                     assert!(value.ty == function.args[index], "Invalid type of parameter \
                             passed to function {}.", target);
@@ -433,7 +431,7 @@ impl Compiler {
                 }
 
                 self.ir.call(function.function, generated_args).map(|value| {
-                    CodegenValue::rvalue(function.return_ty.clone(), value)
+                    CodegenValue::rvalue(function.return_ty, value)
                 })
             }
         }
@@ -441,7 +439,7 @@ impl Compiler {
 
     fn codegen_condition(&mut self, condition: &Expr) -> ir::Value {
         let condition = self.codegen_nonvoid_expression(condition);
-        let mut ty    = condition.ty.clone();
+        let mut ty    = condition.ty;
         let mut value = condition.extract(&mut self.ir);
 
         if ty.is_pointer() {
@@ -498,8 +496,8 @@ impl Compiler {
                     }
 
                     let value = match array {
-                        true  => CodegenValue::rvalue(ty.clone(), variable),
-                        false => CodegenValue::lvalue(ty.clone(), variable),
+                        true  => CodegenValue::rvalue(*ty, variable),
+                        false => CodegenValue::lvalue(*ty, variable),
                     };
 
                     self.variables.insert(name, value);
@@ -630,7 +628,7 @@ impl Compiler {
             let mut args_ir = Vec::new();
 
             for (_, ty) in &function.prototype.args {
-                args.push(ty.clone());
+                args.push(*ty);
                 args_ir.push(to_ir_type(ty));
             }
 
@@ -645,7 +643,7 @@ impl Compiler {
             result_functions.push((function.prototype.clone(), ir_func));
 
             let codegen_func = CodegenFunction {
-                return_ty: function.prototype.return_ty.clone(),
+                return_ty: function.prototype.return_ty,
                 function:  ir_func,
                 args,
             };
@@ -673,7 +671,7 @@ impl Compiler {
 
                 compiler.ir.store(storage, value);
 
-                let variable = CodegenValue::lvalue(arg_ty.clone(), storage);
+                let variable = CodegenValue::lvalue(*arg_ty, storage);
 
                 compiler.variables.insert(arg_name, variable);
             }

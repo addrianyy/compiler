@@ -14,9 +14,7 @@ impl FunctionData {
 
         stack.push(start);
 
-        while !stack.is_empty() {
-            let label = *stack.last().unwrap();
-
+        while let Some(&label) = stack.last() {
             if visited.insert(label) {
                 for target in self.targets(label) {
                     if !visited.contains(&target) {
@@ -88,6 +86,7 @@ impl FunctionData {
         dominators[root_idx] = root_idx;
 
         let mut changed = true;
+
         while changed {
             changed = false;
 
@@ -139,9 +138,7 @@ impl FunctionData {
         let mut is_first       = true;
         let mut included_start = false;
 
-        while !queue.is_empty() {
-            let label = queue.pop_front().unwrap();
-
+        while let Some(label) = queue.pop_front() {
             let mut no_callback = false;
 
             if !is_first && !include_start && label == start && !included_start {

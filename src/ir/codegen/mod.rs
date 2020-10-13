@@ -1,5 +1,5 @@
-mod execmem;
 pub mod x86backend;
+mod execmem;
 
 use std::collections::HashMap;
 
@@ -30,9 +30,8 @@ impl MachineCode {
     }
 
     pub fn function_buffer(&self, function: Function) -> &[u8] {
-        let (offset, size) = self.functions.get(&function)
-            .expect("Invalid function specified")
-            .clone();
+        let (offset, size) = *self.functions.get(&function)
+            .expect("Invalid function specified");
 
         &self.buffer[offset..][..size]
     }
@@ -42,8 +41,7 @@ impl MachineCode {
                    "Function pointer must have pointer size.");
 
         let ptr = self.function_buffer(function).as_ptr();
-        let ptr = *(&ptr as *const _ as *const T);
 
-        ptr
+        *(&ptr as *const _ as *const T)
     }
 }

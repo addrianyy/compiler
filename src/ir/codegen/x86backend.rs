@@ -1,6 +1,7 @@
 use crate::ir;
-use ir::{Function, FunctionData, Place, RegisterAllocation, Location, Instruction, 
-            BinaryOp, UnaryOp, IntPredicate, Module};
+use ir::{Function, FunctionData, Location, Instruction, 
+         BinaryOp, UnaryOp, IntPredicate, Module};
+use ir::register_allocation::{Place, RegisterAllocation};
 use std::collections::HashMap;
 use super::FunctionMCodeMap;
 
@@ -82,9 +83,9 @@ impl X86Backend {
             frame_size += 8;
         }
 
-        for index in 0..register_count {
+        for (index, register) in AVAILABLE_REGISTERS.iter().enumerate() {
             place_to_operand.insert(Place::Register(index),
-                                    Reg(AVAILABLE_REGISTERS[index]));
+                                    Reg(*register));
         }
 
         assert!(free_offset % 8 == 0);

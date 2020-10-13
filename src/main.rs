@@ -3,9 +3,11 @@ mod compiler;
 mod ir;
 
 fn main() {
-    let source   = std::fs::read_to_string("test/1.tc").unwrap();
-    let parsed   = parser::parse(&source);
-    let compiled = compiler::compile(&parsed);
+    let source       = std::fs::read_to_string("test/1.tc").unwrap();
+    let parsed       = parser::parse(&source);
+    let mut compiled = compiler::compile(&parsed);
+
+    compiled.ir.optimize();
 
     let mcode = compiled.ir.generate_machine_code();
     
