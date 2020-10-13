@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use super::{FunctionData, Value, Location, Label};
 
@@ -12,6 +12,7 @@ pub enum Place {
 pub struct RegisterAllocation {
     pub allocation: BTreeMap<Location, BTreeMap<Value, Place>>,
     pub arguments:  BTreeMap<Value, Place>,
+    pub used_regs:  BTreeSet<usize>,
     pub slots:      usize,
 }
 
@@ -23,6 +24,18 @@ impl RegisterAllocation {
 
         self.allocation[&location][&value]
     }
+}
+
+fn stack_pop_prefer(stack: &mut Vec<usize>, prefer: Option<usize>) -> Option<usize> {
+    if let Some(prefer) = prefer {
+        if let Some(idx) = stack.iter().position(|x| *x == prefer) {
+            stack.remove(idx);
+
+            return Some(prefer);
+        }
+    }
+
+    stack.pop()
 }
 
 impl FunctionData {
@@ -77,6 +90,8 @@ impl FunctionData {
                 BTreeMap::new();
 
         {
+            // At first all hardware registers are usable.
+
             let entry_state = block_alloc_state
                 .entry(Label(0))
                 .or_insert_with(Default::default);
@@ -91,8 +106,11 @@ impl FunctionData {
         let lifetimes  = self.lifetimes();
 
         let mut next_slot = 0;
+        let mut used_regs = BTreeSet::new();
 
         for label in labels {
+            // If there is not register allocation state for this block then take one
+            // from immediate dominator (as we can only use values originating from it).
             if !block_alloc_state.contains_key(&label) {
                 let idom   = dominators[&label];
                 let allocs = block_alloc_state[&idom].clone();
@@ -131,10 +149,34 @@ impl FunctionData {
                 }
 
                 if let Some(output) = inst.created_value() {
-                    let place = if let Some(register) = block_allocs.1.registers.pop() {
+                    // We will try to allocate output value at the same register as 
+                    // first input. This will help to generate better code by backend.
+                    let first_input = inst.read_values().get(0).map(|value| {
+                        inst_allocs[&value]
+                    });
+
+                    let preg = if let Some(Place::Register(register)) = first_input {
+                        Some(register)
+                    } else {
+                        None
+                    };
+
+                    let pslot = if let Some(Place::StackSlot(slot)) = first_input {
+                        Some(slot)
+                    } else {
+                        None
+                    };
+
+                    let register = stack_pop_prefer(&mut block_allocs.1.registers, preg);
+
+                    let place = if let Some(register) = register {
+                        used_regs.insert(register);
+
                         Place::Register(register)
                     } else {
-                        Place::StackSlot(block_allocs.1.stack_slots.pop().unwrap_or_else(|| {
+                        let slot = stack_pop_prefer(&mut block_allocs.1.stack_slots, pslot);
+
+                        Place::StackSlot(slot.unwrap_or_else(|| {
                             let slot = next_slot;
 
                             next_slot += 1;
@@ -162,8 +204,9 @@ impl FunctionData {
 
         RegisterAllocation {
             allocation: inst_alloc_state,
-            slots: next_slot,
+            slots:      next_slot,
             arguments,
+            used_regs,
         }
     }
 }

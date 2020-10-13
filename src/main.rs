@@ -32,13 +32,32 @@ fn main() {
         }
     }
 
+
     /*
     let mut ir = ir::Module::new();
 
-    let func = ir.create_function("abc123", Some(ir::Type::U64), vec![]);
+    let func = ir.create_function("abc123", None, vec![]);
     ir.switch_function(func);
 
 
+    let a    = ir.iconst(999u32, ir::Type::U64);
+    let b    = ir.iconst(1324u32, ir::Type::U64);
+    let c    = ir.arithmetic_binary(b, ir::BinaryOp::Add, a);
+    let d    = ir.arithmetic_unary(ir::UnaryOp::Neg, c);
+    ir.ret(None);
+
+    ir.finalize();
+
+    ir.dump_function_text(func, &mut std::io::stdout()).unwrap();
+
+    let mcode = ir.generate_machine_code();
+    
+    std::fs::write("mcode/test.bin", mcode.function_buffer(func)).unwrap();
+    */
+
+
+
+    /*
     let c    = ir.iconst(999u32, ir::Type::U64);
     let x    = ir.iconst(1324u32, ir::Type::U64);
     let d    = ir.arithmetic_binary(c, ir::BinaryOp::Add, x);

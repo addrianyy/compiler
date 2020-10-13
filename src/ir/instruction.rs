@@ -134,6 +134,9 @@ impl Instruction {
     }
 
     pub fn read_values(&self) -> Vec<Value> {
+        // Keep these values in proper order so register allocator can reuse some registers.
+        // For example in %5 = add %0 %1, %5 and %0 may get allocated in the same register.
+
         match *self {
             Instruction::ArithmeticUnary  { value, ..         } => vec![value],
             Instruction::ArithmeticBinary { a, b, ..          } => vec![a, b],
