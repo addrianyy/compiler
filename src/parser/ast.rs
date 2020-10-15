@@ -130,6 +130,12 @@ pub enum Stmt {
         arms:    Vec<(TypedExpr, Body)>,
         default: Option<Body>,
     },
+    For {
+        init:      Option<Box<Stmt>>,
+        condition: Option<TypedExpr>,
+        step:      Option<Box<Stmt>>,
+        body:      Body,
+    },
     Return(Option<TypedExpr>),
     Expr(TypedExpr),
     Break,

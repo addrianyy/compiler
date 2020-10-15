@@ -126,6 +126,27 @@ impl Stmt {
                 writeln!(w, "{}Body:", i)?;
                 print_body(body, w, indent + 1)?;
             }
+            Stmt::For { init, condition, step, body } => {
+                writeln!(w, "{}ForStmt", j)?;
+
+                if let Some(init) = init {
+                    writeln!(w, "{}Init:", i)?;
+                    init.print(w, indent + 1)?;
+                }
+
+                if let Some(condition) = condition {
+                    writeln!(w, "{}Condition:", i)?;
+                    condition.print(w, indent + 1)?;
+                }
+
+                if let Some(step) = step {
+                    writeln!(w, "{}Step:", i)?;
+                    step.print(w, indent + 1)?;
+                }
+
+                writeln!(w, "{}Body:", i)?;
+                print_body(body, w, indent + 1)?;
+            }
             Stmt::If { arms, default } => {
                 writeln!(w, "{}IfStmt", j)?;
 

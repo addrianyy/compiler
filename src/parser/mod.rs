@@ -344,10 +344,47 @@ impl Parser {
         }
     }
 
+    fn parse_for(&mut self) -> Stmt {
+        self.lexer.eat_expect(&Token::Keyword(Keyword::For));
+        self.lexer.eat_expect(&Token::ParenOpen);
+
+        let mut init      = None;
+        let mut condition = None;
+        let mut step      = None;
+
+        if self.lexer.current() != &Token::Semicolon {
+            init = Some(Box::new(self.parse_statement()));
+        }
+
+        self.lexer.eat_expect(&Token::Semicolon);
+
+        if self.lexer.current() != &Token::Semicolon {
+            condition = Some(self.parse_expression());
+        }
+
+        self.lexer.eat_expect(&Token::Semicolon);
+
+        if self.lexer.current() != &Token::ParenClose {
+            step = Some(Box::new(self.parse_statement()));
+        }
+
+        self.lexer.eat_expect(&Token::ParenClose);
+
+        let body = self.parse_body();
+
+        Stmt::For {
+            init,
+            condition,
+            step,
+            body,
+        }
+    }
+
     fn parse_statement(&mut self) -> Stmt {
         match self.lexer.current() {
             x if Ty::from_token(x).is_some() => self.parse_declaration(),
             Token::Keyword(Keyword::If)      => self.parse_if(),
+            Token::Keyword(Keyword::For)     => self.parse_for(),
             Token::Keyword(Keyword::Return)  => {
                 let _ = self.lexer.eat();
 
@@ -390,7 +427,7 @@ impl Parser {
             let stmt = self.parse_statement();
 
             let require_semicolon = match stmt {
-                Stmt::While { .. } | Stmt::If { .. } => {
+                Stmt::While { .. } | Stmt::If { .. } | Stmt::For { .. } => {
                     false
                 }
                 _ => true,

@@ -452,6 +452,210 @@ impl Compiler {
         self.ir.int_compare(value, ir::IntPredicate::NotEqual, zero)
     }
 
+    fn codegen_statement(&mut self, statement: &Stmt, return_ty: &Ty, depth: u32) -> bool {
+        let mut terminated = false;
+
+        match statement {
+            Stmt::Assign { variable, value } => {
+                let variable = self.codegen_nonvoid_expression(variable);
+                let value    = self.codegen_nonvoid_expression(value);
+
+                assert!(variable.ty == value.ty, "Cannot assign value of different type.");
+                assert!(variable.is_lvalue(), "Cannot assign to rvalue.");
+
+                let extracted = value.extract(&mut self.ir);
+
+                self.ir.store(variable.value, extracted);
+            }
+            Stmt::Declare { ty, decl_ty, name, value, array } => {
+                let (size, array) = match array {
+                    Some(array) => {
+                        (constant_expression(array)
+                            .expect("Array size must be constant.") as usize, true)
+                    }
+                    None => (1, false),
+                };
+
+                let variable = self.ir.stack_alloc(to_ir_type(decl_ty), size);
+
+                if let Some(value) = value {
+                    let value = self.codegen_nonvoid_expression(value);
+
+                    assert!(!array, "Arrays cannot have initializers.");
+                    assert!(value.ty == *ty, "Initializer doesn't have the same \
+                            type as variable.");
+
+                    let extracted = value.extract(&mut self.ir);
+
+                    self.ir.store(variable, extracted);
+                }
+
+                let value = match array {
+                    true  => CodegenValue::rvalue(*ty, variable),
+                    false => CodegenValue::lvalue(*ty, variable),
+                };
+
+                self.variables.insert(name, value);
+            }
+            Stmt::While { condition, body } => {
+                let loop_head = self.ir.create_label();
+                let loop_body = self.ir.create_label();
+                let loop_end  = self.ir.create_label();
+
+                self.ir.branch(loop_head);
+
+                self.ir.switch_label(loop_head);
+
+                let condition = self.codegen_condition(condition);
+
+                self.ir.branch_cond(condition, loop_body, loop_end);
+
+                self.ir.switch_label(loop_body);
+
+                self.loops.push(Loop {
+                    continue_label: loop_head,
+                    break_label:    loop_end,
+                });
+
+                self.codegen_body(body, return_ty, depth + 1);
+                
+                self.loops.pop();
+
+                if !self.ir.is_terminated(None) {
+                    self.ir.branch(loop_head);
+                }
+
+                self.ir.switch_label(loop_end);
+            }
+            Stmt::If { arms, default } => {
+                let if_end = self.ir.create_label();
+
+                for (condition, body) in arms {
+                    let on_true  = self.ir.create_label();
+                    let on_false = self.ir.create_label();
+
+                    let condition = self.codegen_condition(condition);
+
+                    self.ir.branch_cond(condition, on_true, on_false);
+
+                    self.ir.switch_label(on_true);
+                    
+                    self.codegen_body(body, return_ty, depth + 1);
+
+                    if !self.ir.is_terminated(None) {
+                        self.ir.branch(if_end);
+                    }
+
+                    self.ir.switch_label(on_false);
+                }
+
+                if let Some(default) = default {
+                    self.codegen_body(default, return_ty, depth + 1);
+
+                    if !self.ir.is_terminated(None) {
+                        self.ir.branch(if_end);
+                    }
+                } else {
+                    self.ir.branch(if_end);
+                }
+
+                self.ir.switch_label(if_end);
+            }
+            Stmt::For { init, condition, step, body } => {
+                self.variables.enter_scope();
+
+                if let Some(init) = init {
+                    assert!(!self.codegen_statement(init, return_ty, depth),
+                            "Terminating for init statement disallowed.");
+                }
+
+                let loop_head     = self.ir.create_label();
+                let loop_body     = self.ir.create_label();
+                let loop_continue = self.ir.create_label();
+                let loop_end      = self.ir.create_label();
+
+                self.ir.branch(loop_head);
+
+                self.ir.switch_label(loop_head);
+
+                if let Some(condition) = condition {
+                    let condition = self.codegen_condition(condition);
+
+                    self.ir.branch_cond(condition, loop_body, loop_end);
+                } else {
+                    self.ir.branch(loop_body);
+                }
+
+                self.ir.switch_label(loop_body);
+
+                self.loops.push(Loop {
+                    continue_label: loop_continue,
+                    break_label:    loop_end,
+                });
+
+                self.codegen_body(body, return_ty, depth + 1);
+
+                self.loops.pop();
+
+                if !self.ir.is_terminated(None) {
+                    self.ir.branch(loop_continue);
+                }
+
+                self.ir.switch_label(loop_continue);
+
+                if let Some(step) = step {
+                    assert!(!self.codegen_statement(step, return_ty, depth),
+                            "Terminating for step statement disallowed.");
+                }
+
+                self.ir.branch(loop_head);
+
+                self.ir.switch_label(loop_end);
+
+                self.variables.exit_scope();
+            }
+            Stmt::Return(value) => {
+                terminated = true;
+
+                match value {
+                    Some(value) => {
+                        let value     = self.codegen_nonvoid_expression(value);
+                        let extracted = value.extract(&mut self.ir);
+
+                        assert!(return_ty == &value.ty, "Function return type differs.");
+
+                        self.ir.ret(Some(extracted));
+                    }
+                    None => {
+                        assert!(return_ty == &Ty::Void, "Cannot return void from \
+                                non-void function.");
+
+                        self.ir.ret(None);
+                    }
+                }
+            }
+            Stmt::Break => {
+                terminated = true;
+
+                let target = self.current_loop().break_label;
+
+                self.ir.branch(target);
+            }
+            Stmt::Continue => {
+                terminated = true;
+
+                let target = self.current_loop().continue_label;
+
+                self.ir.branch(target);
+            }
+            Stmt::Expr(expression) => {
+                self.codegen_expression(expression);
+            }
+        }
+
+        terminated
+    }
+
     fn codegen_body(&mut self, body: BodyRef, return_ty: &Ty, depth: u32) {
         self.variables.enter_scope();
 
@@ -459,149 +663,7 @@ impl Compiler {
 
         for statement in body {
             assert!(!terminated, "There is more code after terminator instruction.");
-
-            match statement {
-                Stmt::Assign { variable, value } => {
-                    let variable = self.codegen_nonvoid_expression(variable);
-                    let value    = self.codegen_nonvoid_expression(value);
-
-                    assert!(variable.ty == value.ty, "Cannot assign value of different type.");
-                    assert!(variable.is_lvalue(), "Cannot assign to rvalue.");
-
-                    let extracted = value.extract(&mut self.ir);
-
-                    self.ir.store(variable.value, extracted);
-                }
-                Stmt::Declare { ty, decl_ty, name, value, array } => {
-                    let (size, array) = match array {
-                        Some(array) => {
-                            (constant_expression(array)
-                                .expect("Array size must be constant.") as usize, true)
-                        }
-                        None => (1, false),
-                    };
-
-                    let variable = self.ir.stack_alloc(to_ir_type(decl_ty), size);
-
-                    if let Some(value) = value {
-                        let value = self.codegen_nonvoid_expression(value);
-
-                        assert!(!array, "Arrays cannot have initializers.");
-                        assert!(value.ty == *ty, "Initializer doesn't have the same \
-                                type as variable.");
-
-                        let extracted = value.extract(&mut self.ir);
-
-                        self.ir.store(variable, extracted);
-                    }
-
-                    let value = match array {
-                        true  => CodegenValue::rvalue(*ty, variable),
-                        false => CodegenValue::lvalue(*ty, variable),
-                    };
-
-                    self.variables.insert(name, value);
-                }
-                Stmt::While { condition, body } => {
-                    let loop_head = self.ir.create_label();
-                    let loop_body = self.ir.create_label();
-                    let loop_end  = self.ir.create_label();
-
-                    self.ir.branch(loop_head);
-
-                    self.ir.switch_label(loop_head);
-                    let condition = self.codegen_condition(condition);
-                    self.ir.branch_cond(condition, loop_body, loop_end);
-
-                    self.ir.switch_label(loop_body);
-
-                    self.loops.push(Loop {
-                        continue_label: loop_head,
-                        break_label:    loop_end,
-                    });
-
-                    self.codegen_body(body, return_ty, depth + 1);
-                    
-                    self.loops.pop();
-
-                    if !self.ir.is_terminated(None) {
-                        self.ir.branch(loop_head);
-                    }
-
-                    self.ir.switch_label(loop_end);
-                }
-                Stmt::If { arms, default } => {
-                    let if_end = self.ir.create_label();
-
-                    for (condition, body) in arms {
-                        let on_true  = self.ir.create_label();
-                        let on_false = self.ir.create_label();
-
-                        let condition = self.codegen_condition(condition);
-
-                        self.ir.branch_cond(condition, on_true, on_false);
-
-                        self.ir.switch_label(on_true);
-                        
-                        self.codegen_body(body, return_ty, depth + 1);
-
-                        if !self.ir.is_terminated(None) {
-                            self.ir.branch(if_end);
-                        }
-
-                        self.ir.switch_label(on_false);
-                    }
-
-                    if let Some(default) = default {
-                        self.codegen_body(default, return_ty, depth + 1);
-
-                        if !self.ir.is_terminated(None) {
-                            self.ir.branch(if_end);
-                        }
-                    } else {
-                        self.ir.branch(if_end);
-                    }
-
-                    self.ir.switch_label(if_end);
-                }
-                Stmt::Return(value) => {
-                    terminated = true;
-
-                    match value {
-                        Some(value) => {
-                            let value     = self.codegen_nonvoid_expression(value);
-                            let extracted = value.extract(&mut self.ir);
-
-                            assert!(return_ty == &value.ty, "Function return type differs.");
-
-                            self.ir.ret(Some(extracted));
-                        }
-                        None => {
-                            assert!(return_ty == &Ty::Void, "Cannot return void from \
-                                    non-void function.");
-
-                            self.ir.ret(None);
-                        }
-                    }
-                }
-                Stmt::Break => {
-                    terminated = true;
-
-                    let target = self.current_loop().break_label;
-
-                    self.ir.branch(target);
-                }
-                Stmt::Continue => {
-                    terminated = true;
-
-                    let target = self.current_loop().continue_label;
-
-                    self.ir.branch(target);
-                }
-                Stmt::Expr(expression) => {
-                    self.codegen_expression(expression);
-                }
-            }
+            terminated = self.codegen_statement(statement, return_ty, depth);
         }
 
         if depth == 0 && !terminated {
