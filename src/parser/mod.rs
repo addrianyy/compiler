@@ -166,7 +166,8 @@ impl Parser {
         result
     }
 
-   fn parse_binary_expression(&mut self, precedence: i32, mut left: TypedExpr) -> TypedExpr {
+   fn parse_binary_expression(&mut self, mininal_precedence: i32,
+                              mut expr: TypedExpr) -> TypedExpr {
         let get_token_precedence = |parser: &Self| {
             BinaryOp::from_token(parser.lexer.current())
                 .map(|op| op.precedence())
@@ -174,22 +175,22 @@ impl Parser {
         };
 
         loop {
-            let next_precedence = get_token_precedence(self);
-            if next_precedence < precedence {
-                return left;
+            let precedence = get_token_precedence(self);
+            if  precedence < mininal_precedence {
+                return expr;
             }
 
-            let op = BinaryOp::from_token(self.lexer.current()).unwrap();
-            let _  = self.lexer.eat();
-
+            let op        = BinaryOp::from_token(self.lexer.current()).unwrap();
+            let _         = self.lexer.eat();
             let mut right = self.parse_primary_expression();
 
-            if next_precedence < get_token_precedence(self) {
-                right = self.parse_binary_expression(next_precedence + 1, right);
+            let next_precedence = get_token_precedence(self);
+            if  next_precedence > precedence {
+                right = self.parse_binary_expression(precedence + 1, right);
             }
 
-            left = TypedExpr::new(Expr::Binary {
-                left:  Box::new(left),
+            expr = TypedExpr::new(Expr::Binary {
+                left:  Box::new(expr),
                 right: Box::new(right),
                 op,
             });
