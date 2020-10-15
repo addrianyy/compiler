@@ -118,6 +118,15 @@ impl Parser {
                     ty,
                 })
             }
+            Token::Literal(Literal::Char(value)) => {
+                let value = *value as u64;
+                let _     = self.lexer.eat();
+
+                TypedExpr::new(Expr::Number {
+                    value,
+                    ty: Some(Ty::U8),
+                })
+            }
             Token::Literal(..) => {
                 panic!("Literal {:?} is not supported. Only number literals are supported.", 
                        current);
