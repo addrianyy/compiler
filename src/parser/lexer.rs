@@ -16,6 +16,7 @@ pub enum Keyword {
     Break,
     Continue,
     Return,
+    Extern,
 }
 
 impl Keyword {
@@ -37,6 +38,7 @@ impl Keyword {
             "break"    => Keyword::Break,
             "continue" => Keyword::Continue,
             "return"   => Keyword::Return,
+            "extern"   => Keyword::Extern,
             _          => return None,
         })
     }

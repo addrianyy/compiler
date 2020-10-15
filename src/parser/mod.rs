@@ -17,7 +17,7 @@ pub struct FunctionPrototype {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Function {
     pub prototype: FunctionPrototype,
-    pub body:      Body,
+    pub body:      Option<Body>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -454,7 +454,7 @@ impl Parser {
         body
     }
 
-    fn parse_function(&mut self) -> Function {
+    fn parse_prototype(&mut self) -> FunctionPrototype {
         let return_ty = self.parse_ty();
         let name      = self.lexer.eat_identifier().to_string();
         let mut args  = Vec::new();
@@ -466,14 +466,32 @@ impl Parser {
             args.push((name, ty));
         });
 
-        let body = self.parse_body();
+        FunctionPrototype {
+            return_ty,
+            name,
+            args,
+        }
+    }
+
+    fn parse_function(&mut self) -> Function {
+        let is_extern = self.lexer.current() == &Token::Keyword(Keyword::Extern);
+        if  is_extern {
+            self.lexer.eat();
+        }
+
+        let prototype = self.parse_prototype();
+        let body      = match is_extern {
+            true => {
+                self.lexer.eat_expect(&Token::Semicolon);
+                None
+            }
+            false => {
+                Some(self.parse_body())
+            }
+        };
 
         Function {
-            prototype: FunctionPrototype {
-                name,
-                args,
-                return_ty,
-            },
+            prototype,
             body,
         }
     }

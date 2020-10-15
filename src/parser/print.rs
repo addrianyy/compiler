@@ -202,8 +202,12 @@ impl Function {
     pub fn print<W: Write>(&self, w: &mut W) -> io::Result<()> {
         self.prototype.print(w)?;
 
-        writeln!(w, "Body:")?;
-        print_body(&self.body, w, 1)?;
+        if let Some(body) = &self.body {
+            writeln!(w, "Body:")?;
+            print_body(&body, w, 1)?;
+        } else {
+            writeln!(w, "Extern")?;
+        }
 
         Ok(())
     }

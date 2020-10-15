@@ -41,7 +41,7 @@ impl Module {
     }
 
     pub fn call(&mut self, func: Function, args: Vec<Value>) -> Option<Value> {
-        match self.function(func).prototype.return_type.is_some() {
+        match self.function_prototype(func).return_type.is_some() {
             true => {
                 Some(self.with_output(|dst| {
                     Instruction::Call { dst: Some(dst), func, args }

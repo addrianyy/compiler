@@ -3,7 +3,7 @@ use std::cmp::Ordering;
 
 pub use crate::parser::{FunctionPrototype, Ty};
 use crate::parser::{BodyRef, Stmt, Expr, UnaryOp, BinaryOp, TyKind, ParsedModule};
-use crate::ir;
+use crate::{ir, runtimelib};
 
 fn to_ir_type(ty: &Ty) -> ir::Type {
     let (kind, indirection) = ty.destructure();
@@ -700,9 +700,23 @@ impl Compiler {
             };
 
             let name    = &function.prototype.name;
-            let ir_func = compiler.ir.create_function(name, return_ty, args_ir);
+            let ir_func = match function.body.is_some() {
+                true => {
+                    let ir_func = compiler.ir.create_function(name, return_ty, args_ir);
 
-            result_functions.push((function.prototype.clone(), ir_func));
+                    result_functions.push((function.prototype.clone(), ir_func));
+
+                    ir_func
+                }
+                false => {
+                    let address = runtimelib::runtime_function(name)
+                        .unwrap_or_else(|| panic!("Referenced unknown extern function {}.", name));
+
+                    unsafe {
+                        compiler.ir.create_external_function(name, return_ty, args_ir, address)
+                    }
+                }
+            };
 
             let codegen_func = CodegenFunction {
                 return_ty: function.prototype.return_ty,
@@ -715,32 +729,34 @@ impl Compiler {
         }
 
         for function in &module.functions {
-            compiler.variables.clear();
-            compiler.loops.clear();
+            if let Some(body) = &function.body {
+                compiler.variables.clear();
+                compiler.loops.clear();
 
-            let return_ty = &function.prototype.return_ty;
-            let ir_func   = compiler.functions.get(&function.prototype.name);
+                let return_ty = &function.prototype.return_ty;
+                let ir_func   = compiler.functions.get(&function.prototype.name);
 
-            compiler.ir.switch_function(ir_func.function);
+                compiler.ir.switch_function(ir_func.function);
 
-            compiler.variables.enter_scope();
+                compiler.variables.enter_scope();
 
-            for (index, (arg_name, arg_ty)) in function.prototype.args.iter().enumerate() {
-                // Move arguments from registers to stack to make sure that they are lvalues.
+                for (index, (arg_name, arg_ty)) in function.prototype.args.iter().enumerate() {
+                    // Move arguments from registers to stack to make sure that they are lvalues.
 
-                let storage = compiler.ir.stack_alloc(to_ir_type(arg_ty), 1);
-                let value   = compiler.ir.argument(index);
+                    let storage = compiler.ir.stack_alloc(to_ir_type(arg_ty), 1);
+                    let value   = compiler.ir.argument(index);
 
-                compiler.ir.store(storage, value);
+                    compiler.ir.store(storage, value);
 
-                let variable = CodegenValue::lvalue(*arg_ty, storage);
+                    let variable = CodegenValue::lvalue(*arg_ty, storage);
 
-                compiler.variables.insert(arg_name, variable);
+                    compiler.variables.insert(arg_name, variable);
+                }
+                
+                compiler.codegen_body(&body, return_ty, 0);
+
+                compiler.variables.exit_scope();
             }
-            
-            compiler.codegen_body(&function.body, return_ty, 0);
-
-            compiler.variables.exit_scope();
         }
 
         compiler.ir.finalize();

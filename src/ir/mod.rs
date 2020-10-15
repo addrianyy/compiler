@@ -36,9 +36,13 @@ pub struct Location(Label, usize);
 type Map<K, V> = BTreeMap<K, V>;
 type Set<T>    = BTreeSet<T>;
 
-type BasicBlock         = Vec<Instruction>;
-type CrossFunctionInfo  = Rc<Map<Function, Rc<FunctionPrototype>>>;
-type TypeInfo           = Map<Value, Type>;
+type BasicBlock = Vec<Instruction>;
+type TypeInfo   = Map<Value, Type>;
+
+struct CrossFunctionInfo {
+    info:    Map<Function, Rc<FunctionPrototype>>,
+    externs: Map<Function, usize>,
+}
 
 struct FunctionPrototype {
     name:        String,
@@ -52,19 +56,13 @@ struct FunctionData {
     blocks:          Map<Label, BasicBlock>,
     next_value:      Value,
     next_label:      Label,
-    function_info:   Option<CrossFunctionInfo>,
+    function_info:   Option<Rc<CrossFunctionInfo>>,
     type_info:       Option<TypeInfo>,
 }
 
 impl FunctionData {
-    fn new(name: String, return_type: Option<Type>, arguments: Vec<Type>) -> Self {
-        let argument_count = arguments.len();
-
-        let prototype = Rc::new(FunctionPrototype {
-            name,
-            return_type,
-            arguments,
-        });
+    fn new(prototype: Rc<FunctionPrototype>) -> Self {
+        let argument_count = prototype.arguments.len();
 
         let mut data = Self {
             prototype,
@@ -144,6 +142,7 @@ impl FunctionData {
         self.function_info
             .as_ref()
             .expect("Cannot propagate types without CFI.")
+            .info
             .get(&func)
             .expect("Unknown function is being called.")
     }
@@ -190,8 +189,51 @@ pub struct ActivePoint {
     label:    Label,
 }
 
+enum FunctionInternal {
+    Local(FunctionData),
+    Extern {
+        prototype: Rc<FunctionPrototype>,
+        address:   usize,
+    },
+}
+
+impl FunctionInternal {
+    fn unwrap_local(&self) -> &FunctionData {
+        match self {
+            FunctionInternal::Local(data) => {
+                data
+            }
+            _ => {
+                panic!("Tried to use extern function.");
+            }
+        }
+    }
+
+    fn unwrap_local_mut(&mut self) -> &mut FunctionData {
+        match self {
+            FunctionInternal::Local(data) => {
+                data
+            }
+            _ => {
+                panic!("Tried to use extern function.");
+            }
+        }
+    }
+
+    fn prototype(&self) -> &Rc<FunctionPrototype> {
+        match self {
+            FunctionInternal::Local(data) => {
+                &data.prototype
+            }
+            FunctionInternal::Extern { prototype, .. } => {
+                prototype
+            }
+        }
+    }
+}
+
 pub struct Module {
-    functions:     Map<Function, FunctionData>,
+    functions:     Map<Function, FunctionInternal>,
     active_point:  Option<ActivePoint>,
     next_function: Function,
     finalized:     bool,
@@ -207,18 +249,47 @@ impl Module {
         }
     }
 
-    pub fn create_function(&mut self, name: &str, return_type: Option<Type>,
-                           arguments: Vec<Type>) -> Function {
-        let data     = FunctionData::new(name.to_string(), return_type, arguments);
+    unsafe fn create_function_internal(&mut self, name: &str, return_type: Option<Type>, 
+                                       arguments: Vec<Type>, address: Option<usize>) -> Function {
+        let prototype = Rc::new(FunctionPrototype {
+            name: name.to_string(),
+            return_type,
+            arguments,
+        });
+
+        let internal = match address {
+            Some(address) => {
+                FunctionInternal::Extern {
+                    prototype,
+                    address,
+                }
+            }
+            None => {
+                FunctionInternal::Local(FunctionData::new(prototype))
+            }
+        };
+
         let function = self.next_function;
 
         self.next_function = Function(function.0.checked_add(1)
                                       .expect("Function IDs overflowed."));
 
-        assert!(self.functions.insert(function, data).is_none(), 
+        assert!(self.functions.insert(function, internal).is_none(), 
                 "Multiple functions with the same ID ({}).", function.0);
 
         function
+    }
+
+    pub fn create_function(&mut self, name: &str, return_type: Option<Type>, 
+                           arguments: Vec<Type>) -> Function {
+        unsafe {
+            self.create_function_internal(name, return_type, arguments, None)
+        }
+    }
+
+    pub unsafe fn create_external_function(&mut self, name: &str, return_type: Option<Type>,
+                                           arguments: Vec<Type>, address: usize) -> Function {
+        self.create_function_internal(name, return_type, arguments, Some(address))
     }
 
     pub fn is_terminated(&self, label: Option<Label>) -> bool {
@@ -232,12 +303,22 @@ impl Module {
         self.function_mut(self.active_point().function).allocate_label()
     }
 
+    fn function_prototype(&self, function: Function) -> &FunctionPrototype {
+        self.functions.get(&function)
+            .expect("Invalid function.")
+            .prototype()
+    }
+
     fn function(&self, function: Function) -> &FunctionData {
-        self.functions.get(&function).expect("Invalid function.")
+        self.functions.get(&function)
+            .expect("Invalid function.")
+            .unwrap_local()
     }
 
     fn function_mut(&mut self, function: Function) -> &mut FunctionData {
-        self.functions.get_mut(&function).expect("Invalid function.")
+        self.functions.get_mut(&function)
+            .expect("Invalid function.")
+            .unwrap_local_mut()
     }
 
     fn active_point(&self) -> ActivePoint {
@@ -266,17 +347,28 @@ impl Module {
         assert!(!self.finalized, "Cannot finalize module multiple times.");
 
         let mut function_info = Map::new();
+        let mut externs       = Map::new();
 
-        for (function, data) in &self.functions {
-            assert!(function_info.insert(*function, data.prototype.clone()).is_none(), 
+        for (function, internal) in &self.functions {
+            assert!(function_info.insert(*function, internal.prototype().clone()).is_none(), 
                     "Multiple functions with the same ID.");
+
+            if let FunctionInternal::Extern { address, .. } = internal {
+                assert!(externs.insert(*function, *address).is_none(),
+                        "Multiple functions with the same ID.");
+            }
         }
 
-        let function_info = Rc::new(function_info);
+        let cfi = Rc::new(CrossFunctionInfo {
+            info: function_info,
+            externs,
+        });
 
-        for data in self.functions.values_mut() {
-            data.function_info = Some(function_info.clone());
-            data.finalize();
+        for internal in self.functions.values_mut() {
+            if let FunctionInternal::Local(data) = internal {
+                data.function_info = Some(cfi.clone());
+                data.finalize();
+            }
         }
 
         self.finalized = true;
@@ -293,16 +385,20 @@ impl Module {
     }
 
     pub fn optimize(&mut self) {
-        for data in self.functions.values_mut() {
-            data.optimize();
+        for internal in self.functions.values_mut() {
+            if let FunctionInternal::Local(data) = internal {
+                data.optimize();
+            }
         }
     }
 
     pub fn generate_machine_code(&self) -> MachineCode {
         let mut backend = codegen::x86backend::X86Backend::new(self);
 
-        for (function, data) in &self.functions {
-            backend.generate_function(*function, data);
+        for (function, internal) in &self.functions {
+            if let FunctionInternal::Local(data) = internal {
+                backend.generate_function(*function, data);
+            }
         }
 
         let (buffer, functions) = backend.finalize();

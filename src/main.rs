@@ -1,6 +1,7 @@
 mod parser;
 mod compiler;
 mod ir;
+mod runtimelib;
 
 fn main() {
     let source       = std::fs::read_to_string("test/1.tc").unwrap();

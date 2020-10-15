@@ -68,6 +68,7 @@ struct X86FunctionData {
     stackallocs:      HashMap<Location, i64>,
     regalloc:         RegisterAllocation,
     frame_size:       usize,
+    used_registers:   Vec<asm::Reg>,
 }
 
 struct X86CodegenContext<'a> {
@@ -81,6 +82,22 @@ impl<'a> X86CodegenContext<'a> {
             location,
             context: self,
         }
+    }
+
+    fn save_registers(&self, asm: &mut Assembler) {
+        for reg in self.x86_data.used_registers.iter() {
+            asm.push(&[Reg(*reg)]);
+        }
+    }
+
+    fn restore_registers(&self, asm: &mut Assembler) {
+        for reg in self.x86_data.used_registers.iter().rev() {
+            asm.pop(&[Reg(*reg)]);
+        }
+    }
+
+    fn register_area_size(&self) -> usize {
+        self.x86_data.used_registers.len() * 8
     }
 }
 
@@ -149,6 +166,10 @@ impl X86Backend {
                                     Reg(*register));
         }
 
+        let used_registers: Vec<asm::Reg> = regalloc.used_regs.iter()
+            .map(|index| AVAILABLE_REGISTERS[*index])
+            .collect();
+
         // Make sure alignment is correct.
         assert!(free_storage_end_offset % 8 == 0);
         assert!(frame_size % 8 == 0);
@@ -183,6 +204,7 @@ impl X86Backend {
             stackallocs,
             regalloc,
             frame_size,
+            used_registers,
         }
     }
 
@@ -634,11 +656,37 @@ impl X86Backend {
                         });
                     }
                     Instruction::Call { dst, func: target, args } => {
+                        // At this point RSP is always 16 byte aligned.
                         // Always add shadow stack space.
-                        let arguments_stack_size = usize::max(args.len() * 8, 0x20) as i64;
+                        let mut arguments_stack_size = usize::max(args.len() * 8, 0x20);
 
-                        asm.sub(&[Reg(Rsp), Imm(arguments_stack_size)]);
+                        // Make sure that we keep the stack aligned.
+                        if arguments_stack_size % 16 != 0 {
+                            arguments_stack_size += 8;
+                        }
+
+                        let extern_address = func.function_info
+                            .as_ref()
+                            .expect("Cannot codegen call without CFI.")
+                            .externs
+                            .get(target)
+                            .cloned();
+
+                        if extern_address.is_some() {
+                            // If this is external call we must do special precautions.
+                            // We need to save all registers and restore them later.
+                            // TODO: Determine which registers do we need to save.
+                            cx.save_registers(asm);
+
+                            // Keep the stack aligned.
+                            if cx.register_area_size() % 16 != 0 {
+                                arguments_stack_size += 8;
+                            }
+                        }
+
+                        asm.sub(&[Reg(Rsp), Imm(arguments_stack_size as i64)]);
                         
+                        // Copy arguments to correct place.
                         for (index, arg) in args.iter().enumerate() {
                             let arg = r.resolve(*arg);
 
@@ -658,10 +706,25 @@ impl X86Backend {
                             }
                         }
 
-                        asm.call(&[Label(&format!("function_{}", target.0))]);
+                        // Perform the call.
+                        match extern_address {
+                            Some(address) => {
+                                asm.mov(&[Reg(Rax), Imm(address as i64)]);
+                                asm.call(&[Reg(Rax)]);
+                            }
+                            None => {
+                                asm.call(&[Label(&format!("function_{}", target.0))]);
+                            }
+                        }
 
-                        asm.add(&[Reg(Rsp), Imm(arguments_stack_size)]);
+                        asm.add(&[Reg(Rsp), Imm(arguments_stack_size as i64)]);
 
+                        if extern_address.is_some() {
+                            // Restore registers after external call.
+                            cx.restore_registers(asm);
+                        }
+
+                        // Copy the return value.
                         if let Some(dst) = dst {
                             let ty   = func.value_type(*dst);
                             let size = type_to_operand_size(ty, true);
@@ -692,21 +755,33 @@ impl super::Backend for X86Backend {
         let function_offset = self.asm.current_offset();
         let x86_data        = Self::x86_function_data(function);
 
+        let context = X86CodegenContext {
+            x86_data: &x86_data,
+            func:     function,
+        };
+
+        let mut frame_size = x86_data.frame_size;
+
+        // Frame size + size of pushed registers + size of RBP.
+        let expected_frame_size = frame_size + context.register_area_size() + 8;
+
+        assert!(expected_frame_size % 8 == 0, "Frame size is not even 8 byte aligned.");
+
+        // Before call stack is 16-byte aligned so after call it's not. Align the stack
+        // to 16 byte boundary.
+        if expected_frame_size % 16 == 0 {
+            frame_size += 8;
+        }
+
         self.asm.label(&format!("function_{}", function_id.0));
 
         // Emit function epilogue. Setup stack frame.
         self.asm.push(&[Reg(Rbp)]);
         self.asm.mov(&[Reg(Rbp), Reg(Rsp)]);
-        self.asm.sub(&[Reg(Rsp), Imm(x86_data.frame_size as i64)]);
-
-        let used_registers: Vec<asm::Reg> = x86_data.regalloc.used_regs.iter()
-            .map(|index| AVAILABLE_REGISTERS[*index])
-            .collect();
+        self.asm.sub(&[Reg(Rsp), Imm(frame_size as i64)]);
 
         // Save all value registers that we will clobber.
-        for reg in used_registers.iter() {
-            self.asm.push(&[Reg(*reg)]);
-        }
+        context.save_registers(&mut self.asm);
 
         // Move arguments to proper stack place.
         for (index, register) in ARGUMENT_REGISTERS.iter().enumerate()
@@ -718,19 +793,12 @@ impl super::Backend for X86Backend {
             self.asm.mov(&[Mem(Some(Rbp), None, offset as i64), Reg(*register)]);
         }
 
-        let context = X86CodegenContext {
-            x86_data: &x86_data,
-            func:     function,
-        };
-
         self.generate_function_body(&context);
 
         self.asm.label(".exit");
 
         // Restore all value registers that we clobbered.
-        for reg in used_registers.iter().rev() {
-            self.asm.pop(&[Reg(*reg)]);
-        }
+        context.restore_registers(&mut self.asm);
 
         // Restore previous stack state and return.
         self.asm.mov(&[Reg(Rsp), Reg(Rbp)]);
