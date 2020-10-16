@@ -156,11 +156,11 @@ impl FunctionData {
     }
 
     fn optimize(&mut self) {
-        let passes: &[Box<dyn passes::Pass>]  = &[
-            Box::new(passes::TestPass),
-            Box::new(passes::RemoveDeadCodePass),
-            Box::new(passes::RemoveAliasesPass),
-            Box::new(passes::RemoveNopsPass),
+        let passes: &[&dyn passes::Pass]  = &[
+            &passes::StackallocToRegPass,
+            &passes::RemoveDeadCodePass,
+            &passes::RemoveAliasesPass,
+            &passes::RemoveNopsPass,
         ];
 
         loop {

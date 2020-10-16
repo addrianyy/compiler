@@ -89,4 +89,16 @@ impl FunctionData {
 
         creators
     }
+
+    pub(super) fn find_uses(&self, value: Value) -> Vec<Location> {
+        let mut uses = Vec::new();
+
+        self.for_each_instruction(|location, instruction| {
+            if instruction.read_values().iter().any(|x| *x == value) {
+                uses.push(location);
+            }
+        });
+
+        uses
+    }
 }
