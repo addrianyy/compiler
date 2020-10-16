@@ -41,17 +41,18 @@ fn main() {
     /*
     let mut ir = ir::Module::new();
 
-    let func = ir.create_function("abc123", None, vec![]);
+    let func = ir.create_function("abc123", Some(ir::Type::U64), vec![]);
     ir.switch_function(func);
-
 
     let a    = ir.iconst(999u32, ir::Type::U64);
     let b    = ir.iconst(1324u32, ir::Type::U64);
     let c    = ir.arithmetic_binary(b, ir::BinaryOp::Add, a);
-    let d    = ir.arithmetic_unary(ir::UnaryOp::Neg, c);
-    ir.ret(None);
+    let d    = ir.arithmetic_binary(b, ir::BinaryOp::Add, a);
+    let x    = ir.arithmetic_binary(d, ir::BinaryOp::Add, c);
+    ir.ret(Some(x));
 
     ir.finalize();
+    ir.optimize();
 
     ir.dump_function_text(func, &mut std::io::stdout()).unwrap();
 

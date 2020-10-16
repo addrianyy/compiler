@@ -1,28 +1,12 @@
-use super::{FunctionData, Location, Value, Instruction, Pass};
+use super::{FunctionData, Instruction, Pass};
 
 pub struct StackallocToRegPass;
-
-impl StackallocToRegPass {
-    fn find_stackallocs(&self, function: &FunctionData) -> Vec<(Value, Location)> {
-        let mut results = Vec::new();
-
-        function.for_each_instruction(|location, inst| {
-            if let Instruction::StackAlloc { dst, size, .. } = inst {
-                if *size == 1 {
-                    results.push((*dst, location));
-                }
-            }
-        });
-
-        results
-    }
-}
 
 impl Pass for StackallocToRegPass {
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let mut did_something = false;
 
-        let stackallocs = self.find_stackallocs(function);
+        let stackallocs = function.find_stackallocs(Some(1));
         let dominators  = function.dominators();
 
         'skip: for (value, location) in stackallocs {
@@ -34,13 +18,15 @@ impl Pass for StackallocToRegPass {
             for &location in &uses {
                 match function.instruction(location) {
                     Instruction::Store { ptr, value: stored_value } => {
-                        if *ptr == value {
-                            if store.is_some() {
-                                continue 'skip;
-                            }
-
-                            store = Some((location, *stored_value));
+                        if *ptr != value || *stored_value == value {
+                            continue 'skip;
                         }
+
+                        if store.is_some() {
+                            continue 'skip;
+                        }
+
+                        store = Some((location, *stored_value));
                     }
                     Instruction::Load { ptr, .. } => {
                         if *ptr == value {

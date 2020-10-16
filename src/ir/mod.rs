@@ -161,6 +161,8 @@ impl FunctionData {
             &passes::RemoveDeadCodePass,
             &passes::RemoveAliasesPass,
             &passes::RemoveNopsPass,
+            &passes::DeduplicatePass,
+            &passes::RemoveIneffectiveOperationsPass,
         ];
 
         loop {

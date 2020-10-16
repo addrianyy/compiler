@@ -1,12 +1,19 @@
 extern void print(u8* str);
 
 i32 main(u8* buffer) {
-	u8 d[128];
-	
-	d[0] = 'a';
-	d[1] = 0u8;
+    i32 index = 0;
 
-	print(d);
+    while (buffer[index]) {
+        buffer[index] += 1u8;
+        index += 1;
+    }
+
+    u8 d[128];
+    
+    d[0] = 'a';
+    d[1] = 0u8;
+
+    print(d);
 
     return 312;
 }

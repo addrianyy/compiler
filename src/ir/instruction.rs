@@ -1,12 +1,12 @@
 use super::{Value, Function, Label, Type};
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum UnaryOp {
     Neg,
     Not,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum BinaryOp {
     Add,
     Sub,
@@ -23,7 +23,7 @@ pub enum BinaryOp {
     Xor,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum IntPredicate {
     Equal,
     NotEqual,
@@ -33,7 +33,7 @@ pub enum IntPredicate {
     GteS,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Cast {
     ZeroExtend,
     SignExtend,
@@ -118,7 +118,160 @@ pub enum Instruction {
     Nop,
 }
 
+#[derive(PartialEq, Eq, Hash)]
+pub enum DirectedParam {
+    In (Param),
+    Out(Param),
+}
+
+#[derive(PartialEq, Eq, Hash)]
+pub enum Param {
+    UnaryOp(UnaryOp),
+    BinaryOp(BinaryOp),
+    IntPredicate(IntPredicate),
+    Value(Value),
+    Label(Label),
+    Cast(Cast),
+    Type(Type),
+    Integer(usize),
+    Function(Function),
+}
+
 impl Instruction {
+    pub fn input_parameters(&self) -> Vec<Param> {
+        self.parameters()
+            .into_iter()
+            .filter_map(|param| {
+                if let DirectedParam::In(param) = param {
+                    Some(param)
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+    pub fn parameters(&self) -> Vec<DirectedParam> {
+        use DirectedParam::{In, Out};
+
+        match *self {
+            Instruction::ArithmeticUnary { dst, op, value } => {
+                vec![
+                    Out(Param::Value(dst)),
+                    In(Param::Value(value)),
+                    In(Param::UnaryOp(op)),
+                ]
+            }
+            Instruction::ArithmeticBinary { dst, a, op, b } => {
+                vec![
+                    Out(Param::Value(dst)),
+                    In(Param::Value(a)),
+                    In(Param::BinaryOp(op)),
+                    In(Param::Value(b)),
+                ]
+            }
+            Instruction::IntCompare { dst, a, pred, b } => {
+                vec![
+                    Out(Param::Value(dst)),
+                    In(Param::Value(a)),
+                    In(Param::IntPredicate(pred)),
+                    In(Param::Value(b)),
+                ]
+            }
+            Instruction::Load { dst, ptr } => {
+                vec![
+                    Out(Param::Value(dst)),
+                    In(Param::Value(ptr)),
+                ]
+            }
+            Instruction::Store { ptr, value } => {
+                vec![
+                    In(Param::Value(ptr)),
+                    In(Param::Value(value)),
+                ]
+            }
+            Instruction::Call { dst, func, ref args } => {
+                let mut params = Vec::new();
+
+                if let Some(dst) = dst {
+                    params.push(Out(Param::Value(dst)));
+                }
+
+                params.push(In(Param::Function(func)));
+
+                for arg in args {
+                    params.push(In(Param::Value(*arg)));
+                }
+
+                params
+            }
+            Instruction::Branch { target } => {
+                vec![
+                    In(Param::Label(target)),
+                ]
+            }
+            Instruction::BranchCond { on_true, on_false, value } => {
+                vec![
+                    In(Param::Label(on_true)),
+                    In(Param::Label(on_false)),
+                    In(Param::Value(value)),
+                ]
+            }
+            Instruction::StackAlloc { dst, ty, size } => {
+                vec![
+                    Out(Param::Value(dst)),
+                    In(Param::Type(ty)),
+                    In(Param::Integer(size)),
+                ]
+            }
+            Instruction::Return { value } => {
+                if let Some(value) = value {
+                    vec![In(Param::Value(value))]
+                } else {
+                    vec![]
+                }
+            }
+            Instruction::Const { dst, ty, imm } => {
+                vec![
+                    Out(Param::Value(dst)),
+                    In(Param::Type(ty)),
+                    In(Param::Integer(imm as usize)),
+                ]
+            }
+            Instruction::GetElementPtr { dst, source, index } => {
+                vec![
+                    Out(Param::Value(dst)),
+                    In(Param::Value(source)),
+                    In(Param::Value(index)),
+                ]
+            }
+            Instruction::Cast { dst, cast, value, ty } => {
+                vec![
+                    Out(Param::Value(dst)),
+                    In(Param::Cast(cast)),
+                    In(Param::Value(value)),
+                    In(Param::Type(ty)),
+                ]
+            }
+            Instruction::Select { dst, cond, on_true, on_false } => {
+                vec![
+                    Out(Param::Value(dst)),
+                    In(Param::Value(cond)),
+                    In(Param::Value(on_true)),
+                    In(Param::Value(on_false)),
+                ]
+            }
+            Instruction::Alias { dst, value } => {
+                vec![
+                    Out(Param::Value(dst)),
+                    In(Param::Value(value)),
+                ]
+            }
+            Instruction::Nop => {
+                vec![]
+            }
+        }
+    }
+
     pub fn created_value(&self) -> Option<Value> {
         match *self {
             Instruction::ArithmeticUnary  { dst, .. } => Some(dst),
