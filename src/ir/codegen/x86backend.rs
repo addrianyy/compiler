@@ -10,15 +10,20 @@ use asm::Reg::*;
 use asm::Operand::{Reg, Imm, Mem, Label};
 
 const AVAILABLE_REGISTERS: &[asm::Reg] = &[
+    // Non-volatile, don't require REX.
     Rdi,
     Rsi,
-    R10,
-    R11,
+    Rbx,
+
+    // Non-volatile, require REX.
     R12,
     R13,
     R14,
     R15,
-    Rbx,
+
+    // Volatile, require REX.
+    R10,
+    R11,
 ];
 
 const ARGUMENT_REGISTERS: &[asm::Reg] = &[
@@ -27,6 +32,32 @@ const ARGUMENT_REGISTERS: &[asm::Reg] = &[
     R8,
     R9,
 ];
+
+fn win64_is_volatile(register: asm::Reg) -> bool {
+    !matches!(register, Rbx | Rbp | Rdi | Rsi | Rsp | R12 | R13 | R14 | R15)
+}
+
+struct Registers {
+    registers: Vec<asm::Reg>,
+}
+
+impl Registers {
+    fn save_size(&self) -> usize {
+        self.registers.len() * 8
+    }
+
+    fn save_registers(&self, asm: &mut Assembler) {
+        for register in self.registers.iter() {
+            asm.push(&[Reg(*register)]);
+        }
+    }
+
+    fn restore_registers(&self, asm: &mut Assembler) {
+        for register in self.registers.iter().rev() {
+            asm.pop(&[Reg(*register)]);
+        }
+    }
+}
 
 fn type_to_operand_size(ty: Type, pointer: bool) -> OperandSize {
     fn type_to_size(ty: Type, pointer: bool) -> usize {
@@ -64,11 +95,12 @@ impl OperandExt for Operand<'static> {
 }
 
 struct X86FunctionData {
-    place_to_operand: HashMap<Place, Operand<'static>>,
-    stackallocs:      HashMap<Location, i64>,
-    regalloc:         RegisterAllocation,
-    frame_size:       usize,
-    used_registers:   Vec<asm::Reg>,
+    place_to_operand:   HashMap<Place, Operand<'static>>,
+    stackallocs:        HashMap<Location, i64>,
+    regalloc:           RegisterAllocation,
+    frame_size:         usize,
+    used_registers:     Registers,
+    volatile_registers: Registers,
 }
 
 struct X86CodegenContext<'a> {
@@ -82,22 +114,6 @@ impl<'a> X86CodegenContext<'a> {
             location,
             context: self,
         }
-    }
-
-    fn save_registers(&self, asm: &mut Assembler) {
-        for reg in self.x86_data.used_registers.iter() {
-            asm.push(&[Reg(*reg)]);
-        }
-    }
-
-    fn restore_registers(&self, asm: &mut Assembler) {
-        for reg in self.x86_data.used_registers.iter().rev() {
-            asm.pop(&[Reg(*reg)]);
-        }
-    }
-
-    fn register_area_size(&self) -> usize {
-        self.x86_data.used_registers.len() * 8
     }
 }
 
@@ -170,6 +186,16 @@ impl X86Backend {
             .map(|index| AVAILABLE_REGISTERS[*index])
             .collect();
 
+        let volatile_registers: Vec<asm::Reg> = used_registers.iter()
+            .filter_map(|register| {
+                if win64_is_volatile(*register) {
+                    Some(*register)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
         // Make sure alignment is correct.
         assert!(free_storage_end_offset % 8 == 0);
         assert!(frame_size % 8 == 0);
@@ -204,7 +230,12 @@ impl X86Backend {
             stackallocs,
             regalloc,
             frame_size,
-            used_registers,
+            used_registers: Registers {
+                registers: used_registers,
+            },
+            volatile_registers: Registers {
+                registers: volatile_registers,
+            },
         }
     }
 
@@ -674,12 +705,11 @@ impl X86Backend {
 
                         if extern_address.is_some() {
                             // If this is external call we must do special precautions.
-                            // We need to save all registers and restore them later.
-                            // TODO: Determine which registers do we need to save.
-                            cx.save_registers(asm);
+                            // We need to save all volatile registers and restore them later.
+                            cx.x86_data.volatile_registers.save_registers(asm);
 
                             // Keep the stack aligned.
-                            if cx.register_area_size() % 16 != 0 {
+                            if cx.x86_data.volatile_registers.save_size() % 16 != 0 {
                                 arguments_stack_size += 8;
                             }
                         }
@@ -721,7 +751,7 @@ impl X86Backend {
 
                         if extern_address.is_some() {
                             // Restore registers after external call.
-                            cx.restore_registers(asm);
+                            cx.x86_data.volatile_registers.restore_registers(asm);
                         }
 
                         // Copy the return value.
@@ -763,7 +793,7 @@ impl super::Backend for X86Backend {
         let mut frame_size = x86_data.frame_size;
 
         // Frame size + size of pushed registers + size of RBP.
-        let expected_frame_size = frame_size + context.register_area_size() + 8;
+        let expected_frame_size = frame_size + context.x86_data.used_registers.save_size() + 8;
 
         assert!(expected_frame_size % 8 == 0, "Frame size is not even 8 byte aligned.");
 
@@ -781,7 +811,7 @@ impl super::Backend for X86Backend {
         self.asm.sub(&[Reg(Rsp), Imm(frame_size as i64)]);
 
         // Save all value registers that we will clobber.
-        context.save_registers(&mut self.asm);
+        context.x86_data.used_registers.save_registers(&mut self.asm);
 
         // Move arguments to proper stack place.
         for (index, register) in ARGUMENT_REGISTERS.iter().enumerate()
@@ -798,7 +828,7 @@ impl super::Backend for X86Backend {
         self.asm.label(".exit");
 
         // Restore all value registers that we clobbered.
-        context.restore_registers(&mut self.asm);
+        context.x86_data.used_registers.restore_registers(&mut self.asm);
 
         // Restore previous stack state and return.
         self.asm.mov(&[Reg(Rsp), Reg(Rbp)]);
