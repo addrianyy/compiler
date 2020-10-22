@@ -120,6 +120,12 @@ impl FunctionData {
         })
     }
 
+    fn last_instruction(&self, label: Label) -> &Instruction {
+        let block = &self.blocks[&label];
+
+        &block[block.len() - 1]
+    }
+
     fn is_terminated(&self, label: Label) -> bool {
         let block = &self.blocks[&label];
 
@@ -163,6 +169,7 @@ impl FunctionData {
             &passes::RemoveNopsPass,
             &passes::DeduplicatePass,
             &passes::RemoveIneffectiveOperationsPass,
+            &passes::SimplifyCFGPass,
         ];
 
         loop {
@@ -251,8 +258,33 @@ impl Module {
         }
     }
 
+    fn function_prototype(&self, function: Function) -> &FunctionPrototype {
+        self.functions.get(&function)
+            .expect("Invalid function.")
+            .prototype()
+    }
+
+    fn function(&self, function: Function) -> &FunctionData {
+        self.functions.get(&function)
+            .expect("Invalid function.")
+            .unwrap_local()
+    }
+
+    fn function_mut(&mut self, function: Function) -> &mut FunctionData {
+        self.functions.get_mut(&function)
+            .expect("Invalid function.")
+            .unwrap_local_mut()
+    }
+
+    fn active_point(&self) -> ActivePoint {
+        self.active_point.expect("No active point specified.")
+    }
+
+    #[track_caller]
     unsafe fn create_function_internal(&mut self, name: &str, return_type: Option<Type>, 
                                        arguments: Vec<Type>, address: Option<usize>) -> Function {
+        assert!(!self.finalized, "Cannot create functions after finalization.");
+
         let prototype = Rc::new(FunctionPrototype {
             name: name.to_string(),
             return_type,
@@ -294,6 +326,12 @@ impl Module {
         self.create_function_internal(name, return_type, arguments, Some(address))
     }
 
+    pub fn create_label(&mut self) -> Label {
+        assert!(!self.finalized, "Cannot create labels after finalization.");
+
+        self.function_mut(self.active_point().function).allocate_label()
+    }
+
     pub fn is_terminated(&self, label: Option<Label>) -> bool {
         let point = self.active_point();
         let label = label.unwrap_or(point.label);
@@ -301,41 +339,8 @@ impl Module {
         self.function(point.function).is_terminated(label)
     }
 
-    pub fn create_label(&mut self) -> Label {
-        self.function_mut(self.active_point().function).allocate_label()
-    }
-
-    fn function_prototype(&self, function: Function) -> &FunctionPrototype {
-        self.functions.get(&function)
-            .expect("Invalid function.")
-            .prototype()
-    }
-
-    fn function(&self, function: Function) -> &FunctionData {
-        self.functions.get(&function)
-            .expect("Invalid function.")
-            .unwrap_local()
-    }
-
-    fn function_mut(&mut self, function: Function) -> &mut FunctionData {
-        self.functions.get_mut(&function)
-            .expect("Invalid function.")
-            .unwrap_local_mut()
-    }
-
-    fn active_point(&self) -> ActivePoint {
-        self.active_point.expect("No active point specified.")
-    }
-
     pub fn argument(&self, index: usize) -> Value {
         self.function(self.active_point().function).argument_values[index]
-    }
-
-    pub fn switch_label(&mut self, label: Label) {
-        let point = self.active_point.as_mut()
-            .expect("Tried to switch labels without active point.");
-
-        point.label = label;
     }
 
     pub fn switch_function(&mut self, function: Function) {
@@ -343,6 +348,13 @@ impl Module {
             function,
             label: Label(0),
         });
+    }
+
+    pub fn switch_label(&mut self, label: Label) {
+        let point = self.active_point.as_mut()
+            .expect("Tried to switch labels without active point.");
+
+        point.label = label;
     }
 
     pub fn finalize(&mut self) {
@@ -387,6 +399,8 @@ impl Module {
     }
 
     pub fn optimize(&mut self) {
+        assert!(self.finalized, "Cannot optimize before finalization.");
+
         for internal in self.functions.values_mut() {
             if let FunctionInternal::Local(data) = internal {
                 data.optimize();
@@ -395,6 +409,8 @@ impl Module {
     }
 
     pub fn generate_machine_code(&self) -> MachineCode {
+        assert!(self.finalized, "Cannot generate machine code before finalization.");
+
         let mut backend = codegen::x86backend::X86Backend::new(self);
 
         for (function, internal) in &self.functions {

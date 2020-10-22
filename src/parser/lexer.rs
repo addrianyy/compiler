@@ -416,18 +416,6 @@ impl Lexer {
     }
 
     #[track_caller]
-    #[allow(unused)]
-    pub fn eat_keyword(&mut self) -> &Keyword {
-        let token = self.eat();
-
-        if let Token::Keyword(keyword) = token {
-            keyword
-        } else {
-            panic!("Expected keyword, got {:?}.", token);
-        }
-    }
-
-    #[track_caller]
     pub fn eat_identifier(&mut self) -> &str {
         let token = self.eat();
 
@@ -435,18 +423,6 @@ impl Lexer {
             expected
         } else {
             panic!("Expected identifier, got {:?}.", token);
-        }
-    }
-
-    #[track_caller]
-    #[allow(unused)]
-    pub fn eat_literal(&mut self) -> &Literal {
-        let token = self.eat();
-
-        if let Token::Literal(expected) = token {
-            expected
-        } else {
-            panic!("Expected literal, got {:?}.", token);
         }
     }
 

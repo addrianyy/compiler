@@ -16,7 +16,6 @@ impl Pass for RemoveIneffectiveOperationsPass {
             }
         });
 
-
         for label in function.reachable_labels() {
             let body = function.blocks.get_mut(&label).unwrap();
 

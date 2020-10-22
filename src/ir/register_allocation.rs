@@ -192,8 +192,6 @@ impl FunctionData {
 
                     block_allocs.0.insert(output, place);
                     inst_allocs.insert(output, place);
-
-                    println!("Allocated {} to {:?}", output, place);
                 }
 
                 assert!(inst_alloc_state.insert(location, inst_allocs).is_none(), 

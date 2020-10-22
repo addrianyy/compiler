@@ -13,7 +13,10 @@ i32 main(u8* buffer) {
     d[0] = 'a';
     d[1] = 0u8;
 
-    print(d);
+    for (;;) {
+        print(d);
+    }
+
 
     return 312;
 }

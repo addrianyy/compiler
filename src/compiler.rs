@@ -67,14 +67,8 @@ impl CodegenValue {
         }
     }
 
-    #[allow(unused)]
     fn is_lvalue(&self) -> bool {
         self.value_type == ValueType::Lvalue
-    }
-
-    #[allow(unused)]
-    fn is_rvalue(&self) -> bool {
-        self.value_type == ValueType::Rvalue
     }
 }
 
