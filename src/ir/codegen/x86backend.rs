@@ -101,6 +101,7 @@ struct X86FunctionData {
     frame_size:         usize,
     used_registers:     Registers,
     volatile_registers: Registers,
+    noreturn:           bool,
 }
 
 struct X86CodegenContext<'a> {
@@ -201,19 +202,26 @@ impl X86Backend {
         assert!(frame_size % 8 == 0);
 
         let mut stackallocs = HashMap::new();
+        let mut noreturn    = true;
 
         for label in func.reachable_labels() {
             let body = &func.blocks[&label];
 
-            for (inst_id, inst) in body.iter().enumerate() {
-                if let Instruction::StackAlloc { ty, size, .. } = inst {
-                    let size = ty.size() * size;
-                    let size = (size + 7) & !7;
+            for (inst_id, instruction) in body.iter().enumerate() {
+                match instruction {
+                    Instruction::StackAlloc { ty, size, .. } => {
+                        let size = ty.size() * size;
+                        let size = (size + 7) & !7;
 
-                    free_storage_end_offset -= size as i64;
-                    frame_size              += size;
+                        free_storage_end_offset -= size as i64;
+                        frame_size              += size;
 
-                    stackallocs.insert(Location(label, inst_id), free_storage_end_offset);
+                        stackallocs.insert(Location(label, inst_id), free_storage_end_offset);
+                    }
+                    Instruction::Return { .. } => {
+                        noreturn = false;
+                    }
+                    _ => {}
                 }
             }
         }
@@ -236,16 +244,15 @@ impl X86Backend {
             volatile_registers: Registers {
                 registers: volatile_registers,
             },
+            noreturn,
         }
     }
 
-    fn generate_function_body(&mut self, cx: &X86CodegenContext) -> bool {
+    fn generate_function_body(&mut self, cx: &X86CodegenContext) {
         let asm  = &mut self.asm;
         let func = cx.func;
 
         let labels = cx.func.reachable_labels();
-
-        let mut has_return = false;
 
         for (index, &label) in labels.iter().enumerate() {
             asm.label(&format!(".{}", label));
@@ -600,8 +607,6 @@ impl X86Backend {
                         }
                     }
                     Instruction::Return { value } => {
-                        has_return = true;
-
                         if let Some(value) = value {
                             let ty = func.value_type(*value);
 
@@ -778,8 +783,6 @@ impl X86Backend {
                 }
             }
         }
-
-        has_return
     }
 }
 
@@ -802,8 +805,11 @@ impl super::Backend for X86Backend {
 
         let mut frame_size = x86_data.frame_size;
 
-        // Frame size + size of pushed registers + size of RBP.
-        let expected_frame_size = frame_size + context.x86_data.used_registers.save_size() + 8;
+        // Frame size + size of pushed registers (if function returns) + size of RBP.
+        let mut expected_frame_size = frame_size +  8;
+        if !context.x86_data.noreturn {
+            expected_frame_size += context.x86_data.used_registers.save_size();
+        }
 
         assert!(expected_frame_size % 8 == 0, "Frame size is not even 8 byte aligned.");
 
@@ -818,10 +824,15 @@ impl super::Backend for X86Backend {
         // Emit function epilogue. Setup stack frame.
         self.asm.push(&[Reg(Rbp)]);
         self.asm.mov(&[Reg(Rbp), Reg(Rsp)]);
-        self.asm.sub(&[Reg(Rsp), Imm(frame_size as i64)]);
 
-        // Save all value registers that we will clobber.
-        context.x86_data.used_registers.save_registers(&mut self.asm);
+        if frame_size > 0 {
+            self.asm.sub(&[Reg(Rsp), Imm(frame_size as i64)]);
+        }
+
+        if !context.x86_data.noreturn {
+            // Save all value registers that we will clobber.
+            context.x86_data.used_registers.save_registers(&mut self.asm);
+        }
 
         // Move arguments to proper stack place.
         for (index, register) in ARGUMENT_REGISTERS.iter().enumerate()
@@ -833,7 +844,9 @@ impl super::Backend for X86Backend {
             self.asm.mov(&[Mem(Some(Rbp), None, offset as i64), Reg(*register)]);
         }
 
-        if self.generate_function_body(&context) {
+        self.generate_function_body(&context);
+
+        if !context.x86_data.noreturn {
             self.asm.label(".exit");
 
             // Restore all value registers that we clobbered.
