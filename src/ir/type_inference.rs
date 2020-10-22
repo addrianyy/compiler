@@ -183,10 +183,13 @@ impl FunctionData {
                 assert!(value == self.prototype.return_type, "Return instruction operand type \
                         must be the same function as function return type.");
             }
-            Instruction::Const { dst, ty, .. } => {
+            Instruction::Const { dst, ty, imm, .. } => {
                 let dst = get_type!(*dst);
 
-                assert!(ty.is_normal_type(), "Only normal types are allowed.");
+                if *ty == Type::U1 {
+                    assert!(*imm == 0 || *imm == 1, "Invalid U1 constant {}.", imm);
+                }
+
                 assert!(dst == *ty, "Const value instruction operand types must be the same.");
             }
             Instruction::GetElementPtr { dst, source, index } => {

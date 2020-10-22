@@ -170,6 +170,7 @@ impl FunctionData {
             &passes::DeduplicatePass,
             &passes::RemoveIneffectiveOperationsPass,
             &passes::SimplifyCFGPass,
+            &passes::ConstPropagatePass,
         ];
 
         loop {

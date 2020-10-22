@@ -169,7 +169,16 @@ impl FunctionData {
                 }
             }
             Instruction::Const { dst, ty, imm } => {
-                write!(w, "{} = {} {}", dst, ty, imm)?;
+                match *ty {
+                    Type::U1 => {
+                        match imm {
+                            0 => write!(w, "{} = {} false", dst, ty)?,
+                            1 => write!(w, "{} = {} true", dst, ty)?,
+                            _ => panic!("Invalid U1 constant {}.", imm),
+                        }
+                    }
+                    _ => write!(w, "{} = {} {}", dst, ty, imm)?,
+                }
             }
             Instruction::GetElementPtr { dst, source, index } => {
                 write!(w, "{} = getelementptr {} {}, {} {}", dst, self.display_type(*dst),

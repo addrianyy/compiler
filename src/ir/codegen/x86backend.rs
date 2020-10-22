@@ -259,6 +259,10 @@ impl X86Backend {
                     Instruction::Const { dst, ty, imm } => {
                         let size = type_to_operand_size(*ty, false);
 
+                        if *ty == Type::U1 {
+                            assert!(*imm == 0 || *imm == 1, "Invalid U1 constant {}.", imm);
+                        }
+
                         asm.with_size(size, |asm| {
                             let dst = r.resolve(*dst);
 

@@ -44,6 +44,15 @@ impl FunctionData {
         }
     }
 
+    pub(super) fn for_each_instruction_mut(&mut self, 
+                                           mut callback: impl FnMut(Location, &mut Instruction)) {
+        for label in self.reachable_labels() {
+            for (inst_id, inst) in self.blocks.get_mut(&label).unwrap().iter_mut().enumerate() {
+                callback(Location(label, inst_id), inst)
+            }
+        }
+    }
+
     pub(super) fn validate_ssa(&self) {
         let labels     = self.reachable_labels();
         let dominators = self.dominators();
