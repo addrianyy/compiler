@@ -239,11 +239,13 @@ impl X86Backend {
         }
     }
 
-    fn generate_function_body(&mut self, cx: &X86CodegenContext) {
+    fn generate_function_body(&mut self, cx: &X86CodegenContext) -> bool {
         let asm  = &mut self.asm;
         let func = cx.func;
 
         let labels = cx.func.reachable_labels();
+
+        let mut has_return = false;
 
         for (index, &label) in labels.iter().enumerate() {
             asm.label(&format!(".{}", label));
@@ -598,6 +600,8 @@ impl X86Backend {
                         }
                     }
                     Instruction::Return { value } => {
+                        has_return = true;
+
                         if let Some(value) = value {
                             let ty = func.value_type(*value);
 
@@ -774,6 +778,8 @@ impl X86Backend {
                 }
             }
         }
+
+        has_return
     }
 }
 
@@ -827,17 +833,17 @@ impl super::Backend for X86Backend {
             self.asm.mov(&[Mem(Some(Rbp), None, offset as i64), Reg(*register)]);
         }
 
-        self.generate_function_body(&context);
+        if self.generate_function_body(&context) {
+            self.asm.label(".exit");
 
-        self.asm.label(".exit");
+            // Restore all value registers that we clobbered.
+            context.x86_data.used_registers.restore_registers(&mut self.asm);
 
-        // Restore all value registers that we clobbered.
-        context.x86_data.used_registers.restore_registers(&mut self.asm);
-
-        // Restore previous stack state and return.
-        self.asm.mov(&[Reg(Rsp), Reg(Rbp)]);
-        self.asm.pop(&[Reg(Rbp)]);
-        self.asm.ret(&[]);
+            // Restore previous stack state and return.
+            self.asm.mov(&[Reg(Rsp), Reg(Rbp)]);
+            self.asm.pop(&[Reg(Rbp)]);
+            self.asm.ret(&[]);
+        }
 
         let function_size = self.asm.current_offset() - function_offset;
 
