@@ -27,3 +27,13 @@ i32 test(i32* x) {
 
     return 1;
 }
+
+i32 abc(i32 a) {
+    if (a != 0) {
+        return 123;
+    } else {
+        return 321;
+    }
+
+    return 1;
+}

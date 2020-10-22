@@ -1,75 +1,12 @@
-use std::collections::HashMap;
-
 use super::{FunctionData, Instruction, Pass};
-use super::super::{Value, Type, BinaryOp, UnaryOp, Cast, IntPredicate};
-
-type Const = u64;
-
-#[derive(Copy, Clone, PartialEq, Eq)]
-enum ConstType {
-    U1,
-    U8,
-    U16,
-    U32,
-    U64,
-}
-
-impl ConstType {
-    fn from_ir_type(ty: Type) -> Option<ConstType> {
-        match ty {
-            Type::U1  => Some(ConstType::U1),
-            Type::U8  => Some(ConstType::U8),
-            Type::U16 => Some(ConstType::U16),
-            Type::U32 => Some(ConstType::U32),
-            Type::U64 => Some(ConstType::U64),
-            _         => None,
-        }
-    }
-
-    fn ir_type(&self) -> Type {
-        match self {
-            ConstType::U1  => Type::U1,
-            ConstType::U8  => Type::U8,
-            ConstType::U16 => Type::U16,
-            ConstType::U32 => Type::U32,
-            ConstType::U64 => Type::U64,
-        }
-    }
-}
+use super::super::{Type, BinaryOp, UnaryOp, Cast, IntPredicate, ConstType};
 
 pub struct ConstPropagatePass;
-
-impl ConstPropagatePass {
-   fn constant_values(&self, function: &FunctionData) -> HashMap<Value, (ConstType, Const)> {
-        let mut consts = HashMap::new();
-
-        function.for_each_instruction(|_location, instruction| {
-            match instruction {
-                Instruction::Const { dst, imm, ty } => {
-                    let ty = ConstType::from_ir_type(*ty)
-                        .unwrap_or_else(|| panic!("Invalid constant type {:?}.", ty));
-
-                    assert!(consts.insert(*dst, (ty, *imm as Const)).is_none(),
-                            "Multiple constant value creators.");
-                }
-                Instruction::Alias { dst, value } => {
-                    if let Some(&(ty, value)) = consts.get(value) {
-                        assert!(consts.insert(*dst, (ty, value)).is_none(),
-                                "Multiple constant value creators.");
-                    }
-                }
-                _ => {}
-            }
-        });
-
-        consts
-    }
-}
 
 impl Pass for ConstPropagatePass {
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let mut did_something = false;
-        let mut consts        = self.constant_values(function);
+        let mut consts        = function.constant_values();
 
         macro_rules! propagate_unary {
             ($op: expr, $value: expr, $unsigned: ty) => {{

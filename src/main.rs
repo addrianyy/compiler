@@ -56,6 +56,36 @@ fn main() {
     /*
     let mut ir = ir::Module::new();
 
+    let func = ir.create_function("test", Some(ir::Type::U16), vec![ir::Type::U16]);
+    ir.switch_function(func);
+
+    let arg  = ir.argument(0);
+    let zero = ir.iconst(0u32, ir::Type::U16);
+
+    let x = ir.iconst(12u32, ir::Type::U16);
+    let y = ir.iconst(33u32, ir::Type::U16);
+
+    let result = ir.compare_eq(arg, zero);
+    let result = ir.select(result, x, y);
+    let result = ir.compare_eq(result, y);
+
+    {
+        let a = ir.iconst(1337u32, ir::Type::U16);
+        let b = ir.iconst(420u32, ir::Type::U16);
+        let end = ir.select(result, a, b);
+        ir.ret(Some(end));
+    }
+
+    ir.finalize();
+    ir.optimize();
+
+
+    ir.dump_function_text(func, &mut std::io::stdout()).unwrap();
+    */
+
+    /*
+    let mut ir = ir::Module::new();
+
     let func = ir.create_function("test", Some(ir::Type::U16), Vec::new());
     ir.switch_function(func);
 

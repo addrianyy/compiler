@@ -1,6 +1,74 @@
-use super::{FunctionData, Value, Location, Label, Dominators, Map, Instruction};
+use super::{FunctionData, Value, Location, Label, Dominators, Map, Instruction, Type};
+
+pub(super) type Const = u64;
+
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub(super) enum ConstType {
+    U1,
+    U8,
+    U16,
+    U32,
+    U64,
+}
+
+impl ConstType {
+    pub(super) fn from_ir_type(ty: Type) -> Option<ConstType> {
+        match ty {
+            Type::U1  => Some(ConstType::U1),
+            Type::U8  => Some(ConstType::U8),
+            Type::U16 => Some(ConstType::U16),
+            Type::U32 => Some(ConstType::U32),
+            Type::U64 => Some(ConstType::U64),
+            _         => None,
+        }
+    }
+
+    pub(super) fn ir_type(&self) -> Type {
+        match self {
+            ConstType::U1  => Type::U1,
+            ConstType::U8  => Type::U8,
+            ConstType::U16 => Type::U16,
+            ConstType::U32 => Type::U32,
+            ConstType::U64 => Type::U64,
+        }
+    }
+}
 
 impl FunctionData {
+    pub(super) fn constant_values(&self) -> Map<Value, (ConstType, Const)> {
+        let mut consts = Map::new();
+
+        self.for_each_instruction(|_location, instruction| {
+            match instruction {
+                Instruction::Const { dst, imm, ty } => {
+                    let ty = ConstType::from_ir_type(*ty)
+                        .unwrap_or_else(|| panic!("Invalid constant type {:?}.", ty));
+
+                    let imm = *imm as Const;
+                    let imm = match ty {
+                        ConstType::U1  => imm & 1,
+                        ConstType::U8  => imm as u8  as u64,
+                        ConstType::U16 => imm as u16 as u64,
+                        ConstType::U32 => imm as u32 as u64,
+                        ConstType::U64 => imm as u64 as u64,
+                    };
+
+                    assert!(consts.insert(*dst, (ty, imm)).is_none(),
+                            "Multiple constant value creators.");
+                }
+                Instruction::Alias { dst, value } => {
+                    if let Some(&(ty, value)) = consts.get(value) {
+                        assert!(consts.insert(*dst, (ty, value)).is_none(),
+                                "Multiple constant value creators.");
+                    }
+                }
+                _ => {}
+            }
+        });
+
+        consts
+    }
+
     pub(super) fn dominates(&self, dominators: &Dominators,
                             dominator: Label, target: Label) -> bool {
         let mut current = Some(target);

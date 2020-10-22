@@ -18,6 +18,7 @@ pub use ty::Type;
 pub use instruction::{UnaryOp, BinaryOp, IntPredicate, Cast};
 pub use codegen::MachineCode;
 use instruction::Instruction;
+use analysis::ConstType;
 use codegen::Backend;
 use graph::Dominators;
 
@@ -171,6 +172,7 @@ impl FunctionData {
             &passes::RemoveIneffectiveOperationsPass,
             &passes::SimplifyCFGPass,
             &passes::ConstPropagatePass,
+            &passes::SimplifyComparesPass,
         ];
 
         loop {

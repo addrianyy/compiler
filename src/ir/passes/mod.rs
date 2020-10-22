@@ -4,6 +4,7 @@ mod remove_aliases;
 mod remove_nops;
 mod deduplicate;
 mod simplify_cfg;
+mod simplify_compares;
 mod const_propagate;
 mod remove_ineffective_operations;
 
@@ -14,6 +15,7 @@ pub(super) trait Pass {
 }
 
 pub(super) use remove_ineffective_operations::RemoveIneffectiveOperationsPass;
+pub(super) use simplify_compares::SimplifyComparesPass;
 pub(super) use stackalloc_to_reg::StackallocToRegPass;
 pub(super) use remove_dead_code::RemoveDeadCodePass;
 pub(super) use const_propagate::ConstPropagatePass;
