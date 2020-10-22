@@ -7,7 +7,7 @@ impl Pass for RemoveNopsPass {
         for label in function.reachable_labels() {
             function.blocks.get_mut(&label)
                 .unwrap()
-                .retain(|inst| !matches!(inst, Instruction::Nop));
+                .retain(|instruction| !matches!(instruction, Instruction::Nop));
         }
 
         // This optimization pass shouldn't change anything so just return false.
