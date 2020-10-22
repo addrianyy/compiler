@@ -1,8 +1,8 @@
 [package]
-name = "compiler"
+name = "turbo_ir"
 version = "0.1.0"
 authors = ["addrianyy <adrianvpl@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-turbo_ir = { path = "turbo_ir" }
+asm = { git = "https://github.com/addrianyy/assembler" }

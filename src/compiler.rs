@@ -3,7 +3,9 @@ use std::cmp::Ordering;
 
 pub use crate::parser::{FunctionPrototype, Ty};
 use crate::parser::{BodyRef, Stmt, Expr, UnaryOp, BinaryOp, TyKind, ParsedModule};
-use crate::{ir, runtimelib};
+use crate::runtimelib;
+
+use turbo_ir as ir;
 
 fn to_ir_type(ty: &Ty) -> ir::Type {
     let (kind, indirection) = ty.destructure();

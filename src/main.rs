@@ -1,6 +1,5 @@
 mod parser;
 mod compiler;
-mod ir;
 mod runtimelib;
 
 fn recreate_directory(path: &str) {

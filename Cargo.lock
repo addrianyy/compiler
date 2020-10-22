@@ -9,5 +9,12 @@ source = "git+https://github.com/addrianyy/assembler#eaf99215f0873dc1d9faa664261
 name = "compiler"
 version = "0.1.0"
 dependencies = [
+ "turbo_ir",
+]
+
+[[package]]
+name = "turbo_ir"
+version = "0.1.0"
+dependencies = [
  "asm",
 ]

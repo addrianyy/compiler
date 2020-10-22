@@ -3,7 +3,6 @@ use super::{Module, Instruction, Value, Label, Function, Type, UnaryOp, BinaryOp
 
 macro_rules! implement_arithmetic_unary {
     ($name: ident, $op: expr) => {
-        #[allow(unused)]
         pub fn $name(&mut self, value: Value) -> Value {
             self.arithmetic_unary($op, value)
         }
@@ -12,7 +11,6 @@ macro_rules! implement_arithmetic_unary {
 
 macro_rules! implement_arithmetic_binary {
     ($name: ident, $op: expr) => {
-        #[allow(unused)]
         pub fn $name(&mut self, a: Value, b: Value) -> Value {
             self.arithmetic_binary(a, $op, b)
         }
@@ -21,7 +19,6 @@ macro_rules! implement_arithmetic_binary {
 
 macro_rules! implement_compare {
     ($name: ident, $predicate: expr) => {
-        #[allow(unused)]
         pub fn $name(&mut self, a: Value, b: Value) -> Value {
             self.int_compare(a, $predicate, b)
         }
@@ -30,7 +27,6 @@ macro_rules! implement_compare {
 
 macro_rules! implement_cast {
     ($name: ident, $cast: expr) => {
-        #[allow(unused)]
         pub fn $name(&mut self, value: Value, ty: Type) -> Value {
             self.cast(value, ty, $cast)
         }

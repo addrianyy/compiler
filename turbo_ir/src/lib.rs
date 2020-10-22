@@ -190,7 +190,7 @@ impl FunctionData {
         self.validate_ssa();
     }
 
-    pub(super) fn value_count(&self) -> usize {
+    pub fn value_count(&self) -> usize {
         self.next_value.0
     }
 }
@@ -249,6 +249,12 @@ pub struct Module {
     active_point:  Option<ActivePoint>,
     next_function: Function,
     finalized:     bool,
+}
+
+impl Default for Module {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Module {
@@ -324,6 +330,7 @@ impl Module {
         }
     }
 
+    #[allow(clippy::missing_safety_doc)]
     pub unsafe fn create_external_function(&mut self, name: &str, return_type: Option<Type>,
                                            arguments: Vec<Type>, address: usize) -> Function {
         self.create_function_internal(name, return_type, arguments, Some(address))
@@ -391,12 +398,10 @@ impl Module {
         self.finalized = true;
     }
 
-    #[allow(unused)]
     pub fn dump_function_graph(&self, function: Function, path: &str) {
         self.function(function).dump_graph(path)
     }
 
-    #[allow(unused)]
     pub fn dump_function_text<W: Write>(&self, function: Function, w: &mut W) -> io::Result<()> {
         self.function(function).dump_text(w)
     }
