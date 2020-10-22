@@ -172,6 +172,10 @@ impl Pass for RemoveIneffectiveOperationsPass {
                         BinaryOp::Mul => {
                             if ca == Some(0) || cb == Some(0) {
                                 replacement = constant!(0);
+                            } else if cb == Some(1) {
+                                replacement = alias!(a);
+                            } else if ca == Some(1) {
+                                replacement = alias!(b);
                             } else if ca == Some(2) {
                                 let value = b;
 

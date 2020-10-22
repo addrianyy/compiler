@@ -37,3 +37,7 @@ i32 abc(i32 a) {
 
     return 1;
 }
+
+i32 xd(i32 a) {
+    return (~(~a & 0xffffffff)) * (1 + (a ^ a));
+}
