@@ -56,26 +56,20 @@ fn main() {
     /*
     let mut ir = ir::Module::new();
 
-    let func = ir.create_function("test", Some(ir::Type::U16), vec![ir::Type::U16]);
+    let func = ir.create_function("test", Some(ir::Type::U64), vec![ir::Type::U16]);
     ir.switch_function(func);
 
     let arg  = ir.argument(0);
 
+    /*
     let zero = ir.iconst(0u32, ir::Type::U16);
     let ones = ir.iconst(u16::MAX, ir::Type::U16);
     let two  = ir.iconst(2u32, ir::Type::U16);
-
-    let x = ir.mul(arg, zero);
-    ir.ret(Some(x));
     */
 
-    /*
-    let zero = ir.stack_alloc(ir::Type::U16, 123);
-    let xd   = ir.iconst(0u32, ir::Type::U16);
-
-    let v= ir.get_element_ptr(zero, xd);
-    ir.store(v, arg);
-    ir.ret(None);
+    let x = ir.zero_extend(arg, ir::Type::U32);
+    let x = ir.zero_extend(x, ir::Type::U64);
+    ir.ret(Some(x));
 
     ir.finalize();
     ir.optimize();

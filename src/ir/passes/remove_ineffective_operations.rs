@@ -80,6 +80,22 @@ impl Pass for RemoveIneffectiveOperationsPass {
                         }
                     }
                 }
+                Instruction::Cast { dst, ty, value, cast } => {
+                    let creator = creators.get(&value).map(|location| {
+                        function.instruction(*location)
+                    });
+
+                    if let Some(Instruction::Cast { cast: p_cast, value: p_value, .. }) = creator {
+                        if *p_cast == cast {
+                            replacement = Some(Instruction::Cast {
+                                dst,
+                                cast,
+                                value: *p_value,
+                                ty,
+                            });
+                        }
+                    }
+                }
                 Instruction::ArithmeticBinary { dst, a, op, b } => {
                     let ca = consts.get(&a).copied();
                     let cb = consts.get(&b).copied();
