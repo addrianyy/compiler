@@ -85,7 +85,7 @@ fn main() {
 
 
     ir.finalize();
-    ir.optimize();
+    //ir.optimize();
 
     /*
     let mcode  = ir.generate_machine_code();
@@ -95,8 +95,8 @@ fn main() {
     */
 
     ir.dump_function_text(func, &mut std::io::stdout()).unwrap();
-    */
 
+    */
 
     /*
     let mut ir = ir::Module::new();

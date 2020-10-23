@@ -177,11 +177,21 @@ impl FunctionData {
                             _ => panic!("Invalid U1 constant {}.", imm),
                         }
                     }
-                    _ => write!(w, "{} = {} {}", dst, ty, imm)?,
+                    _ => {
+                        let value = match *ty {
+                            Type::U8  => *imm as u8  as i8  as i64,
+                            Type::U16 => *imm as u16 as i16 as i64,
+                            Type::U32 => *imm as u32 as i32 as i64,
+                            Type::U64 => *imm as i64,
+                            _         => *imm as i64,
+                        };
+
+                        write!(w, "{} = {} {}", dst, ty, value)?;
+                    }
                 }
             }
             Instruction::GetElementPtr { dst, source, index } => {
-                write!(w, "{} = getelementptr {} {}, {} {}", dst, self.display_type(*dst),
+                write!(w, "{} = gep {} {}, {} {}", dst, self.display_type(*source),
                        source, self.display_type(*index), index)?;
             }
             Instruction::Cast { dst, cast, value, ty } => {

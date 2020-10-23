@@ -62,13 +62,13 @@ impl Registers {
 fn type_to_operand_size(ty: Type, pointer: bool) -> OperandSize {
     fn type_to_size(ty: Type, pointer: bool) -> usize {
         if ty.is_pointer() {
-            assert!(pointer, "Found disallowed pointer.");
+            assert!(pointer, "Found unexpected pointer.");
 
             return 8;
         }
 
         // U1 -> U8.
-        if !ty.is_normal_type() {
+        if ty == Type::U1 {
             return 1;
         }
 

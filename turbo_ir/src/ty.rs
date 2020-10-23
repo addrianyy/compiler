@@ -51,14 +51,6 @@ impl Type {
         self.indirection == 0 && self.kind != TypeKind::U1
     }
 
-    pub fn can_be_in_memory(&self) -> bool {
-        self.kind != TypeKind::U1
-    }
-
-    pub fn is_normal_type(&self) -> bool {
-        self.kind != TypeKind::U1
-    }
-
     pub fn size(&self) -> usize {
         if self.is_pointer() {
             return 8;
@@ -73,4 +65,3 @@ impl Type {
         }
     }
 }
-

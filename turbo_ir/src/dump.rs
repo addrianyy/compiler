@@ -31,7 +31,7 @@ fn save_svg_graph(graph_desc: &str, output_path: &str) {
     }
 
     assert!(output.status.success() && no_output,
-        "`dot` failed to generate graph.");
+            "`dot` failed to generate graph.");
 }
 
 impl FunctionData {
@@ -80,8 +80,8 @@ impl FunctionData {
                 _        => format!("{}", label),
             };
 
-            dotgraph.push_str(&format!(r#"{} [shape=box fontname="Consolas" label="{}\n"#,
-                label, name));
+            dotgraph.push_str(&format!(r#"{} [shape=box fontname="Consolas" label="{}:\n"#,
+                                       label, name));
 
             if label == Label(0) {
                 dotgraph.push_str(&format!(r#"\n{}\n"#, label));

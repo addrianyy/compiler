@@ -127,8 +127,6 @@ impl FunctionData {
 
                 assert!(dst == stripped,
                         "Load instruction destination must have pointee type.");
-
-                assert!(ptr.can_be_in_memory(), "Invalid in-memory type.");
             }
             Instruction::Store { ptr, value } => {
                 let ptr   = get_type!(*ptr);
@@ -139,8 +137,6 @@ impl FunctionData {
 
                 assert!(value == stripped,
                         "Store instruction value must have pointee type.");
-
-                assert!(ptr.can_be_in_memory(), "Invalid in-memory type.");
             }
             Instruction::Call { dst, func, args } => {
                 let prototype = self.function_prototype(*func);
@@ -174,8 +170,6 @@ impl FunctionData {
                 assert!(*size > 0, "Stack alloc cannot allocate 0 sized array.");
                 assert!(dst.strip_ptr().expect("Stack alloc destination must be pointer.") == *ty,
                         "Stack alloc destination must be pointer to input type.");
-
-                assert!(dst.can_be_in_memory(), "Invalid in-memory type.");
             }
             Instruction::Return { value } => {
                 let value = value.map(|value| get_type!(value));
@@ -199,8 +193,7 @@ impl FunctionData {
 
                 assert!(index.is_arithmetic(), "GEP index must be arithmetic.");
                 assert!(dst == source, "GEP destination and source must be the same type.");
-                assert!(dst.is_pointer() && dst.can_be_in_memory(),
-                        "GEP input type is not valid pointer.");
+                assert!(dst.is_pointer(), "GEP input type is not valid pointer.");
             }
             Instruction::Cast { dst, cast, value, ty } => {
                 let dst   = get_type!(*dst);
@@ -225,8 +218,7 @@ impl FunctionData {
                         assert!(value.size() == ty.size(), "{} must cast between values \
                                 with the same size.", cast);
 
-                        assert!(value.is_normal_type() && ty.is_normal_type(), 
-                                "Only normal types are allowed.");
+                        assert!(value != Type::U1 && *ty != Type::U1, "Cannot bitcast U1s.");
                     }
                 }
             }

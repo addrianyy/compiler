@@ -155,9 +155,6 @@ impl FunctionData {
     }
 
     fn finalize(&mut self) {
-        assert!(self.prototype.return_type != Some(Type::U1),
-                "Functions cannot return U1.");
-
         self.validate_ssa();
         self.build_type_info();
     }
