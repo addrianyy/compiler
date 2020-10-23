@@ -8,14 +8,6 @@ i32 main(u8* buffer) {
         index += 1;
     }
 
-    u8 d[128];
-    
-    d[0] = 'a';
-    d[1] = 0u8;
-
-    print(d);
-
-
     return 312;
 }
 

@@ -53,6 +53,41 @@ fn main() {
     }
 
     /*
+    use turbo_ir as ir;
+
+    let mut ir = ir::Module::new();
+
+    let func = ir.create_function("test", Some(ir::Type::U32), vec![ir::Type::U32]);
+
+    ir.switch_function(func);
+
+    let arg = ir.argument(0);
+
+    let arg = ir.argument(0);
+    let a   = ir.iconst(1u32, ir::Type::U32);
+    let b   = ir.iconst(0u32, ir::Type::U32);
+    let c   = ir.iconst(2u32, ir::Type::U32);
+
+    let cond = ir.compare_eq(arg, c);
+    let res  = ir.select(cond, a, b);
+
+    ir.ret(Some(res));
+
+
+
+    ir.finalize();
+    ir.optimize();
+
+    let mcode  = ir.generate_machine_code();
+    let buffer = mcode.function_buffer(func);
+
+    std::fs::write("asm_dump.bin", buffer).unwrap();
+
+    ir.dump_function_text(func, &mut std::io::stdout()).unwrap();
+    */
+
+
+    /*
     let mut ir = ir::Module::new();
 
     let func = ir.create_function("test", Some(ir::Type::U64), vec![ir::Type::U16]);

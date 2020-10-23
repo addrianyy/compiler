@@ -102,6 +102,7 @@ struct X86FunctionData {
     used_registers:     Registers,
     volatile_registers: Registers,
     noreturn:           bool,
+    usage_count:        Vec<u32>,
 }
 
 struct X86CodegenContext<'a> {
@@ -115,6 +116,10 @@ impl<'a> X86CodegenContext<'a> {
             location,
             context: self,
         }
+    }
+
+    fn usage_count(&self, value: Value) -> u32 {
+        self.x86_data.usage_count[value.0]
     }
 }
 
@@ -203,6 +208,7 @@ impl X86Backend {
 
         let mut stackallocs = HashMap::new();
         let mut noreturn    = true;
+        let mut usage_count = vec![0; func.value_count()];
 
         for label in func.reachable_labels() {
             let body = &func.blocks[&label];
@@ -222,6 +228,10 @@ impl X86Backend {
                         noreturn = false;
                     }
                     _ => {}
+                }
+
+                for value in instruction.read_values() {
+                    usage_count[value.0] += 1;
                 }
             }
         }
@@ -245,24 +255,163 @@ impl X86Backend {
                 registers: volatile_registers,
             },
             noreturn,
+            usage_count,
+        }
+    }
+
+    fn generate_from_patterns(&mut self, cx: &X86CodegenContext, location: Location,
+                              instructions: &[Instruction],
+                              next_label:   Option<super::super::Label>) -> usize {
+        let func = cx.func;
+        let asm  = &mut self.asm;
+
+        let next_location = Location(location.0, location.1 + 1);
+
+        let resolver      = cx.resolver(location);
+        let next_resolver = cx.resolver(next_location);
+
+        match instructions {
+            [Instruction::IntCompare { dst, a, pred, b },
+             Instruction::BranchCond { value, on_true, on_false }, ..]
+                 if dst == value && cx.usage_count(*dst) == 1 =>
+            {
+                let on_true_s:  &str = &format!(".{}", on_true);
+                let on_false_s: &str = &format!(".{}", on_false);
+
+                let ty   = func.value_type(*a);
+                let size = type_to_operand_size(ty, false);
+                
+                let mut pred = *pred;
+                let mut a    = resolver.resolve(*a);
+                let mut b    = resolver.resolve(*b);
+
+                let fallthrough = match next_label {
+                    Some(x) if x == *on_true  => Some(true),
+                    Some(x) if x == *on_false => Some(false),
+                    _                         => None,
+                };
+
+                if let Some(true) = fallthrough {
+                    // Invert the condition if we are falling through to the true label.
+                    match pred {
+                        IntPredicate::Equal    => pred = IntPredicate::NotEqual,
+                        IntPredicate::NotEqual => pred = IntPredicate::Equal,
+                        _                      => std::mem::swap(&mut a, &mut b),
+                    }
+                }
+
+                asm.with_size(size, |asm| {
+                    if a.is_memory() && b.is_memory() {
+                        asm.mov(&[Reg(Rax), a]);
+                        asm.cmp(&[Reg(Rax), b]);
+                    } else {
+                        asm.cmp(&[a, b]);
+                    }
+                });
+
+                let (target_label, other_label) = fallthrough.map(|fallthrough| {
+                    match fallthrough {
+                        false => (on_true_s,  None),
+                        true  => (on_false_s, None),
+                    }
+                }).unwrap_or((on_true_s, Some(on_false_s)));
+
+                let operands = &[Label(target_label)];
+
+                match pred {
+                    IntPredicate::Equal    => asm.je(operands),
+                    IntPredicate::NotEqual => asm.jne(operands),
+                    IntPredicate::GtS      => asm.jg(operands),
+                    IntPredicate::GteS     => asm.jge(operands),
+                    IntPredicate::GtU      => asm.jb(operands),
+                    IntPredicate::GteU     => asm.jbe(operands),
+                }
+
+                if let Some(other_label) = other_label {
+                    asm.jmp(&[Label(other_label)]);
+                }
+
+                2
+            }
+            [Instruction::IntCompare { dst: cmp_dst, a, pred, b },
+             Instruction::Select     { dst: sel_dst, cond, on_true, on_false }, ..]
+                if cond == cmp_dst && cx.usage_count(*cmp_dst) == 1 =>
+            {
+                let cmp_ty   = func.value_type(*a);
+                let cmp_size = type_to_operand_size(cmp_ty, false);
+
+                let sel_ty   = func.value_type(*on_true);
+                let sel_size = type_to_operand_size(sel_ty, false);
+
+                let a        = resolver.resolve(*a);
+                let b        = resolver.resolve(*b);
+                let on_true  = next_resolver.resolve(*on_true);
+                let on_false = next_resolver.resolve(*on_false);
+                let dst      = next_resolver.resolve(*sel_dst);
+
+                asm.with_size(sel_size, |asm| asm.mov(&[Reg(Rcx), on_false]));
+
+                asm.with_size(cmp_size, |asm| {
+                    if a.is_memory() && b.is_memory() {
+                        asm.mov(&[Reg(Rax), a]);
+                        asm.cmp(&[Reg(Rax), b]);
+                    } else {
+                        asm.cmp(&[a, b]);
+                    }
+                });
+
+                let operands = &[Reg(Rcx), on_true];
+
+                // Always with the same size because there is no 8 bit cmovcc instruction.
+                match pred {
+                    IntPredicate::Equal    => asm.cmove(operands),
+                    IntPredicate::NotEqual => asm.cmovne(operands),
+                    IntPredicate::GtS      => asm.cmovg(operands),
+                    IntPredicate::GteS     => asm.cmovge(operands),
+                    IntPredicate::GtU      => asm.cmovb(operands),
+                    IntPredicate::GteU     => asm.cmovbe(operands),
+                }
+
+                asm.with_size(sel_size, |asm| asm.mov(&[dst, Reg(Rcx)]));
+
+                2
+            }
+            _ => 0,
         }
     }
 
     fn generate_function_body(&mut self, cx: &X86CodegenContext) {
-        let asm  = &mut self.asm;
-        let func = cx.func;
-
+        let func   = cx.func;
         let labels = cx.func.reachable_labels();
 
         for (index, &label) in labels.iter().enumerate() {
-            asm.label(&format!(".{}", label));
+            self.asm.label(&format!(".{}", label));
 
             let body       = &cx.func.blocks[&label];
             let next_label = labels.get(index + 1).copied();
 
-            for (inst_id, inst) in body.iter().enumerate() {
+            let mut inst_id                      = 0;
+            let mut instructions: &[Instruction] = body;
+
+            while !instructions.is_empty() {
                 let location = Location(label, inst_id);
+                let inst     = &instructions[0];
                 let r        = cx.resolver(location);
+
+                let generated = self.generate_from_patterns(cx, location, instructions,
+                                                            next_label);
+
+                if generated > 0 {
+                    inst_id     += generated;
+                    instructions = &instructions[generated..];
+
+                    continue;
+                }
+
+                inst_id      += 1;
+                instructions = &instructions[1..];
+
+                let asm = &mut self.asm;
 
                 match inst {
                     Instruction::Const { dst, ty, imm } => {
@@ -692,7 +841,7 @@ impl X86Backend {
                             asm.cmp(&[cond, Imm(0)]);
                         });
 
-                        // Here because there is no 8 bit cmovne instruction.
+                        // Always with the same size because there is no 8 bit cmovcc instruction.
                         asm.cmovne(&[Reg(Rax), on_true]);
 
                         asm.with_size(size, |asm| {

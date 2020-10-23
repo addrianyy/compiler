@@ -44,7 +44,7 @@ impl FunctionData {
         let creators      = self.value_creators();
 
         for label in self.reachable_labels() {
-            let mut used = vec![false; self.next_value.0];
+            let mut used = vec![false; self.value_count()];
 
             for target_label in self.traverse_bfs(label, false) {
                 for inst in &self.blocks[&target_label] {
