@@ -270,6 +270,8 @@ impl X86Backend {
         let resolver      = cx.resolver(location);
         let next_resolver = cx.resolver(next_location);
 
+        // Handle some instruction patterns in a more effective way. X86ReorderPass will try
+        // to create these patterns if possible.
         match instructions {
             [Instruction::IntCompare { dst, a, pred, b },
              Instruction::BranchCond { value, on_true, on_false }, ..]

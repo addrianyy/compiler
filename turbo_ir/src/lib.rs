@@ -173,6 +173,7 @@ impl FunctionData {
             &passes::SimplifyCFGPass,
             &passes::ConstPropagatePass,
             &passes::SimplifyComparesPass,
+            &passes::X86ReorderPass,
         ];
 
         loop {

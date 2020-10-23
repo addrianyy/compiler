@@ -68,20 +68,31 @@ fn main() {
     let b   = ir.iconst(0u32, ir::Type::U32);
     let c   = ir.iconst(2u32, ir::Type::U32);
 
+    let la = ir.create_label();
+    let lb = ir.create_label();
     let cond = ir.compare_eq(arg, c);
-    let res  = ir.select(cond, a, b);
+    let x    = ir.iconst(123u32, ir::Type::U32);
+    //let res  = ir.select(cond, a, b);
+    let x    = ir.branch_cond(cond, la, lb);
 
-    ir.ret(Some(res));
 
+    ir.switch_label(la);
+    ir.ret(Some(a));
+
+
+    ir.switch_label(lb);
+    ir.ret(Some(b));
 
 
     ir.finalize();
     ir.optimize();
 
+    /*
     let mcode  = ir.generate_machine_code();
     let buffer = mcode.function_buffer(func);
 
     std::fs::write("asm_dump.bin", buffer).unwrap();
+    */
 
     ir.dump_function_text(func, &mut std::io::stdout()).unwrap();
     */
