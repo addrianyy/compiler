@@ -1,6 +1,12 @@
 use std::collections::{HashMap, HashSet};
 
 use super::{FunctionData, Instruction, Pass};
+use super::super::{Value, Location};
+
+struct LoadInfo {
+    loaded_ptr:  Value,
+    is_safe_ptr: bool,
+}
 
 pub struct DeduplicatePass;
 
@@ -41,79 +47,150 @@ impl Pass for DeduplicatePass {
             safe_ptrs.insert(value);
         }
 
+        let mut dedup_list: HashMap<_, Vec<Location>> = HashMap::new();
+
+        // Create a list of all deduplication candidates for a given instruction key.
+        function.for_each_instruction(|location, instruction| {
+            // Skip instructions which cannot be deduplicated.
+            match instruction {
+                Instruction::Nop          => return,
+                Instruction::Alias { .. } => return,
+                x if x.is_volatile()      => return,
+                _                         => {}
+            }
+
+            // Create a unique key that will describe instruction type and its input operands.
+            let key = (std::mem::discriminant(instruction), instruction.input_parameters());
+
+            // Get deduplication candidates for this instruction key.
+            let candidates = dedup_list.entry(key)
+                .or_insert_with(Vec::new);
+
+            // Add current instruction as a candidate.
+            candidates.push(location);
+        });
+
+        let dominators = function.dominators();
+
         for label in function.reachable_labels() {
-            // TODO: Currently deduplication works on blocks. Make it work on whole 
-            // function.
+            let mut body = &function.blocks[&label];
+            let body_len = body.len();
 
-            let mut dedup_list: HashMap<_, usize> = HashMap::new();
-            let body = function.blocks.get_mut(&label).unwrap();
-
-            'skip_dedup: for inst_id in 0..body.len() {
-                let inst = &body[inst_id];
-
-                // Skip instructions which cannot be deduplicated.
-                match inst {
-                    Instruction::Nop          => continue,
-                    Instruction::Alias { .. } => continue,
-                    x if x.is_volatile()      => continue,
-                    _                         => {}
-                }
+            for inst_id in 0..body_len {
+                let instruction = &body[inst_id];
 
                 // Create a unique key that will describe instruction type and input operands.
-                let key = (std::mem::discriminant(inst), inst.input_parameters());
+                let key = (std::mem::discriminant(instruction), instruction.input_parameters());
 
-                // Get a candidate for deduplication.
-                if let Some(&prev_index) = dedup_list.get(&key) {
-                    if let Instruction::Load { ptr, .. } = inst {
-                        // Special care needs to be taken if we want to deduplicate load.
-                        // Something inbetween two instructions may have modified loaded ptr
-                        // and output value will be different.
+                let mut deduplication = None;
+                let mut best_icount   = None;
 
-                        let loaded_ptr = *ptr;
-                        let safe       = safe_ptrs.contains(&loaded_ptr);
+                // Get candidates for deduplication. If this instruction
+                // cannot be deduplicated it will always return None.
+                if let Some(candidates) = dedup_list.get(&key) {
+                    // Find the best candidate for deduplication.
+                    for &candidate in candidates {
+                        let location = Location(label, inst_id);
 
-                        // Go through every instruction inbetween and make sure
-                        // that nothing stored to this pointer.
-                        for inst in &body[prev_index + 1..inst_id] {
-                            match inst {
-                                Instruction::Call  { .. }      => continue 'skip_dedup,
-                                Instruction::Store { ptr, .. } => {
-                                    // Make sure that this store didn't actually affect
-                                    // pointer loaded by candidate to deduplicate.
-                                    if *ptr == loaded_ptr {
-                                        continue 'skip_dedup;
+                        // Deduplicating loads is a special case. Get information about the load.
+                        let load_info = match instruction {
+                            Instruction::Load { ptr, .. } => {
+                                Some(LoadInfo {
+                                    loaded_ptr: *ptr,
+                                    is_safe_ptr: safe_ptrs.contains(ptr),
+                                })
+                            }
+                            _ => None,
+                        };
+
+                        let mut instruction_count = 0;
+
+                        // Check if the path from candidate location to current location is
+                        // valid. This will also count all hit instructions.
+                        let valid = function.validate_path_ex(&dominators, candidate, location,
+                            |instruction| {
+                                // Count instructions hit when validating path. This will be
+                                // used to determine which deduplication candidate is the best.
+                                instruction_count += 1;
+
+                                if let Some(load_info) = &load_info {
+                                    // Special care needs to be taken if we want to deduplicate
+                                    // load. Something inbetween two instructions may have
+                                    // modified loaded ptr and output value will be different.
+
+                                    match instruction {
+                                        Instruction::Call  { .. } => {
+                                            // It's hard to reason about calls so
+                                            // they are always deduplication barrier for loads.
+
+                                            false
+                                        }
+                                        Instruction::Store { ptr, .. } => {
+                                            // Make sure that this store didn't actually affect
+                                            // pointer loaded by candidate to deduplicate.
+                                            if *ptr == load_info.loaded_ptr {
+                                                return false;
+                                            }
+
+                                            // This isn't a safe pointer and we don't know
+                                            // if two pointer don't alias.
+                                            // We cannot deduplicate it.
+                                            // TODO: Use more sophisticated pointer origin
+                                            // analysis to make sure they don't alias.
+                                            if !load_info.is_safe_ptr {
+                                                return false;
+                                            }
+
+                                            // Stored pointer for sure doesn't
+                                            // alias loaded pointer.
+                                            true
+                                        }
+                                        _ => true,
                                     }
-
-                                    // This isn't a safe pointer and we don't know
-                                    // if two pointer don't alias. We cannot deduplicate it.
-                                    // TODO: Use more sophisticated pointer origin
-                                    // analysis to make sure they don't alias.
-                                    if !safe {
-                                        continue 'skip_dedup;
-                                    }
+                                } else {
+                                    // Instruction is always valid if deduplicated instruction
+                                    // isn't a load.
+                                    true
                                 }
-                                _ => {},
+                            }
+                        );
+
+                        if valid {
+                            // If it's a valid candidate, check if it's closer then the
+                            // best one. If it is then set it as current best.
+                            let better = match best_icount {
+                                Some(icount) => instruction_count < icount,
+                                None         => true
+                            };
+
+                            if better {
+                                deduplication = Some(candidate);
+                                best_icount   = Some(instruction_count);
                             }
                         }
                     }
+                }
 
-                    // This is a valid candidate for deduplication.
+                if let Some(deduplication) = deduplication {
+                    // We have found a valid candidate for deduplication.
 
                     // All values which can be deduplicated must create values.
-                    let value        = body[prev_index].created_value().unwrap();
-                    let target_value = body[inst_id].created_value().unwrap();
+                    let output = body[inst_id].created_value().unwrap();
+                    let alias  = function.blocks[&deduplication.0][deduplication.1]
+                        .created_value().unwrap();
+
+                    // Get mutable reference to function body.
+                    let mut_body = function.blocks.get_mut(&label).unwrap();
 
                     // Alias output value of current instruction to output value
                     // of deduplication candidate.
-                    body[inst_id] = Instruction::Alias {
-                        dst: target_value,
-                        value,
+                    mut_body[inst_id] = Instruction::Alias {
+                        dst:   output,
+                        value: alias,
                     };
 
+                    body          = &function.blocks[&label];
                     did_something = true;
-                } else {
-                    // We haven't seen this instruction before, add it to deduplication list.
-                    dedup_list.insert(key, inst_id);
                 }
             }
         }
