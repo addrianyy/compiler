@@ -12,6 +12,17 @@ impl Pass for RemoveIneffectiveOperationsPass {
         let consts   = function.constant_values();
         let creators = function.value_creators();
 
+        // Simplify operations with known outputs.
+        //
+        // %2 = u32 0
+        // %3 = add u32 %1, %2
+        //
+        // Will be optimized to:
+        // %3 = alias u32 %1
+        //
+        // RemoveAliasesPass will take care of that and further transform the code.
+
+        // Identify all sign extension instructions to optimize unneded operations before GEP.
         function.for_each_instruction(|_, instruction| {
             if let Instruction::Cast { dst, cast: Cast::SignExtend, value, .. } = instruction {
                 sign_extensions.insert(*dst, *value);
@@ -19,10 +30,12 @@ impl Pass for RemoveIneffectiveOperationsPass {
         });
 
         let values_equal = |a: Value, b: Value| {
+            // If these values have the same ID they are always equal.
             if a == b {
                 return true;
             }
 
+            // We can also check for their equality if they are both known constants.
             let a = consts.get(&a);
             let b = consts.get(&b);
 
@@ -34,15 +47,21 @@ impl Pass for RemoveIneffectiveOperationsPass {
         function.for_each_instruction(|location, instruction| {
             let mut replacement = None;
 
+            // Go through every instruction, match patterns with known results
+            // and simplify the instruction.
             match *instruction {
                 Instruction::GetElementPtr { dst, source, index } => {
                     if let Some(&index) = sign_extensions.get(&index) {
+                        // GEP sign extends index internally so source the index
+                        // from non-sign-extended value. This gives DCE an opportunity
+                        // to eliminate unneeded sext instruction.
                         replacement = Some(Instruction::GetElementPtr {
                             dst,
                             source,
                             index,
                         });
                     } else if let Some((_, 0)) = consts.get(&index) {
+                        // GEP with index of 0 always returns input value.
                         replacement = Some(Instruction::Alias {
                             dst,
                             value: source,
@@ -50,6 +69,8 @@ impl Pass for RemoveIneffectiveOperationsPass {
                     }
                 }
                 Instruction::BranchCond { on_true, on_false, .. } => {
+                    // If both targets of the bcond instruction are the same we can
+                    // convert it to non-conditional branch.
                     if on_true == on_false {
                         replacement = Some(Instruction::Branch {
                             target: on_true,
@@ -57,6 +78,8 @@ impl Pass for RemoveIneffectiveOperationsPass {
                     }
                 }
                 Instruction::Select { dst, on_true, on_false, .. } => {
+                    // If both values of the select instruction are the same we can
+                    // alias output value to one of values.
                     if values_equal(on_true, on_false) {
                         replacement = Some(Instruction::Alias {
                             dst,
@@ -69,9 +92,14 @@ impl Pass for RemoveIneffectiveOperationsPass {
                         function.instruction(*location)
                     });
 
+                    // Check if input of unary instruction was created by another unary
+                    // instruction.
                     if let Some(Instruction::ArithmeticUnary { op: p_op, value: p_value, .. })
                         = creator
                     {
+                        // 2 the same unary operations cancel out.
+                        // --x == x
+                        // !!x == x
                         if *p_op == op {
                             replacement = Some(Instruction::Alias {
                                 dst,
@@ -85,7 +113,12 @@ impl Pass for RemoveIneffectiveOperationsPass {
                         function.instruction(*location)
                     });
 
+                    // Check if input of cast instruction was created by another cast
+                    // instruction.
                     if let Some(Instruction::Cast { cast: p_cast, value: p_value, .. }) = creator {
+                        // Two casts of the same type can be optimized out to only one.
+                        // For example zext from u16 to u32 and zext from u32 to u64
+                        // can be converted to zext from u16 to u64.
                         if *p_cast == cast {
                             replacement = Some(Instruction::Cast {
                                 dst,
@@ -97,9 +130,11 @@ impl Pass for RemoveIneffectiveOperationsPass {
                     }
                 }
                 Instruction::ArithmeticBinary { dst, a, op, b } => {
+                    // Try to extract constants from binary instruction operands.
                     let ca = consts.get(&a).copied();
                     let cb = consts.get(&b).copied();
 
+                    // If any operand is constant then get its type.
                     let ty       = function.value_type(dst);
                     let const_ty = match (ca, cb) {
                         (Some((ty, _)), _) => Some(ty),
@@ -107,6 +142,7 @@ impl Pass for RemoveIneffectiveOperationsPass {
                         _                  => None,
                     };
 
+                    // Create a bit pattern of only ones for a given type.
                     let ones = const_ty.map(|ty| {
                         match ty {
                             ConstType::U1  => panic!("U1 in arithmetic instruction."),
@@ -117,6 +153,7 @@ impl Pass for RemoveIneffectiveOperationsPass {
                         }
                     }).unwrap_or(u64::MAX);
 
+                    // Strip the type information from the constants. We don't need it anymore.
                     let ca = ca.map(|(_, value)| value);
                     let cb = cb.map(|(_, value)| value);
 
@@ -139,6 +176,7 @@ impl Pass for RemoveIneffectiveOperationsPass {
                         }
                     }
 
+                    // Match various binary operation patterns to simplify a instruction.
                     match op {
                         BinaryOp::Add => {
                             if ca == Some(0) {
@@ -195,6 +233,7 @@ impl Pass for RemoveIneffectiveOperationsPass {
                             } else if ca == Some(2) {
                                 let value = b;
 
+                                // a * 2 == a + a
                                 replacement = Some(Instruction::ArithmeticBinary {
                                     dst,
                                     a:  value,
@@ -204,6 +243,7 @@ impl Pass for RemoveIneffectiveOperationsPass {
                             } else if cb == Some(2) {
                                 let value = a;
 
+                                // a * 2 == a + a
                                 replacement = Some(Instruction::ArithmeticBinary {
                                     dst,
                                     a:  value,
@@ -245,6 +285,7 @@ impl Pass for RemoveIneffectiveOperationsPass {
 
         let did_something = !replacements.is_empty();
 
+        // Actually perform the replacements.
         for (location, replacement) in replacements {
             *function.instruction_mut(location) = replacement;
         }

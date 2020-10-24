@@ -8,6 +8,22 @@ impl Pass for ConstPropagatePass {
         let mut did_something = false;
         let mut consts        = function.constant_values();
 
+        // Optimize instructions with constant operands.
+        //
+        // %1 = u32 0
+        // %2 = u32 4
+        // %3 = add u32 %1, %2
+        //
+        // %3 will be optimized to:
+        // %3 = u32 4
+        //
+        // Dead code elimination then can remove %1 and %2 if they are not used anythere else.
+        // Conditional branches with constant conditions will be optimized to normal branches.
+        // Selects will be optimized to alias selected values.
+        //
+        // Optimization applies to unary instructions, binary instructions, compare instructions,
+        // cast instructions and conditional instructions.
+
         macro_rules! propagate_unary {
             ($op: expr, $value: expr, $unsigned: ty) => {{
                 let value = $value as $unsigned;
@@ -100,6 +116,8 @@ impl Pass for ConstPropagatePass {
         function.for_each_instruction_mut(|_location, instruction| {
             let mut propagated = None;
 
+            // Check all adequate instructions if they have constant operands. If they do, 
+            // compute result of their operation.
             match instruction {
                 Instruction::ArithmeticUnary { op, value, .. } => {
                     if let Some(&(ty, value)) = consts.get(value) {
@@ -148,6 +166,9 @@ impl Pass for ConstPropagatePass {
                 }
                 Instruction::BranchCond { value, on_true, on_false } => {
                     if let Some(&(_, cond)) = consts.get(value) {
+                        // If condition is constant then only one branch will be taken.
+                        // Convert instruction to simple branch instruction.
+
                         let target = match cond {
                             0 => *on_false,
                             1 => *on_true,
@@ -164,6 +185,8 @@ impl Pass for ConstPropagatePass {
                 Instruction::Cast { cast, value, ty: dst_ty, ..} => {
                     if let Some(&(ty, value)) = consts.get(value) {
                         if *cast == Cast::Bitcast {
+                            // Bitcasts can work on pointers which aren't supported in
+                            // constant database. Also bitcasts don't affect value whatsoever.
                             propagated = Some((*dst_ty, value));
                         } else {
                             let result = match ty {
@@ -180,6 +203,9 @@ impl Pass for ConstPropagatePass {
                 }
                 Instruction::Select { dst, cond, on_true, on_false } => {
                     if let Some(&(_, cond)) = consts.get(cond) {
+                        // If condition is constant then only one value will be selected.
+                        // Convert select to alias of always selected value.
+
                         let value = match cond {
                             0 => *on_false,
                             1 => *on_true,
@@ -198,19 +224,24 @@ impl Pass for ConstPropagatePass {
             }
 
             if let Some((ty, propagated)) = propagated {
+                // If we constant propagated instruction then it must have output value.
                 let dst = instruction.created_value()
                     .expect("Propagated constant from instruction which doesn't create value?");
 
                 if ty == Type::U1 {
+                    // U1s can bo only true or false.
                     assert!(propagated == 0 || propagated == 1,
                             "Invalid propagated U1 constant {}.", propagated);
                 }
 
                 if let Some(ty) = ConstType::from_ir_type(ty) {
+                    // Add propagated value to known constants database. It is possible that
+                    // we propagated a pointer and it cannot be added here.
                     assert!(consts.insert(dst, (ty, propagated)).is_none(),
                             "Propagated already constant value?");
                 }
 
+                // Replace propagated instruction with computed constant.
                 *instruction = Instruction::Const {
                     dst,
                     ty,

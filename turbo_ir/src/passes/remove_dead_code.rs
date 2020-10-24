@@ -8,15 +8,26 @@ impl Pass for RemoveDeadCodePass {
         let mut used_values    = vec![false; function.value_count()];
         let     creators       = function.value_creators();
 
+        // Remove instructions without side effects which results aren't used.
+        //
+        // %3 = add u32 %1, %2
+        //
+        // If %3 isn't used anywhere it will be removed.
+
+        // Go through every instruction every input value to determine which values are used
+        // and which are not.
         function.for_each_instruction(|_location, instruction| {
             for value in instruction.read_values() {
                 used_values[value.0] = true;
             }
         });
 
+        // Go through every instruction that creates a value.
         for (value, creator) in creators {
             let creator = function.instruction_mut(creator);
 
+            // If value isn't used and its creator isn't volatile then creator can be safely
+            // removed.
             if !creator.is_volatile() && !used_values[value.0] {
                 *creator      = Instruction::Nop;
                 did_something = true;

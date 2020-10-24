@@ -1,3 +1,5 @@
+use std::collections::{HashSet, VecDeque};
+
 use super::{FunctionData, Value, Location, Label, Dominators, Map, Instruction, Type};
 
 pub(super) type Const = u64;
@@ -94,6 +96,94 @@ impl FunctionData {
         }
 
         self.dominates(dominators, start_label, end_label)
+    }
+
+    #[allow(dead_code)]
+    pub(super) fn validate_path_ex(&self, dominators: &Dominators,
+                                   start: Location, end: Location,
+                                   mut verifier: impl FnMut(&Instruction) -> bool) -> bool {
+        let start_label = start.0;
+        let end_label   = end.0;
+
+        // Base case: both path points are in the same block.
+        if start_label == end_label {
+            // Start must be before end to make valid path.
+            if start.1 < end.1 {
+                // Verify all instructions between `start` and `end`.
+                for inst in &self.blocks[&start_label][start.1 + 1..end.1] {
+                    if !verifier(inst) {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+
+            return false;
+        }
+
+        // When path points are in different blocks then start block must dominate end block.
+        if self.dominates(dominators, start_label, end_label) {
+            // Make sure there is no invalid instruction in the remaining part of start block.
+            for inst in &self.blocks[&start_label][start.1 + 1..] {
+                if !verifier(inst) {
+                    return false;
+                }
+            }
+
+            // Make sure there is no invalid instruction in the initial part of end block.
+            for inst in &self.blocks[&end_label][..end.1] {
+                if !verifier(inst) {
+                    return false;
+                }
+            }
+
+            // Find all blocks that are possible to hit when going from start to end.
+
+            let incoming = self.flow_graph_incoming();
+
+            let mut visited = HashSet::new();
+            let mut queue   = VecDeque::new();
+
+            // Start traversing from end of path and go upwards.
+            queue.push_back(end_label);
+            
+            while let Some(label) = queue.pop_front() {
+                if !visited.insert(label) {
+                    continue;
+                }
+
+                // Queue traversal of upper blocks.
+                for &predecessor in &incoming[&label] {
+                    // Because start block dominates end block we must eventually hit start block
+                    // during traversal. In this case we shouldn't go up.
+                    if predecessor != start_label {
+                        queue.push_back(predecessor);
+                    }
+                }
+            }
+
+            for &label in &visited {
+                // Don't check `end_label` here because we will only go through part of it and
+                // it was already checked before.
+                if label != end_label {
+                    // `start_label` should never be here.
+                    assert!(label != start_label);
+
+                    // Make sure that there is no invalid instruction in every block
+                    // that we can hit.
+                    for inst in &self.blocks[&label] {
+                        if !verifier(inst) {
+                            return false;
+                        }
+                    }
+                }
+            }
+
+            return true;
+        }
+        
+        false
     }
 
     pub(super) fn instruction(&self, location: Location) -> &Instruction {

@@ -7,12 +7,12 @@ pub struct X86ReorderPass;
 impl Pass for X86ReorderPass {
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let mut did_something = false;
-        
-        // Try to create patterns which are matched by X86 backend to create more efficient
-        // machine code.
-        
-        // Handled patterns:
-        // icmp; select/bcond
+
+        // Try to reorder instructions to create patterns which are matched by x86 backend
+        // to create more efficient machine code.
+        // 
+        // For now this optimization pass will only try to move icmps just above select/bcond
+        // instructions.
 
         for label in function.reachable_labels() {
             let mut compares = HashMap::new();
@@ -24,17 +24,26 @@ impl Pass for X86ReorderPass {
 
                 match instruction {
                     Instruction::IntCompare { dst, .. } => {
+                        // Record information about instruction which can be a 
+                        // candidate for reordering.
                         assert!(compares.insert(*dst, inst_id).is_none(),
                                 "Compares create multiple same values.");
                     }
                     Instruction::Select     { cond, .. } |
                     Instruction::BranchCond { value: cond, .. } => {
+                        // We found select/bcond and we want to move corresponding icmp
+                        // just above it.
                         if let Some(&cmp_id) = compares.get(cond) {
+                            // Check if icmp is actually just above us. In this case
+                            // we have nothing to do.
                             let inbetween = inst_id - cmp_id - 1;
                             if  inbetween == 0 {
                                 continue;
                             }
 
+                            // We want to move icmp down. We need to make sure that
+                            // no instruction so far read its output value. If that's the
+                            // case, moving icmp would violate SSA properites.
                             for instruction in &body[cmp_id + 1..inst_id] {
                                 for value in instruction.read_values() {
                                     if value == *cond {
@@ -43,8 +52,12 @@ impl Pass for X86ReorderPass {
                                 }
                             }
 
+                            // We are able to move icmp instruction.
+
+                            // This icmp instruction is non-movable from now.
                             compares.remove(cond);
 
+                            // Move icmp instruction down so it's just above us.
                             let compare = std::mem::replace(&mut body[cmp_id],
                                                             Instruction::Nop);
 

@@ -70,22 +70,23 @@ fn main() {
 
     let la = ir.create_label();
     let lb = ir.create_label();
-    let cond = ir.compare_eq(arg, c);
-    let x    = ir.iconst(123u32, ir::Type::U32);
-    //let res  = ir.select(cond, a, b);
-    let x    = ir.branch_cond(cond, la, lb);
+    let ex = ir.create_label();
 
+    let cond = ir.compare_eq(arg, c);
+    ir.branch_cond(cond, la, lb);
 
     ir.switch_label(la);
-    ir.ret(Some(a));
-
+    ir.branch(ex);
 
     ir.switch_label(lb);
-    ir.ret(Some(b));
+    ir.branch(ex);
+
+    ir.switch_label(ex);
+    ir.ret(Some(c));
 
 
     ir.finalize();
-    //ir.optimize();
+    ir.optimize();
 
     /*
     let mcode  = ir.generate_machine_code();
@@ -95,7 +96,6 @@ fn main() {
     */
 
     ir.dump_function_text(func, &mut std::io::stdout()).unwrap();
-
     */
 
     /*
