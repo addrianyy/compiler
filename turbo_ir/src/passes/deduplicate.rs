@@ -1,19 +1,14 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use super::{FunctionData, Instruction, Pass};
-use super::super::{Value, Location};
-
-struct LoadInfo {
-    loaded_ptr:  Value,
-    is_safe_ptr: bool,
-}
+use super::super::Location;
 
 pub struct DeduplicatePass;
 
 impl Pass for DeduplicatePass {
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let mut did_something = false;
-        let mut safe_ptrs     = HashSet::new();
+        let pointer_analysis  = function.analyse_pointers();
 
         // Find two or more non-volatile instructions with the same operands and try to 
         // reuse their output values.
@@ -25,27 +20,6 @@ impl Pass for DeduplicatePass {
         // Will get optimized to:
         // %5 = add u32 %1, %2
         // %7 = neg %5
-
-        // Create a list of safe pointers. Safe pointers are known to not alias other pointers.
-        // Safe pointers are ones coming from stackallocs which are used only by load and
-        // store instructions.
-        'skip: for (value, _) in function.find_stackallocs(None) {
-            for location in function.find_uses(value) {
-                match function.instruction(location) {
-                    Instruction::Store { ptr, value: stored_value } => {
-                        // Make sure that we are actually storing TO the pointer, not
-                        // storing the pointer.
-                        if *ptr != value || *stored_value == value {
-                            continue 'skip;
-                        }
-                    }
-                    Instruction::Load { .. } => {},
-                    _                        => continue 'skip,
-                }
-            }
-
-            safe_ptrs.insert(value);
-        }
 
         let mut dedup_list: HashMap<_, Vec<Location>> = HashMap::new();
 
@@ -95,10 +69,7 @@ impl Pass for DeduplicatePass {
                         // Deduplicating loads is a special case. Get information about the load.
                         let load_info = match instruction {
                             Instruction::Load { ptr, .. } => {
-                                Some(LoadInfo {
-                                    loaded_ptr: *ptr,
-                                    is_safe_ptr: safe_ptrs.contains(ptr),
-                                })
+                                Some(*ptr)
                             }
                             _ => None,
                         };
@@ -113,7 +84,7 @@ impl Pass for DeduplicatePass {
                                 // used to determine which deduplication candidate is the best.
                                 instruction_count += 1;
 
-                                if let Some(load_info) = &load_info {
+                                if let Some(loaded_ptr) = load_info {
                                     // Special care needs to be taken if we want to deduplicate
                                     // load. Something inbetween two instructions may have
                                     // modified loaded ptr and output value will be different.
@@ -126,24 +97,10 @@ impl Pass for DeduplicatePass {
                                             false
                                         }
                                         Instruction::Store { ptr, .. } => {
-                                            // Make sure that this store didn't actually affect
-                                            // pointer loaded by candidate to deduplicate.
-                                            if *ptr == load_info.loaded_ptr {
-                                                return false;
-                                            }
-
-                                            // This isn't a safe pointer and we don't know
-                                            // if two pointer don't alias.
-                                            // We cannot deduplicate it.
-                                            // TODO: Use more sophisticated pointer origin
-                                            // analysis to make sure they don't alias.
-                                            if !load_info.is_safe_ptr {
-                                                return false;
-                                            }
-
-                                            // Stored pointer for sure doesn't
-                                            // alias loaded pointer.
-                                            true
+                                            // Make sure that stored pointer can't
+                                            // alias a pointer loaded by candidate to
+                                            // deduplicate.
+                                            !pointer_analysis.can_alias(loaded_ptr, *ptr)
                                         }
                                         _ => true,
                                     }

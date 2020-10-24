@@ -1,4 +1,4 @@
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use super::{FunctionData, Value, Location, Label, Dominators, Map, Instruction, Type};
 
@@ -36,7 +36,199 @@ impl ConstType {
     }
 }
 
+struct PointerAnalysisContext {
+    analysis: PointerAnalysis,
+    creators: Map<Value, Location>,
+}
+
+pub(super) struct PointerAnalysis {
+    origins:     HashMap<Value, Value>,
+    stackallocs: HashMap<Value, bool>,
+}
+
+impl PointerAnalysis {
+    pub fn can_alias(&self, p1: Value, p2: Value) -> bool {
+        // If two pointers are the same they always alias.
+        if p1 == p2 {
+            return true;
+        }
+
+        // Get origin of pointers.
+        let p1 = self.origins[&p1];
+        let p2 = self.origins[&p2];
+
+        // If two pointers have the same origin they may alias.
+        if p1 == p2 {
+            return true;
+        }
+
+        // Get information about pointers stackalloc.
+        let p1_stackalloc = self.stackallocs.get(&p1);
+        let p2_stackalloc = self.stackallocs.get(&p2);
+
+        match (p1_stackalloc, p2_stackalloc) {
+            (Some(_), Some(_)) => {
+                // Both pointers come from different stackallocs. It doesn't matter
+                // if stackallocs are safe - pointers don't alias.
+                false
+            }
+            (Some(safe), None) | (None, Some(safe)) => {
+                // One pointer comes from stackalloc, other does not.
+                // If stackalloc usage is safe than these two pointers can't alias. Otherwise
+                // they can.
+
+                !safe
+            }
+            // We don't have any information about pointers. They may alias.
+            _ => true
+        }
+    }
+}
+
 impl FunctionData {
+    fn get_pointer_origin(&self, pointer: Value,
+                          cx: &mut PointerAnalysisContext) -> Value {
+        // If pointer origin is unknown or it's at its primary origin this function will
+        // return unmodified `pointer`.
+
+        // Make sure that `pointer` is actually a pointer.
+        assert!(self.value_type(pointer).is_pointer(),
+                "Tried to get origin of non-pointer value.");
+        
+        // Check if we already know about origin of this pointer.
+        if let Some(&origin) = cx.analysis.origins.get(&pointer) {
+            return origin;
+        }
+
+        // Try to get origin from an instruction that created the pointer.
+        let origin = if let Some(&creator) = cx.creators.get(&pointer) {
+            match self.instruction(creator) {
+                // Instructions which can create pointers but for which we don't know the origin.
+                Instruction::Load   { .. } => pointer,
+                Instruction::Call   { .. } => pointer,
+                Instruction::Const  { .. } => pointer,
+                Instruction::Select { .. } => pointer,
+
+                // Casted pointers can alias, we cannot get their origin.
+                Instruction::Cast { .. } => pointer,
+
+                // We are actually at primary origin.
+                Instruction::StackAlloc { .. } => pointer,
+
+                // Get origin from aliased value.
+                Instruction::Alias { value, .. } => self.get_pointer_origin(*value, cx),
+
+                // GEP result pointer must be originating from it's source.
+                Instruction::GetElementPtr { source, .. } => self.get_pointer_origin(*source, cx),
+
+                // Other instructions should never create pointers.
+                x => panic!("Unexpected instruction {:?} created pointer.", x),
+            }
+        } else {
+            // This pointer doesn't have creator - it's coming from an argument.
+            // We don't know it's origin.
+
+            pointer
+        };
+
+        // Add calculated origin to the map.
+        assert!(cx.analysis.origins.insert(pointer, origin).is_none(),
+                "Someone already added origin of this pointer?");
+
+        origin
+    }
+
+    fn is_pointer_safely_used(&self, pointer: Value) -> bool {
+        // Make sure that `pointer` is actually a pointer.
+        assert!(self.value_type(pointer).is_pointer(),
+                "Tried to get origin of non-pointer value.");
+
+        // Make sure that all uses are safe. If they are it means that we always know
+        // all values which point to the same memory as this pointer. Otherwise, pointer may
+        // escape and be accessed by unknown instruction.
+        for location in self.find_uses(pointer) {
+            match self.instruction(location) {
+                Instruction::Store { ptr, value } => {
+                    // Make sure that we are actually storing TO the pointer, not
+                    // storing the pointer.
+                    if *ptr != pointer || *value == pointer {
+                        return false;
+                    }
+                }
+                Instruction::Load          { .. } => {},
+                Instruction::Return        { .. } => {},
+                Instruction::GetElementPtr { dst, source, .. } => {
+                    if *source != pointer {
+                        return false;
+                    }
+
+                    // GEP returns memory which belongs to the source pointer. Make sure
+                    // that GEP return value is safely used.
+                    if !self.is_pointer_safely_used(*dst) {
+                        return false;
+                    }
+                }
+                Instruction::Alias { dst, .. } => {
+                    // Make sure that aliased pointer is safely used.
+                    if !self.is_pointer_safely_used(*dst) {
+                        return false;
+                    }
+                }
+                // All other uses (casts, etc..) are not safe and we can't reason about them.
+                _ => return false,
+            }
+        }
+
+        true
+    }
+
+    pub(super) fn analyse_pointers(&self) -> PointerAnalysis {
+        let mut cx = PointerAnalysisContext {
+            analysis: PointerAnalysis {
+                origins:     HashMap::new(),
+                stackallocs: HashMap::new(),
+            },
+            creators: self.value_creators(),
+        };
+
+        macro_rules! calculate_origin {
+            ($value: expr) => {
+                // Calculate origin if provided value is actually a pointer.
+                if self.value_type($value).is_pointer() {
+                    let _ = self.get_pointer_origin($value, &mut cx);
+                }
+            }
+        }
+
+        // Go through every instruction and analyze used pointers.
+        self.for_each_instruction(|_location, instruction| {
+            // Analyze origins of all used/created pointers by this instruction.
+            if let Some(value) = instruction.created_value() {
+                calculate_origin!(value);
+            }
+            for value in instruction.read_values() {
+                calculate_origin!(value);
+            }
+
+            if let Instruction::StackAlloc { dst, .. } = instruction {
+                // Get information about stackalloc, check if it's safely used and can't
+                // escape.
+                let pointer = *dst;
+                let safe    = self.is_pointer_safely_used(pointer);
+
+                assert!(cx.analysis.stackallocs.insert(pointer, safe).is_none(),
+                        "Multiple pointers from stackalloc?");
+            }
+        });
+
+        // Analyze origins of arguments to this function.
+        for &value in &self.argument_values {
+            calculate_origin!(value);
+        }
+
+        cx.analysis
+    }
+
     pub(super) fn constant_values(&self) -> Map<Value, (ConstType, Const)> {
         let mut consts = Map::new();
 
