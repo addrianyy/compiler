@@ -150,6 +150,7 @@ impl Instruction {
             })
             .collect()
     }
+
     pub fn parameters(&self) -> Vec<DirectedParam> {
         use DirectedParam::{In, Out};
 
@@ -368,5 +369,9 @@ impl Instruction {
             }
             _ => false,
         }
+    }
+
+    pub fn can_be_reordered(&self) -> bool {
+        !self.is_volatile() && !matches!(self, Instruction::Load { .. })
     }
 }

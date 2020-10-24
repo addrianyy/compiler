@@ -98,7 +98,6 @@ impl FunctionData {
         self.dominates(dominators, start_label, end_label)
     }
 
-    #[allow(dead_code)]
     pub(super) fn validate_path_ex(&self, dominators: &Dominators,
                                    start: Location, end: Location,
                                    mut verifier: impl FnMut(&Instruction) -> bool) -> bool {

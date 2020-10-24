@@ -169,8 +169,11 @@ impl FunctionData {
             &passes::SimplifyCFGPass,
             &passes::ConstPropagatePass,
             &passes::SimplifyComparesPass,
-            &passes::X86ReorderPass,
             &passes::DeduplicatePass,
+
+            // Architecture specific reorder pass must be after generic reorder pass.
+            &passes::ReorderPass,
+            &passes::X86ReorderPass,
         ];
 
         loop {

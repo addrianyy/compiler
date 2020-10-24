@@ -160,7 +160,7 @@ impl Pass for DeduplicatePass {
                             // best one. If it is then set it as current best.
                             let better = match best_icount {
                                 Some(icount) => instruction_count < icount,
-                                None         => true
+                                None         => true,
                             };
 
                             if better {
