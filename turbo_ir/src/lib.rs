@@ -9,8 +9,8 @@ mod analysis;
 mod type_inference;
 mod register_allocation;
 mod passes;
+mod fnv;
 
-use std::collections::{HashMap, HashSet};
 use std::io::{self, Write};
 use std::rc::Rc;
 
@@ -34,8 +34,8 @@ pub struct Label(usize);
 #[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct Location(Label, usize);
 
-type Map<K, V> = HashMap<K, V>;
-type Set<T>    = HashSet<T>;
+type Map<K, V> = fnv::FnvHashMap<K, V>;
+type Set<T>    = fnv::FnvHashSet<T>;
 
 type BasicBlock = Vec<Instruction>;
 type TypeInfo   = Map<Value, Type>;
@@ -68,7 +68,7 @@ impl FunctionData {
         let mut data = Self {
             prototype,
             argument_values: vec![Value(0); argument_count],
-            blocks:          Map::new(),
+            blocks:          Map::default(),
             next_value:      Value(0),
             next_label:      Label(0),
             function_info:   None,
@@ -265,7 +265,7 @@ impl Default for Module {
 impl Module {
     pub fn new() -> Self {
         Self {
-            functions:     Map::new(),
+            functions:     Map::default(),
             active_point:  None,
             next_function: Function(0),
             finalized:     false,
@@ -375,8 +375,8 @@ impl Module {
     pub fn finalize(&mut self) {
         assert!(!self.finalized, "Cannot finalize module multiple times.");
 
-        let mut function_info = Map::new();
-        let mut externs       = Map::new();
+        let mut function_info = Map::default();
+        let mut externs       = Map::default();
 
         for (function, internal) in &self.functions {
             assert!(function_info.insert(*function, internal.prototype().clone()).is_none(), 

@@ -1,7 +1,4 @@
-use std::collections::HashMap;
-
-use super::{FunctionData, Instruction, Pass};
-use super::super::{Value, ConstType, BinaryOp};
+use crate::{FunctionData, Instruction, Value, ConstType, BinaryOp, Map};
 
 #[derive(Clone)]
 struct Chain {
@@ -13,14 +10,14 @@ struct Chain {
 
 pub struct SimplifyExpressionsPass;
 
-impl Pass for SimplifyExpressionsPass {
+impl super::Pass for SimplifyExpressionsPass {
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let consts       = function.constant_values();
         let creators     = function.value_creators();
         let usage_counts = function.usage_counts();
 
-        let mut chains: HashMap<Value, Chain> = HashMap::new();
-        let mut did_something                 = false;
+        let mut chains: Map<Value, Chain> = Map::default();
+        let mut did_something             = false;
 
         // Chain commulative operations with at least two constant operands.
         // (a + 1) + 1

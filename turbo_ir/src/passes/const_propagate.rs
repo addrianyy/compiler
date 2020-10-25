@@ -1,9 +1,9 @@
-use super::{FunctionData, Instruction, Pass};
-use super::super::{Type, BinaryOp, UnaryOp, Cast, IntPredicate, ConstType};
+use crate::{FunctionData, Instruction, Type, BinaryOp, UnaryOp, Cast,
+            IntPredicate, ConstType};
 
 pub struct ConstPropagatePass;
 
-impl Pass for ConstPropagatePass {
+impl super::Pass for ConstPropagatePass {
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let mut did_something = false;
         let mut consts        = function.constant_values();

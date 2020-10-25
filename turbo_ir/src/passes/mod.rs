@@ -12,10 +12,8 @@ mod remove_nops;
 mod x86reorder;
 mod reorder;
 
-use super::{FunctionData, Instruction};
-
 pub(super) trait Pass {
-    fn run_on_function(&self, function: &mut FunctionData) -> bool;
+    fn run_on_function(&self, function: &mut super::FunctionData) -> bool;
 }
 
 pub(super) use remove_ineffective_operations::RemoveIneffectiveOperationsPass;

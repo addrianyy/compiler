@@ -1,6 +1,7 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::VecDeque;
 
-use super::{FunctionData, Value, Location, Label, Dominators, Map, Instruction, Type};
+use super::{FunctionData, Value, Location, Label, Dominators, Map, Set,
+            Instruction, Type};
 
 pub(super) type Const = u64;
 
@@ -42,8 +43,8 @@ struct PointerAnalysisContext {
 }
 
 pub(super) struct PointerAnalysis {
-    origins:     HashMap<Value, Value>,
-    stackallocs: HashMap<Value, bool>,
+    origins:     Map<Value, Value>,
+    stackallocs: Map<Value, bool>,
 }
 
 impl PointerAnalysis {
@@ -220,8 +221,8 @@ impl FunctionData {
     pub(super) fn analyse_pointers(&self) -> PointerAnalysis {
         let mut cx = PointerAnalysisContext {
             analysis: PointerAnalysis {
-                origins:     HashMap::new(),
-                stackallocs: HashMap::new(),
+                origins:     Map::default(),
+                stackallocs: Map::default(),
             },
             creators: self.value_creators(),
         };
@@ -265,7 +266,7 @@ impl FunctionData {
     }
 
     pub(super) fn constant_values(&self) -> Map<Value, (ConstType, Const)> {
-        let mut consts = Map::new();
+        let mut consts = Map::default();
 
         self.for_each_instruction(|_location, instruction| {
             match instruction {
@@ -380,7 +381,7 @@ impl FunctionData {
 
             let incoming = self.flow_graph_incoming();
 
-            let mut visited = HashSet::new();
+            let mut visited = Set::default();
             let mut queue   = VecDeque::new();
 
             // Start traversing from end of path and go upwards.
@@ -494,7 +495,7 @@ impl FunctionData {
     }
 
     pub(super) fn value_creators(&self) -> Map<Value, Location> {
-        let mut creators = Map::new();
+        let mut creators = Map::default();
 
         for label in self.reachable_labels() {
             let body = &self.blocks[&label];

@@ -1,10 +1,8 @@
-use std::collections::HashMap;
-
-use super::{FunctionData, Instruction, Pass};
+use crate::{FunctionData, Instruction, Map};
 
 pub struct X86ReorderPass;
 
-impl Pass for X86ReorderPass {
+impl super::Pass for X86ReorderPass {
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let mut did_something = false;
 
@@ -15,7 +13,7 @@ impl Pass for X86ReorderPass {
         // instructions.
 
         for label in function.reachable_labels() {
-            let mut compares = HashMap::new();
+            let mut compares = Map::default();
 
             let body = function.blocks.get_mut(&label).unwrap();
 

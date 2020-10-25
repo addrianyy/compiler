@@ -1,8 +1,8 @@
-use super::{FunctionData, Instruction, Pass};
+use crate::{FunctionData, Instruction};
 
 pub struct RemoveAliasesPass;
 
-impl Pass for RemoveAliasesPass {
+impl super::Pass for RemoveAliasesPass {
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let mut did_something = false;
         let     labels        = function.reachable_labels();

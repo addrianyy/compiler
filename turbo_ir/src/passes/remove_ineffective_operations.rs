@@ -1,13 +1,11 @@
-use std::collections::HashMap;
-
-use super::{FunctionData, Instruction, Pass};
-use super::super::{Cast, Value, ConstType, BinaryOp, UnaryOp};
+use crate::{FunctionData, Instruction, Cast, Value, ConstType,
+            BinaryOp, UnaryOp, Map};
 
 pub struct RemoveIneffectiveOperationsPass;
 
-impl Pass for RemoveIneffectiveOperationsPass {
+impl super::Pass for RemoveIneffectiveOperationsPass {
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
-        let mut sign_extensions = HashMap::new();
+        let mut sign_extensions = Map::default();
 
         let consts   = function.constant_values();
         let creators = function.value_creators();

@@ -1,11 +1,8 @@
-use std::collections::HashMap;
-
-use super::{FunctionData, Instruction, Pass};
-use super::super::Label;
+use crate::{FunctionData, Instruction, Label, Map};
 
 pub struct SimplifyCFGPass;
 
-impl Pass for SimplifyCFGPass {
+impl super::Pass for SimplifyCFGPass {
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let mut did_something = false;
         
@@ -84,7 +81,7 @@ impl Pass for SimplifyCFGPass {
         // 
         // ......
 
-        let mut branch_labels = HashMap::new();
+        let mut branch_labels = Map::default();
 
         let labels = function.reachable_labels();
 

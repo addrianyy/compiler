@@ -1,15 +1,13 @@
-use std::collections::HashMap;
-
-use super::{FunctionData, Instruction, Pass};
+use crate::{FunctionData, Instruction, Map};
 
 pub struct RemoveDeadStoresPass;
 
-impl Pass for RemoveDeadStoresPass {
+impl super::Pass for RemoveDeadStoresPass {
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let dominators       = function.dominators();
         let pointer_analysis = function.analyse_pointers();
 
-        let mut stores        = HashMap::new();
+        let mut stores        = Map::default();
         let mut did_something = false;
 
         // If there are two stores to the same pointer and nothing inbetween them

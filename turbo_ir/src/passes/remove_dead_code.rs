@@ -1,8 +1,8 @@
-use super::{FunctionData, Instruction, Pass};
+use crate::{FunctionData, Instruction};
 
 pub struct RemoveDeadCodePass;
 
-impl Pass for RemoveDeadCodePass {
+impl super::Pass for RemoveDeadCodePass {
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let mut did_something  = false;
         let mut used_values    = vec![false; function.value_count()];

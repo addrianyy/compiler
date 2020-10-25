@@ -1,11 +1,8 @@
-use std::collections::HashMap;
-
-use super::{FunctionData, Instruction, Pass};
-use super::super::Location;
+use crate::{FunctionData, Instruction, Location, Map};
 
 pub struct DeduplicatePass;
 
-impl Pass for DeduplicatePass {
+impl super::Pass for DeduplicatePass {
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let mut did_something = false;
         let pointer_analysis  = function.analyse_pointers();
@@ -21,7 +18,7 @@ impl Pass for DeduplicatePass {
         // %5 = add u32 %1, %2
         // %7 = neg %5
 
-        let mut dedup_list: HashMap<_, Vec<Location>> = HashMap::new();
+        let mut dedup_list: Map<_, Vec<Location>> = Map::default();
 
         // Create a list of all deduplication candidates for a given instruction key.
         function.for_each_instruction(|location, instruction| {

@@ -1,9 +1,8 @@
-use super::{FunctionData, Instruction, Pass};
-use super::super::Location;
+use crate::{FunctionData, Instruction, Location};
 
 pub struct ReorderPass;
 
-impl Pass for ReorderPass {
+impl super::Pass for ReorderPass {
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let mut did_something = false;
         let creators          = function.value_creators();

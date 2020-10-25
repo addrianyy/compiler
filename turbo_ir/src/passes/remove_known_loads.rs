@@ -1,10 +1,8 @@
-use std::collections::HashMap;
-
-use super::{FunctionData, Instruction, Pass};
+use crate::{FunctionData, Instruction, Map};
 
 pub struct RemoveKnownLoadsPass;
 
-impl Pass for RemoveKnownLoadsPass {
+impl super::Pass for RemoveKnownLoadsPass {
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let pointer_analysis = function.analyse_pointers();
         let dominators       = function.dominators();
@@ -22,7 +20,7 @@ impl Pass for RemoveKnownLoadsPass {
         // %3 = neg %0
 
         let mut loads  = Vec::new();
-        let mut stores = HashMap::new();
+        let mut stores = Map::default();
 
         // Create a database of all loads and stores in the function.
         function.for_each_instruction(|location, instruction| {

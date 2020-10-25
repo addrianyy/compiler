@@ -1,12 +1,10 @@
 pub mod x86backend;
 mod execmem;
 
-use std::collections::HashMap;
-
-use super::{Function, FunctionData, Module};
+use super::{Function, FunctionData, Module, Map};
 use execmem::ExecutableMemory;
 
-pub type FunctionMCodeMap = HashMap<Function, (usize, usize)>;
+pub type FunctionMCodeMap = Map<Function, (usize, usize)>;
 
 pub(super) trait Backend {
     fn new(ir: &Module) -> Self;

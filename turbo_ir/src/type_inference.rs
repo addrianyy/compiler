@@ -243,7 +243,7 @@ impl FunctionData {
 
     pub(super) fn build_type_info(&mut self) {
         let mut cx = TypeContext {
-            type_info: Map::new(),
+            type_info: Map::default(),
             creators:  self.value_creators(),
         };
 

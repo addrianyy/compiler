@@ -1,9 +1,8 @@
-use super::{FunctionData, Instruction, Pass};
-use super::super::IntPredicate;
+use crate::{FunctionData, Instruction, IntPredicate};
 
 pub struct SimplifyComparesPass;
 
-impl Pass for SimplifyComparesPass {
+impl super::Pass for SimplifyComparesPass {
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let creators = function.value_creators();
         let consts   = function.constant_values();

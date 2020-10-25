@@ -1,8 +1,6 @@
-use std::collections::HashMap;
-
-use super::super::{Function, FunctionData, Location, Instruction, BinaryOp, UnaryOp,
-                   IntPredicate, Module, Value, Type, Cast};
-use super::super::register_allocation::{Place, RegisterAllocation};
+use crate::{Function, FunctionData, Location, Instruction, BinaryOp, UnaryOp,
+            IntPredicate, Module, Value, Type, Cast, Map};
+use crate::register_allocation::{Place, RegisterAllocation};
 use super::FunctionMCodeMap;
 
 use asm::{Assembler, OperandSize, Operand};
@@ -95,8 +93,8 @@ impl OperandExt for Operand<'static> {
 }
 
 struct X86FunctionData {
-    place_to_operand:   HashMap<Place, Operand<'static>>,
-    stackallocs:        HashMap<Location, i64>,
+    place_to_operand:   Map<Place, Operand<'static>>,
+    stackallocs:        Map<Location, i64>,
     regalloc:           RegisterAllocation,
     frame_size:         usize,
     used_registers:     Registers,
@@ -145,7 +143,7 @@ impl X86Backend {
     fn x86_function_data(func: &FunctionData) -> X86FunctionData {
         let regalloc = func.allocate_registers(AVAILABLE_REGISTERS.len());
 
-        let mut place_to_operand = HashMap::new();
+        let mut place_to_operand = Map::default();
 
         // Stack layout after prologue:
         // ..
@@ -206,7 +204,7 @@ impl X86Backend {
         assert!(free_storage_end_offset % 8 == 0);
         assert!(frame_size % 8 == 0);
 
-        let mut stackallocs = HashMap::new();
+        let mut stackallocs = Map::default();
         let mut noreturn    = true;
         let mut usage_count = vec![0; func.value_count()];
 
@@ -941,7 +939,7 @@ impl super::Backend for X86Backend {
     fn new(_: &Module) -> Self {
         Self {
             asm:       Assembler::new(),
-            mcode_map: FunctionMCodeMap::new(),
+            mcode_map: FunctionMCodeMap::default(),
         }
     }
 

@@ -9,8 +9,8 @@ impl FunctionData {
     fn traverse_dfs_postorder(&self, start: Label) -> Vec<Label> {
         let mut result   = Vec::new();
         let mut stack    = Vec::new();
-        let mut visited  = Set::new();
-        let mut finished = Set::new();
+        let mut visited  = Set::default();
+        let mut finished = Set::default();
 
         stack.push(start);
 
@@ -130,7 +130,7 @@ impl FunctionData {
         include_start: bool,
         mut callback:  impl FnMut(Label),
     ) {
-        let mut visited = Set::new();
+        let mut visited = Set::default();
         let mut queue   = VecDeque::new();
 
         queue.push_back(start);
@@ -175,10 +175,10 @@ impl FunctionData {
 
     #[allow(unused)]
     pub(super) fn flow_graph_outgoing(&self) -> FlowGraph {
-        let mut flow_graph = Map::new();
+        let mut flow_graph = Map::default();
 
         self.for_each_label_bfs(Label(0), true, |label| {
-            let entry = flow_graph.entry(label).or_insert_with(Set::new);
+            let entry = flow_graph.entry(label).or_insert_with(Set::default);
 
             for target in self.targets(label) {
                 entry.insert(target);
@@ -189,17 +189,17 @@ impl FunctionData {
     }
 
     pub(super) fn flow_graph_incoming(&self) -> FlowGraph {
-        let mut flow_graph = Map::new();
+        let mut flow_graph = Map::default();
 
         self.for_each_label_bfs(Label(0), true, |label| {
             for target in self.targets(label) {
                 flow_graph.entry(target)
-                    .or_insert_with(Set::new)
+                    .or_insert_with(Set::default)
                     .insert(label);
             }
         });
 
-        flow_graph.entry(Label(0)).or_insert_with(Set::new);
+        flow_graph.entry(Label(0)).or_insert_with(Set::default);
 
         flow_graph
     }
