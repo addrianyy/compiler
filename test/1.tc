@@ -3,6 +3,11 @@ extern void print(u8* str);
 i32 main(u8* buffer) {
     i32 index = 0;
 
+    u8* null = (u8*)0;
+    if (buffer == null) {
+        return 0;
+    }
+
     while (buffer[index] != 0u8) {
         buffer[index] += 1u8;
         buffer[index] += 1u8;

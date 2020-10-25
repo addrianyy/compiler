@@ -251,15 +251,6 @@ impl Compiler {
                         assert!(left.ty == right.ty && left.ty != Ty::Void, "Cannot compare \
                                 two values with different types (or void types.");
 
-                        if left.ty.is_pointer() {
-                            // IR doesn't allow comparing pointers. Convert them to integers.
-
-                            left_value = self.ir.cast(left_value, ir::Type::U64,
-                                                      ir::Cast::Bitcast);
-                            right_value = self.ir.cast(right_value, ir::Type::U64,
-                                                       ir::Cast::Bitcast);
-                        }
-
                         let op_change = match op {
                             BinaryOp::Lt  => Some(BinaryOp::Gt),
                             BinaryOp::Lte => Some(BinaryOp::Gte),
