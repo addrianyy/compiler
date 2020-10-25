@@ -98,15 +98,14 @@ impl Pass for SimplifyExpressionsPass {
                                 None
                             } else {
                                 // Join current operation and previous chain into one.
-                                let mut new_chain = chain.clone();
-                                new_chain.consts.push(constant);
-
                                 // Previous chain has only one use and after simplification
                                 // it will have no uses. Therefore DCE will remove it
-                                // and there is no point in evaluating it.
-                                chains.remove(&value);
+                                // and there is no point in evaluating it. Remove it.
 
-                                Some(new_chain)
+                                let mut chain = chains.remove(&value).unwrap();
+                                chain.consts.push(constant);
+
+                                Some(chain)
                             }
                         }
                         None => {
