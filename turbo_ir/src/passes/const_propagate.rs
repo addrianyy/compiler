@@ -5,8 +5,7 @@ pub struct ConstPropagatePass;
 
 impl super::Pass for ConstPropagatePass {
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
-        let mut did_something = false;
-        let mut consts        = function.constant_values();
+        let mut consts = function.constant_values();
 
         // Optimize instructions with constant operands.
         //
@@ -113,7 +112,9 @@ impl super::Pass for ConstPropagatePass {
             }};
         }
 
-        function.for_each_instruction_mut(|_location, instruction| {
+        let mut replacements = Vec::new();
+
+        function.for_each_instruction(|location, instruction| {
             let mut propagated = None;
 
             // Check all adequate instructions if they have constant operands. If they do, 
@@ -121,7 +122,7 @@ impl super::Pass for ConstPropagatePass {
             match instruction {
                 Instruction::ArithmeticUnary { op, value, .. } => {
                     if let Some(&(ty, value)) = consts.get(value) {
-                        let result = match ty {
+                        let result = match ConstType::new(ty) {
                             ConstType::U1  => panic!("U1 not allowed in unary instruction."),
                             ConstType::U8  => propagate_unary!(op, value, u8),
                             ConstType::U16 => propagate_unary!(op, value, u16),
@@ -129,7 +130,7 @@ impl super::Pass for ConstPropagatePass {
                             ConstType::U64 => propagate_unary!(op, value, u64),
                         };
 
-                        propagated = Some((ty.ir_type(), result));
+                        propagated = Some(result);
                     }
                 }
                 Instruction::ArithmeticBinary { a, op, b, .. } => {
@@ -137,7 +138,7 @@ impl super::Pass for ConstPropagatePass {
                         assert!(a_ty == b_ty, "Constprop: binary arihmetic instruction \
                                 has different operand types.");
 
-                        let result = match a_ty {
+                        let result = match ConstType::new(a_ty) {
                             ConstType::U1  => panic!("U1 not allowed in binary instruction."),
                             ConstType::U8  => propagate_binary!(a, op, b, i8,  u8),
                             ConstType::U16 => propagate_binary!(a, op, b, i16, u16),
@@ -145,7 +146,7 @@ impl super::Pass for ConstPropagatePass {
                             ConstType::U64 => propagate_binary!(a, op, b, i64, u64),
                         };
 
-                        propagated = Some((a_ty.ir_type(), result));
+                        propagated = Some(result);
                     }
                 }
                 Instruction::IntCompare { a, pred, b, .. } => {
@@ -153,7 +154,7 @@ impl super::Pass for ConstPropagatePass {
                         assert!(a_ty == b_ty, "Constprop: int compare instruction \
                                 has different operand types.");
 
-                        let result = match a_ty {
+                        let result = match ConstType::new(a_ty) {
                             ConstType::U1  => panic!("U1 not allowed in compare instruction."),
                             ConstType::U8  => propagate_compare!(a, pred, b, i8,  u8),
                             ConstType::U16 => propagate_compare!(a, pred, b, i16, u16),
@@ -161,7 +162,7 @@ impl super::Pass for ConstPropagatePass {
                             ConstType::U64 => propagate_compare!(a, pred, b, i64, u64),
                         };
 
-                        propagated = Some((Type::U1, result));
+                        propagated = Some(result);
                     }
                 }
                 Instruction::BranchCond { cond, on_true, on_false } => {
@@ -175,11 +176,9 @@ impl super::Pass for ConstPropagatePass {
                             _ => panic!("Invalid U1 constant {}.", cond),
                         };
 
-                        *instruction = Instruction::Branch {
+                        replacements.push((location, Instruction::Branch {
                             target,
-                        };
-
-                        did_something = true;
+                        }));
                     }
                 }
                 Instruction::Cast { cast, value, ty: dst_ty, ..} => {
@@ -187,9 +186,9 @@ impl super::Pass for ConstPropagatePass {
                         if *cast == Cast::Bitcast {
                             // Bitcasts can work on pointers which aren't supported in
                             // constant database. Also bitcasts don't affect value whatsoever.
-                            propagated = Some((*dst_ty, value));
+                            propagated = Some(value);
                         } else {
-                            let result = match ty {
+                            let result = match ConstType::new(ty) {
                                 ConstType::U1  => panic!("U1 not allowed in cast instruction."),
                                 ConstType::U8  => propagate_cast!(value, cast, dst_ty, i8,  u8),
                                 ConstType::U16 => propagate_cast!(value, cast, dst_ty, i16, u16),
@@ -197,7 +196,7 @@ impl super::Pass for ConstPropagatePass {
                                 ConstType::U64 => propagate_cast!(value, cast, dst_ty, i64, u64),
                             };
 
-                            propagated = Some((*dst_ty, result));
+                            propagated = Some(result);
                         }
                     }
                 }
@@ -212,21 +211,21 @@ impl super::Pass for ConstPropagatePass {
                             _ => panic!("Invalid U1 constant {}.", cond),
                         };
 
-                        *instruction = Instruction::Alias {
+                        replacements.push((location, Instruction::Alias {
                             dst: *dst,
                             value,
-                        };
-
-                        did_something = true;
+                        }));
                     }
                 }
                 _ => {}
             }
 
-            if let Some((ty, propagated)) = propagated {
+            if let Some(propagated) = propagated {
                 // If we constant propagated instruction then it must have output value.
                 let dst = instruction.created_value()
                     .expect("Propagated constant from instruction which doesn't create value?");
+
+                let ty = function.value_type(dst);
 
                 if ty == Type::U1 {
                     // U1s can bo only true or false.
@@ -234,23 +233,26 @@ impl super::Pass for ConstPropagatePass {
                             "Invalid propagated U1 constant {}.", propagated);
                 }
 
-                if let Some(ty) = ConstType::from_ir_type(ty) {
-                    // Add propagated value to known constants database. It is possible that
-                    // we propagated a pointer and it cannot be added here.
-                    assert!(consts.insert(dst, (ty, propagated)).is_none(),
-                            "Propagated already constant value?");
-                }
+                // Add propagated value to known constants database. It is possible that
+                // we propagated a pointer and it cannot be added here.
+                assert!(consts.insert(dst, (ty, propagated)).is_none(),
+                        "Propagated already constant value?");
 
                 // Replace propagated instruction with computed constant.
-                *instruction = Instruction::Const {
+                replacements.push((location, Instruction::Const {
                     dst,
                     ty,
                     imm: propagated,
-                };
-
-                did_something = true;
+                }));
             }
         });
+
+        let did_something = !replacements.is_empty();
+
+        // Actually perform the replacements.
+        for (location, replacement) in replacements {
+            *function.instruction_mut(location) = replacement;
+        }
 
         did_something
     }

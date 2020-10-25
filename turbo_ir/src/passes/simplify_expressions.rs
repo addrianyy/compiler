@@ -1,4 +1,4 @@
-use crate::{FunctionData, Instruction, Value, ConstType, BinaryOp, Map};
+use crate::{FunctionData, Instruction, Value, ConstType, BinaryOp, Map, Type};
 
 #[derive(Clone)]
 struct Chain {
@@ -78,8 +78,8 @@ impl super::Pass for SimplifyExpressionsPass {
 
                 // Get 1 unknown value, 1 constant value and return type.
                 let result = match (consts.get(a), consts.get(b)) {
-                    (Some(&a), None) => Some((*b, a.1, a.0)),
-                    (None, Some(&b)) => Some((*a, b.1, b.0)),
+                    (Some(&a), None) => Some((*b, a.1, ConstType::new(a.0))),
+                    (None, Some(&b)) => Some((*a, b.1, ConstType::new(b.0))),
                     _                => None,
                 };
 
@@ -133,12 +133,12 @@ impl super::Pass for SimplifyExpressionsPass {
             }
 
             // Evaluate right hand side of the chain.
-            let chain_value = match chain.ty {
+            let (chain_value, ir_type) = match chain.ty {
                 ConstType::U1  => unreachable!(),
-                ConstType::U8  => evaluate_chain!(&chain, u8),
-                ConstType::U16 => evaluate_chain!(&chain, u16),
-                ConstType::U32 => evaluate_chain!(&chain, u32),
-                ConstType::U64 => evaluate_chain!(&chain, u64),
+                ConstType::U8  => (evaluate_chain!(&chain, u8) , Type::U8),
+                ConstType::U16 => (evaluate_chain!(&chain, u16), Type::U16),
+                ConstType::U32 => (evaluate_chain!(&chain, u32), Type::U32),
+                ConstType::U64 => (evaluate_chain!(&chain, u64), Type::U64),
             };
 
             // Create instructions which will create RHS constant and calculate simplified
@@ -147,7 +147,7 @@ impl super::Pass for SimplifyExpressionsPass {
             let simplified    = vec![
                 Instruction::Const {
                     dst: temp_constant,
-                    ty:  chain.ty.ir_type(),
+                    ty:  ir_type,
                     imm: chain_value,
                 },
                 Instruction::ArithmeticBinary {
@@ -160,7 +160,7 @@ impl super::Pass for SimplifyExpressionsPass {
 
             // Because we have allocated a new value we need to set its type.
             if let Some(type_info) = function.type_info.as_mut() {
-                assert!(type_info.insert(temp_constant, chain.ty.ir_type()).is_none(),
+                assert!(type_info.insert(temp_constant, ir_type).is_none(),
                         "Newly created constant already had type info.");
             }
 

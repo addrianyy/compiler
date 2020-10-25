@@ -469,7 +469,7 @@ impl X86Backend {
 
                 match inst {
                     Instruction::Const { dst, ty, imm } => {
-                        let size = type_to_operand_size(*ty, false);
+                        let size = type_to_operand_size(*ty, true);
 
                         // Make sure that U1 (bool) has correct cosntant value.
                         if *ty == Type::U1 {

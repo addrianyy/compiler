@@ -142,7 +142,7 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
 
                     // Create a bit pattern of only ones for a given type.
                     let ones = const_ty.map(|ty| {
-                        match ty {
+                        match ConstType::new(ty) {
                             ConstType::U1  => panic!("U1 in arithmetic instruction."),
                             ConstType::U8  => u8::MAX  as u64,
                             ConstType::U16 => u16::MAX as u64,

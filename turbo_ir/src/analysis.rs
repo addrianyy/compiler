@@ -15,24 +15,15 @@ pub(super) enum ConstType {
 }
 
 impl ConstType {
-    pub(super) fn from_ir_type(ty: Type) -> Option<ConstType> {
+    pub(super) fn new(ty: Type) -> ConstType {
         match ty {
-            Type::U1  => Some(ConstType::U1),
-            Type::U8  => Some(ConstType::U8),
-            Type::U16 => Some(ConstType::U16),
-            Type::U32 => Some(ConstType::U32),
-            Type::U64 => Some(ConstType::U64),
-            _         => None,
-        }
-    }
-
-    pub(super) fn ir_type(&self) -> Type {
-        match self {
-            ConstType::U1  => Type::U1,
-            ConstType::U8  => Type::U8,
-            ConstType::U16 => Type::U16,
-            ConstType::U32 => Type::U32,
-            ConstType::U64 => Type::U64,
+            Type::U1  => ConstType::U1,
+            Type::U8  => ConstType::U8,
+            Type::U16 => ConstType::U16,
+            Type::U32 => ConstType::U32,
+            Type::U64 => ConstType::U64,
+            // Pointer is treated as constant type U64.
+            _ => ConstType::U64,
         }
     }
 }
@@ -265,17 +256,19 @@ impl FunctionData {
         cx.analysis
     }
 
-    pub(super) fn constant_values(&self) -> Map<Value, (ConstType, Const)> {
+    pub(super) fn constant_values(&self) -> Map<Value, (Type, Const)> {
         let mut consts = Map::default();
 
         self.for_each_instruction(|_location, instruction| {
             match instruction {
                 Instruction::Const { dst, imm, ty } => {
+                    /*
                     let ty = ConstType::from_ir_type(*ty)
                         .unwrap_or_else(|| panic!("Invalid constant type {:?}.", ty));
+                    */
 
                     let imm = *imm as Const;
-                    let imm = match ty {
+                    let imm = match ConstType::new(*ty) {
                         ConstType::U1  => imm & 1,
                         ConstType::U8  => imm as u8  as u64,
                         ConstType::U16 => imm as u16 as u64,
@@ -283,7 +276,7 @@ impl FunctionData {
                         ConstType::U64 => imm as u64 as u64,
                     };
 
-                    assert!(consts.insert(*dst, (ty, imm)).is_none(),
+                    assert!(consts.insert(*dst, (*ty, imm)).is_none(),
                             "Multiple constant value creators.");
                 }
                 Instruction::Alias { dst, value } => {
