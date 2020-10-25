@@ -77,7 +77,7 @@ pub enum Instruction {
         target: Label,
     },
     BranchCond {
-        value:    Value,
+        cond:     Value,
         on_true:  Label,
         on_false: Label,
     },
@@ -210,11 +210,11 @@ impl Instruction {
                     In(Param::Label(target)),
                 ]
             }
-            Instruction::BranchCond { on_true, on_false, value } => {
+            Instruction::BranchCond { on_true, on_false, cond } => {
                 vec![
                     In(Param::Label(on_true)),
                     In(Param::Label(on_false)),
-                    In(Param::Value(value)),
+                    In(Param::Value(cond)),
                 ]
             }
             Instruction::StackAlloc { dst, ty, size } => {
@@ -306,7 +306,7 @@ impl Instruction {
             Instruction::Store            { ptr, value        } => vec![ptr, value],
             Instruction::Call             { ref args, ..      } => args.clone(),
             Instruction::Branch           { ..                } => vec![],
-            Instruction::BranchCond       { value, ..         } => vec![value],
+            Instruction::BranchCond       { cond, ..          } => vec![cond],
             Instruction::StackAlloc       { ..                } => vec![],
             Instruction::Return           { value, ..         } => value.into_iter().collect(),
             Instruction::Const            { ..                } => vec![],
@@ -333,7 +333,7 @@ impl Instruction {
                 }
             }
             Instruction::Branch           { ..                } => {},
-            Instruction::BranchCond       { value, ..         } => f(value),
+            Instruction::BranchCond       { cond, ..          } => f(cond),
             Instruction::StackAlloc       { ..                } => {},
             Instruction::Return           { value, ..         } => {
                 if let Some(value) = value {

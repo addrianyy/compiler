@@ -30,7 +30,7 @@ impl Pass for X86ReorderPass {
                                 "Compares create multiple same values.");
                     }
                     Instruction::Select     { cond, .. } |
-                    Instruction::BranchCond { value: cond, .. } => {
+                    Instruction::BranchCond { cond, .. } => {
                         // We found select/bcond and we want to move corresponding icmp
                         // just above it.
                         if let Some(&cmp_id) = compares.get(cond) {

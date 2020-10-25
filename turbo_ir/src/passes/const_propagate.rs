@@ -164,8 +164,8 @@ impl Pass for ConstPropagatePass {
                         propagated = Some((Type::U1, result));
                     }
                 }
-                Instruction::BranchCond { value, on_true, on_false } => {
-                    if let Some(&(_, cond)) = consts.get(value) {
+                Instruction::BranchCond { cond, on_true, on_false } => {
+                    if let Some(&(_, cond)) = consts.get(cond) {
                         // If condition is constant then only one branch will be taken.
                         // Convert instruction to simple branch instruction.
 

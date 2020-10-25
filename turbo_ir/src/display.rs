@@ -151,9 +151,9 @@ impl FunctionData {
             Instruction::Branch { target } => {
                 write!(w, "branch {}", target)?;
             }
-            Instruction::BranchCond { value, on_true, on_false } => {
-                write!(w, "bcond {} {}, {}, {}", self.display_type(*value),
-                       value, on_true, on_false)?;
+            Instruction::BranchCond { cond, on_true, on_false } => {
+                write!(w, "bcond {} {}, {}, {}", self.display_type(*cond),
+                       cond, on_true, on_false)?;
             }
             Instruction::StackAlloc { dst, ty, size } => {
                 write!(w, "{} = stackalloc {}", dst, ty)?;

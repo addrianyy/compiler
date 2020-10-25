@@ -159,10 +159,10 @@ impl FunctionData {
             }
             Instruction::Branch { .. } => {
             }
-            Instruction::BranchCond { value, .. } => {
-                let value = get_type!(*value);
+            Instruction::BranchCond { cond, .. } => {
+                let cond = get_type!(*cond);
 
-                assert!(value == Type::U1, "Conditional branch input must be U1.");
+                assert!(cond == Type::U1, "Conditional branch input must be U1.");
             }
             Instruction::StackAlloc { dst, ty, size } => {
                 let dst = get_type!(*dst);

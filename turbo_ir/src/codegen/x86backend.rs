@@ -274,8 +274,8 @@ impl X86Backend {
         // to create these patterns if possible.
         match instructions {
             [Instruction::IntCompare { dst, a, pred, b },
-             Instruction::BranchCond { value, on_true, on_false }, ..]
-                 if dst == value && cx.usage_count(*dst) == 1 =>
+             Instruction::BranchCond { cond, on_true, on_false }, ..]
+                 if dst == cond && cx.usage_count(*dst) == 1 =>
             {
                 let on_true_s:  &str = &format!(".{}", on_true);
                 let on_false_s: &str = &format!(".{}", on_false);
@@ -777,12 +777,12 @@ impl X86Backend {
                             asm.jmp(&[Label(&target)]);
                         }
                     }
-                    Instruction::BranchCond { value, on_true, on_false } => {
+                    Instruction::BranchCond { cond, on_true, on_false } => {
                         let on_true_s  = format!(".{}", on_true);
                         let on_false_s = format!(".{}", on_false);
 
                         asm.with_size(OperandSize::Bits8, |asm| {
-                            asm.cmp(&[r.resolve(*value), Imm(0)]);
+                            asm.cmp(&[r.resolve(*cond), Imm(0)]);
                         });
 
                         if Some(*on_true) == next_label {

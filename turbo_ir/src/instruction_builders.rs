@@ -119,8 +119,8 @@ impl Module {
         self.insert(Instruction::Branch { target });
     }
 
-    pub fn branch_cond(&mut self, value: Value, on_true: Label, on_false: Label) {
-        self.insert(Instruction::BranchCond { value, on_true, on_false });
+    pub fn branch_cond(&mut self, cond: Value, on_true: Label, on_false: Label) {
+        self.insert(Instruction::BranchCond { cond, on_true, on_false });
     }
 
     pub fn stack_alloc(&mut self, ty: Type, size: usize) -> Value {
