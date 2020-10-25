@@ -91,7 +91,7 @@ impl super::Pass for SimplifyExpressionsPass {
                             // We cannot chain both operations if they have different
                             // binary operator. Also, if previous chain part is used more
                             // than one time we don't gain anything from chaining.
-                            if chain.op != *op || usage_counts[value.0] > 1 {
+                            if chain.op != *op || usage_counts[value.index()] > 1 {
                                 None
                             } else {
                                 // Join current operation and previous chain into one.

@@ -117,7 +117,7 @@ impl<'a> X86CodegenContext<'a> {
     }
 
     fn usage_count(&self, value: Value) -> u32 {
-        self.x86_data.usage_count[value.0]
+        self.x86_data.usage_count[value.index()]
     }
 }
 
@@ -229,7 +229,7 @@ impl X86Backend {
                 }
 
                 for value in instruction.read_values() {
-                    usage_count[value.0] += 1;
+                    usage_count[value.index()] += 1;
                 }
             }
         }

@@ -18,7 +18,7 @@ impl super::Pass for RemoveDeadCodePass {
         // and which are not.
         function.for_each_instruction(|_location, instruction| {
             for value in instruction.read_values() {
-                used_values[value.0] = true;
+                used_values[value.index()] = true;
             }
         });
 
@@ -28,7 +28,7 @@ impl super::Pass for RemoveDeadCodePass {
 
             // If value isn't used and its creator isn't volatile then creator can be safely
             // removed.
-            if !creator.is_volatile() && !used_values[value.0] {
+            if !creator.is_volatile() && !used_values[value.index()] {
                 *creator      = Instruction::Nop;
                 did_something = true;
             }

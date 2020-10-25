@@ -23,16 +23,22 @@ use codegen::Backend;
 use graph::Dominators;
 
 #[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-pub struct Value(usize);
+pub struct Value(u32);
 
 #[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-pub struct Function(usize);
+pub struct Function(u32);
 
 #[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-pub struct Label(usize);
+pub struct Label(u32);
 
 #[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct Location(Label, usize);
+
+impl Value {
+    fn index(&self) -> usize {
+        self.0 as usize
+    }
+}
 
 type Map<K, V> = fnv::FnvHashMap<K, V>;
 type Set<T>    = fnv::FnvHashSet<T>;
@@ -198,7 +204,7 @@ impl FunctionData {
     }
 
     pub fn value_count(&self) -> usize {
-        self.next_value.0
+        self.next_value.0 as usize
     }
 }
 

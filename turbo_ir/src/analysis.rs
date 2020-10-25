@@ -457,7 +457,7 @@ impl FunctionData {
 
         self.for_each_instruction(|_location, instruction| {
             for value in instruction.read_values() {
-                usage_counts[value.0] += 1;
+                usage_counts[value.index()] += 1;
             }
         });
 

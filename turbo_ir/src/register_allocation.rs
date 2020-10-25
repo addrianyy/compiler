@@ -52,7 +52,7 @@ impl FunctionData {
                     for input in inst.read_values() {
                         // Make sure to not include arguments.
                         if !self.is_value_argument(input) && creators[&input].0 != target_label {
-                            used[input.0] = true;
+                            used[input.index()] = true;
                         }
                     }
                 }
@@ -65,7 +65,7 @@ impl FunctionData {
 
                 for inst in &block[inst_id + 1..] {
                     for input in inst.read_values() {
-                        used[input.0] = true;
+                        used[input.index()] = true;
                     }
                 }
 
@@ -131,7 +131,7 @@ impl FunctionData {
                 let mut to_free: Vec<(Value, Place)> = Vec::new();
 
                 for (&value, &place) in block_allocs.0.iter() {
-                    if !lifetimes[&location][value.0] {
+                    if !lifetimes[&location][value.index()] {
                         to_free.push((value, place));
                     }
                 }

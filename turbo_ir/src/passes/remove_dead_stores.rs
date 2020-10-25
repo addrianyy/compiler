@@ -116,7 +116,7 @@ impl super::Pass for RemoveDeadStoresPass {
 
         for (pointer, stores) in stores {
             // Check if the only instruction that touches pointer is a store.
-            let single_store = stores.len() == 1 && usage_counts[pointer.0] == 1;
+            let single_store = stores.len() == 1 && usage_counts[pointer.index()] == 1;
 
             // Check if single-store pointer comes from safely used safalloc.
             if single_store && pointer_analysis.get_stackalloc(pointer) == Some(true) {
