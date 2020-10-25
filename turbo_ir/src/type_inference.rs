@@ -18,7 +18,7 @@ impl FunctionData {
         }
 
         let creator = cx.creators.get(&value).expect("Value is used without being created.");
-        let creator = &self.blocks[&creator.0][creator.1];
+        let creator = &self.blocks[&creator.label()][creator.index()];
 
         let ty = match creator {
             Instruction::ArithmeticUnary { value, .. } => {

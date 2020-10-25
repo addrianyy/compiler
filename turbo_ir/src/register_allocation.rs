@@ -51,7 +51,8 @@ impl FunctionData {
                 for inst in &self.blocks[&target_label] {
                     for input in inst.read_values() {
                         // Make sure to not include arguments.
-                        if !self.is_value_argument(input) && creators[&input].0 != target_label {
+                        if !self.is_value_argument(input) && 
+                                creators[&input].label() != target_label {
                             used[input.index()] = true;
                         }
                     }
@@ -69,7 +70,7 @@ impl FunctionData {
                     }
                 }
 
-                lifetimes.insert(Location(label, inst_id), used);
+                lifetimes.insert(Location::new(label, inst_id), used);
             }
         }
 
@@ -125,7 +126,7 @@ impl FunctionData {
             let block        = &self.blocks[&label];
 
             for (inst_id, inst) in block.iter().enumerate() {
-                let location = Location(label, inst_id);
+                let location = Location::new(label, inst_id);
 
                 let mut inst_allocs                  = block_allocs.0.clone();
                 let mut to_free: Vec<(Value, Place)> = Vec::new();

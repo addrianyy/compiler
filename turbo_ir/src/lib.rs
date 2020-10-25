@@ -32,11 +32,33 @@ pub struct Function(u32);
 pub struct Label(u32);
 
 #[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-pub struct Location(Label, usize);
+pub struct Location {
+    location_label: Label,
+    location_index: u32,
+}
 
 impl Value {
     fn index(&self) -> usize {
         self.0 as usize
+    }
+}
+
+impl Location {
+    fn new(label: Label, index: usize) -> Self {
+        use std::convert::TryInto;
+
+        Self {
+            location_label: label,
+            location_index: index.try_into().expect("Index is too high."),
+        }
+    }
+
+    fn label(&self) -> Label {
+        self.location_label
+    }
+
+    fn index(&self) -> usize {
+        self.location_index as usize
     }
 }
 

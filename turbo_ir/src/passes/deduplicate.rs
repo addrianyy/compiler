@@ -61,7 +61,7 @@ impl super::Pass for DeduplicatePass {
                 if let Some(candidates) = dedup_list.get(&key) {
                     // Find the best candidate for deduplication.
                     for &candidate in candidates {
-                        let location = Location(label, inst_id);
+                        let location = Location::new(label, inst_id);
 
                         // Deduplicating loads is a special case. Get information about the load.
                         let load_info = match instruction {
@@ -127,7 +127,7 @@ impl super::Pass for DeduplicatePass {
 
                     // All values which can be deduplicated must create values.
                     let output = body[inst_id].created_value().unwrap();
-                    let alias  = function.blocks[&deduplication.0][deduplication.1]
+                    let alias  = function.blocks[&deduplication.label()][deduplication.index()]
                         .created_value().unwrap();
 
                     // Get mutable reference to function body.

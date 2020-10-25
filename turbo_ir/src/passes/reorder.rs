@@ -23,7 +23,7 @@ impl super::Pass for ReorderPass {
         //    finish.
 
         for (value, creator) in creators {
-            let body            = &function.blocks[&creator.0];
+            let body            = &function.blocks[&creator.label()];
             let mut new_creator = None;
 
             // It is very likely that creator location is now incorrect.
@@ -32,7 +32,7 @@ impl super::Pass for ReorderPass {
             for (inst_id, instruction) in body.iter().enumerate() {
                 if let Some(created_value) = instruction.created_value() {
                     if value == created_value {
-                        new_creator = Some(Location(creator.0, inst_id));
+                        new_creator = Some(Location::new(creator.label(), inst_id));
 
                         break;
                     }
@@ -43,7 +43,7 @@ impl super::Pass for ReorderPass {
             let creator = new_creator.expect("Something is broken.");
 
             // Loads and volatile instructions cannot be reordered.
-            if !body[creator.1].can_be_reordered() {
+            if !body[creator.index()].can_be_reordered() {
                 continue;
             }
 
@@ -56,7 +56,7 @@ impl super::Pass for ReorderPass {
                 // We don't bother reordering within the same block. Also it can cause infinite
                 // optimization loops so we better avoid it. If creator is in the same
                 // block as one use ordering isn't that bad. Don't touch it.
-                if location.0 == creator.0 {
+                if location.label() == creator.label() {
                     best_location = None;
 
                     break;
@@ -102,20 +102,20 @@ impl super::Pass for ReorderPass {
             if let Some(best_location) = best_location {
                 // We have found the best location to reorder instruction.
                 // Check if the location isn't the same as current one.
-                if Location(creator.0, creator.1 + 1) == best_location {
+                if Location::new(creator.label(), creator.index() + 1) == best_location {
                     continue;
                 }
 
                 // Remove creator instruction.
                 let creator = std::mem::replace(&mut function.blocks
-                                                .get_mut(&creator.0)
-                                                .unwrap()[creator.1],
+                                                .get_mut(&creator.label())
+                                                .unwrap()[creator.index()],
                                                 Instruction::Nop);
 
                 // Place creator instruction in the new location.
-                function.blocks.get_mut(&best_location.0)
+                function.blocks.get_mut(&best_location.label())
                     .unwrap()
-                    .insert(best_location.1, creator);
+                    .insert(best_location.index(), creator);
 
                 did_something = true;
             }

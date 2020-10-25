@@ -316,11 +316,11 @@ impl FunctionData {
 
     pub(super) fn validate_path(&self, dominators: &Dominators,
                                 start: Location, end: Location) -> bool {
-        let start_label = start.0;
-        let end_label   = end.0;
+        let start_label = start.label();
+        let end_label   = end.label();
 
         if start_label == end_label {
-            return start.1 < end.1;
+            return start.index() < end.index();
         }
 
         self.dominates(dominators, start_label, end_label)
@@ -333,17 +333,17 @@ impl FunctionData {
         end:          Location,
         mut verifier: impl FnMut(&Instruction) -> bool,
     ) -> Option<usize> {
-        let start_label = start.0;
-        let end_label   = end.0;
+        let start_label = start.label();
+        let end_label   = end.label();
 
         let mut instruction_count = 0;
 
         // Base case: both path points are in the same block.
         if start_label == end_label {
             // Start must be before end to make valid path.
-            if start.1 < end.1 {
+            if start.index() < end.index() {
                 // Verify all instructions between `start` and `end`.
-                for inst in &self.blocks[&start_label][start.1 + 1..end.1] {
+                for inst in &self.blocks[&start_label][start.index() + 1..end.index()] {
                     if !verifier(inst) {
                         return None;
                     }
@@ -360,7 +360,7 @@ impl FunctionData {
         // When path points are in different blocks then start block must dominate end block.
         if self.dominates(dominators, start_label, end_label) {
             // Make sure there is no invalid instruction in the remaining part of start block.
-            for inst in &self.blocks[&start_label][start.1 + 1..] {
+            for inst in &self.blocks[&start_label][start.index() + 1..] {
                 if !verifier(inst) {
                     return None;
                 }
@@ -369,7 +369,7 @@ impl FunctionData {
             }
 
             // Make sure there is no invalid instruction in the initial part of end block.
-            for inst in &self.blocks[&end_label][..end.1] {
+            for inst in &self.blocks[&end_label][..end.index()] {
                 if !verifier(inst) {
                     return None;
                 }
@@ -428,17 +428,17 @@ impl FunctionData {
     }
 
     pub(super) fn instruction(&self, location: Location) -> &Instruction {
-        &self.blocks[&location.0][location.1]
+        &self.blocks[&location.label()][location.index()]
     }
 
     pub(super) fn instruction_mut(&mut self, location: Location) -> &mut Instruction {
-        &mut self.blocks.get_mut(&location.0).unwrap()[location.1]
+        &mut self.blocks.get_mut(&location.label()).unwrap()[location.index()]
     }
 
     pub(super) fn for_each_instruction(&self, mut callback: impl FnMut(Location, &Instruction)) {
         for label in self.reachable_labels() {
             for (inst_id, inst) in self.blocks[&label].iter().enumerate() {
-                callback(Location(label, inst_id), inst)
+                callback(Location::new(label, inst_id), inst)
             }
         }
     }
@@ -447,7 +447,7 @@ impl FunctionData {
                                            mut callback: impl FnMut(Location, &mut Instruction)) {
         for label in self.reachable_labels() {
             for (inst_id, inst) in self.blocks.get_mut(&label).unwrap().iter_mut().enumerate() {
-                callback(Location(label, inst_id), inst)
+                callback(Location::new(label, inst_id), inst)
             }
         }
     }
@@ -485,7 +485,7 @@ impl FunctionData {
                     }
 
                     let creation_loc = *creators.get(&value).expect("Value used but not created.");
-                    let usage_loc    = Location(label, inst_id);
+                    let usage_loc    = Location::new(label, inst_id);
 
                     assert!(self.validate_path(&dominators, creation_loc, usage_loc),
                             "Value {} is used before being created.", value);
@@ -502,7 +502,7 @@ impl FunctionData {
 
             for (inst_id, inst) in body.iter().enumerate() {
                 if let Some(value) = inst.created_value() {
-                    creators.insert(value, Location(label, inst_id));
+                    creators.insert(value, Location::new(label, inst_id));
                 }
             }
         }

@@ -166,14 +166,14 @@ impl super::Pass for SimplifyExpressionsPass {
 
             // Get the block which created expression which we are going to simplify.
             let creator = creators[&output_value];
-            let body    = function.blocks.get_mut(&creator.0).unwrap();
+            let body    = function.blocks.get_mut(&creator.label()).unwrap();
 
             // Remove old, complex expression.
-            body.remove(creator.1);
+            body.remove(creator.index());
 
             // Insert new, simplified expression to the block.
             for instruction in simplified.into_iter().rev() {
-                body.insert(creator.1, instruction);
+                body.insert(creator.index(), instruction);
             }
 
             did_something = true;

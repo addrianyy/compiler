@@ -220,7 +220,7 @@ impl X86Backend {
                         free_storage_end_offset -= size as i64;
                         frame_size              += size;
 
-                        stackallocs.insert(Location(label, inst_id), free_storage_end_offset);
+                        stackallocs.insert(Location::new(label, inst_id), free_storage_end_offset);
                     }
                     Instruction::Return { .. } => {
                         noreturn = false;
@@ -263,7 +263,7 @@ impl X86Backend {
         let func = cx.func;
         let asm  = &mut self.asm;
 
-        let next_location = Location(location.0, location.1 + 1);
+        let next_location = Location::new(location.label(), location.index() + 1);
 
         let resolver      = cx.resolver(location);
         let next_resolver = cx.resolver(next_location);
@@ -394,7 +394,7 @@ impl X86Backend {
             let mut instructions: &[Instruction] = body;
 
             while !instructions.is_empty() {
-                let location = Location(label, inst_id);
+                let location = Location::new(label, inst_id);
                 let inst     = &instructions[0];
                 let r        = cx.resolver(location);
 
