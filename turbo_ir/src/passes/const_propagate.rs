@@ -184,8 +184,7 @@ impl super::Pass for ConstPropagatePass {
                 Instruction::Cast { cast, value, ty: dst_ty, ..} => {
                     if let Some(&(ty, value)) = consts.get(value) {
                         if *cast == Cast::Bitcast {
-                            // Bitcasts can work on pointers which aren't supported in
-                            // constant database. Also bitcasts don't affect value whatsoever.
+                            // Bitcasts don't affect value whatsoever.
                             propagated = Some(value);
                         } else {
                             let result = match ConstType::new(ty) {
@@ -228,13 +227,12 @@ impl super::Pass for ConstPropagatePass {
                 let ty = function.value_type(dst);
 
                 if ty == Type::U1 {
-                    // U1s can bo only true or false.
+                    // U1s can be only true or false.
                     assert!(propagated == 0 || propagated == 1,
                             "Invalid propagated U1 constant {}.", propagated);
                 }
 
-                // Add propagated value to known constants database. It is possible that
-                // we propagated a pointer and it cannot be added here.
+                // Add propagated value to known constants database.
                 assert!(consts.insert(dst, (ty, propagated)).is_none(),
                         "Propagated already constant value?");
 

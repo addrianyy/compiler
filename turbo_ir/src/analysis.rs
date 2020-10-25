@@ -262,14 +262,12 @@ impl FunctionData {
         self.for_each_instruction(|_location, instruction| {
             match instruction {
                 Instruction::Const { dst, imm, ty } => {
-                    /*
-                    let ty = ConstType::from_ir_type(*ty)
-                        .unwrap_or_else(|| panic!("Invalid constant type {:?}.", ty));
-                    */
-
                     let imm = *imm as Const;
                     let imm = match ConstType::new(*ty) {
-                        ConstType::U1  => imm & 1,
+                        ConstType::U1 => {
+                            assert!(imm == 0 || imm == 1, "U1 has invalid value {}.", imm);
+                            imm
+                        }
                         ConstType::U8  => imm as u8  as u64,
                         ConstType::U16 => imm as u16 as u64,
                         ConstType::U32 => imm as u32 as u64,

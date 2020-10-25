@@ -132,10 +132,10 @@ impl super::Pass for SimplifyExpressionsPass {
                 continue;
             }
 
-            // Evaluate right hand side of the chain.
+            // Evaluate right hand side of the chain. It must be integer value.
             let (chain_value, ir_type) = match chain.ty {
                 ConstType::U1  => unreachable!(),
-                ConstType::U8  => (evaluate_chain!(&chain, u8) , Type::U8),
+                ConstType::U8  => (evaluate_chain!(&chain, u8),  Type::U8),
                 ConstType::U16 => (evaluate_chain!(&chain, u16), Type::U16),
                 ConstType::U32 => (evaluate_chain!(&chain, u32), Type::U32),
                 ConstType::U64 => (evaluate_chain!(&chain, u64), Type::U64),
