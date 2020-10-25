@@ -31,7 +31,7 @@ impl Pass for RemoveDeadStoresPass {
             }
         });
 
-        for (pointer, mut stores) in stores {
+        for (&pointer, stores) in &mut stores {
             // Keep removing until there is nothing more to remove.
             loop {
                 let mut to_remove = None;
@@ -43,10 +43,10 @@ impl Pass for RemoveDeadStoresPass {
                 }
 
                 // Go through all stores and find which one can be removed.
-                'next_location: for &removed_location in &stores {
+                'next_location: for &removed_location in stores.iter() {
                     // Check all combinations of paths between `removed_location` and other
                     // stores to make sure that we can actually remove this store.
-                    for &other_location in &stores {
+                    for &other_location in stores.iter() {
                         // We don't care about ourselves.
                         if removed_location == other_location {
                             continue;
@@ -107,6 +107,23 @@ impl Pass for RemoveDeadStoresPass {
                     // We haven't found any store to remove. Exit the loop.
                     break;
                 }
+            }
+        }
+
+        // If there are pointers which are only written to once and never accessed and they come
+        // from safely used stackallocks, single write can be removed. This, combined
+        // with RemoveKnownLoadsPass, will have the same effect as StackallocToRegPass.
+
+        let usage_counts = function.usage_counts();
+
+        for (pointer, stores) in stores {
+            // Check if the only instruction that touches pointer is a store.
+            let single_store = stores.len() == 1 && usage_counts[pointer.0] == 1;
+
+            // Check if single-store pointer comes from safely used safalloc.
+            if single_store && pointer_analysis.get_stackalloc(pointer) == Some(true) {
+                // Remove unneeded store.
+                *function.instruction_mut(stores[0]) = Instruction::Nop;
             }
         }
 

@@ -161,7 +161,7 @@ impl FunctionData {
 
     fn optimize(&mut self) {
         let passes: &[&dyn passes::Pass]  = &[
-            &passes::StackallocToRegPass,
+            //&passes::StackallocToRegPass,
             &passes::RemoveDeadCodePass,
             &passes::RemoveAliasesPass,
             &passes::RemoveNopsPass,

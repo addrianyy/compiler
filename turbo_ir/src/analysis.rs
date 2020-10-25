@@ -47,6 +47,13 @@ pub(super) struct PointerAnalysis {
 }
 
 impl PointerAnalysis {
+    pub fn get_stackalloc(&self, pointer: Value) -> Option<bool> {
+        // Get origin of the pointer.
+        let pointer = self.origins[&pointer];
+
+        self.stackallocs.get(&pointer).copied()
+    }
+
     pub fn can_alias(&self, p1: Value, p2: Value) -> bool {
         // If two pointers are the same they always alias.
         if p1 == p2 {
@@ -442,6 +449,18 @@ impl FunctionData {
                 callback(Location(label, inst_id), inst)
             }
         }
+    }
+
+    pub(super) fn usage_counts(&self) -> Vec<u32> {
+        let mut usage_counts = vec![0; self.value_count()];
+
+        self.for_each_instruction(|_location, instruction| {
+            for value in instruction.read_values() {
+                usage_counts[value.0] += 1;
+            }
+        });
+
+        usage_counts
     }
 
     pub(super) fn validate_ssa(&self) {
