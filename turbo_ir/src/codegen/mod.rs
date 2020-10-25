@@ -1,7 +1,7 @@
 pub mod x86backend;
 mod execmem;
 
-use super::{Function, FunctionData, Module, Map};
+use crate::{Function, FunctionData, Module, Map};
 use execmem::ExecutableMemory;
 
 pub type FunctionMCodeMap = Map<Function, (usize, usize)>;

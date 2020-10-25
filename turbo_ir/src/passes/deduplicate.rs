@@ -1,4 +1,4 @@
-use crate::{FunctionData, Instruction, Location, Map};
+use crate::{FunctionData, Instruction, Location, LargeKeyMap};
 
 pub struct DeduplicatePass;
 
@@ -18,7 +18,7 @@ impl super::Pass for DeduplicatePass {
         // %5 = add u32 %1, %2
         // %7 = neg %5
 
-        let mut dedup_list: Map<_, Vec<Location>> = Map::default();
+        let mut dedup_list: LargeKeyMap<_, Vec<Location>> = LargeKeyMap::default();
 
         // Create a list of all deduplication candidates for a given instruction key.
         function.for_each_instruction(|location, instruction| {

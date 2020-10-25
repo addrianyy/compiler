@@ -37,6 +37,8 @@ pub struct Location(Label, usize);
 type Map<K, V> = fnv::FnvHashMap<K, V>;
 type Set<T>    = fnv::FnvHashSet<T>;
 
+type LargeKeyMap<K, V> = std::collections::HashMap<K, V>;
+
 type BasicBlock = Vec<Instruction>;
 type TypeInfo   = Map<Value, Type>;
 

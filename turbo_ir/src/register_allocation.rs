@@ -1,6 +1,7 @@
-use std::collections::{BTreeMap, BTreeSet};
+use super::{FunctionData, Value, Location, Label, Map, Set};
 
-use super::{FunctionData, Value, Location, Label};
+type RegallocMap<K, V> = Map<K, V>;
+type RegallocSet<K>    = Set<K>;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Place {
@@ -10,9 +11,9 @@ pub enum Place {
 }
 
 pub struct RegisterAllocation {
-    pub allocation: BTreeMap<Location, BTreeMap<Value, Place>>,
-    pub arguments:  BTreeMap<Value, Place>,
-    pub used_regs:  BTreeSet<usize>,
+    pub allocation: RegallocMap<Location, RegallocMap<Value, Place>>,
+    pub arguments:  RegallocMap<Value, Place>,
+    pub used_regs:  RegallocSet<usize>,
     pub slots:      usize,
 }
 
@@ -39,8 +40,8 @@ fn stack_pop_prefer(stack: &mut Vec<usize>, prefer: Option<usize>) -> Option<usi
 }
 
 impl FunctionData {
-    fn lifetimes(&self) -> BTreeMap<Location, Vec<bool>> {
-        let mut lifetimes = BTreeMap::new();
+    fn lifetimes(&self) -> RegallocMap<Location, Vec<bool>> {
+        let mut lifetimes = RegallocMap::default();
         let creators      = self.value_creators();
 
         for label in self.reachable_labels() {
@@ -83,12 +84,12 @@ impl FunctionData {
         }
 
         let mut block_alloc_state:
-            BTreeMap<Label, (BTreeMap<Value, Place>, FreePlaces)> =
-                BTreeMap::new();
+            RegallocMap<Label, (RegallocMap<Value, Place>, FreePlaces)> =
+                RegallocMap::default();
 
         let mut inst_alloc_state:
-            BTreeMap<Location, BTreeMap<Value, Place>> =
-                BTreeMap::new();
+            RegallocMap<Location, RegallocMap<Value, Place>> =
+                RegallocMap::default();
 
         {
             // At first all hardware registers are usable.
@@ -107,7 +108,7 @@ impl FunctionData {
         let lifetimes  = self.lifetimes();
 
         let mut next_slot = 0;
-        let mut used_regs = BTreeSet::new();
+        let mut used_regs = RegallocSet::default();
 
         for label in labels {
             // If there is not register allocation state for this block then take one
@@ -199,7 +200,7 @@ impl FunctionData {
             }
         }
 
-        let mut arguments = BTreeMap::new();
+        let mut arguments = RegallocMap::default();
 
         for (index, argument) in self.argument_values.iter().enumerate() {
             arguments.insert(*argument, Place::Argument(index));
