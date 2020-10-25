@@ -9,7 +9,7 @@ mod analysis;
 mod type_inference;
 mod register_allocation;
 mod passes;
-mod fnv;
+mod collections;
 
 use std::io::{self, Write};
 use std::rc::Rc;
@@ -21,6 +21,7 @@ use instruction::Instruction;
 use analysis::ConstType;
 use codegen::Backend;
 use graph::Dominators;
+use collections::{Map, Set, LargeKeyMap, CapacityExt};
 
 #[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct Value(u32);
@@ -49,7 +50,7 @@ impl Location {
 
         Self {
             location_label: label,
-            location_index: index.try_into().expect("Index is too high."),
+            location_index: index.try_into().expect("Index doesn't fit in U32."),
         }
     }
 
@@ -61,11 +62,6 @@ impl Location {
         self.location_index as usize
     }
 }
-
-type Map<K, V> = fnv::FnvHashMap<K, V>;
-type Set<T>    = fnv::FnvHashSet<T>;
-
-type LargeKeyMap<K, V> = std::collections::HashMap<K, V>;
 
 type BasicBlock = Vec<Instruction>;
 type TypeInfo   = Map<Value, Type>;
@@ -105,7 +101,7 @@ impl FunctionData {
             type_info:       None,
         };
 
-        let _entry = data.allocate_label();
+        data.allocate_label();
 
         for index in 0..argument_count {
             data.argument_values[index] = data.allocate_value();
@@ -225,7 +221,7 @@ impl FunctionData {
         self.validate_ssa();
     }
 
-    pub fn value_count(&self) -> usize {
+    fn value_count(&self) -> usize {
         self.next_value.0 as usize
     }
 }

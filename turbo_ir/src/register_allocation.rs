@@ -1,4 +1,4 @@
-use super::{FunctionData, Value, Location, Label, Map, Set};
+use super::{FunctionData, Value, Location, Label, Map, Set, CapacityExt};
 
 type RegallocMap<K, V> = Map<K, V>;
 type RegallocSet<K>    = Set<K>;
@@ -50,9 +50,10 @@ impl FunctionData {
             for target_label in self.traverse_bfs(label, false) {
                 for inst in &self.blocks[&target_label] {
                     for input in inst.read_values() {
+                        let argument = self.is_value_argument(input);
+
                         // Make sure to not include arguments.
-                        if !self.is_value_argument(input) && 
-                                creators[&input].label() != target_label {
+                        if !argument && creators[&input].label() != target_label {
                             used[input.index()] = true;
                         }
                     }
@@ -60,6 +61,8 @@ impl FunctionData {
             }
             
             let block = &self.blocks[&label];
+
+            lifetimes.reserve(block.len());
 
             for (inst_id, _) in block.iter().enumerate() {
                 let mut used = used.clone();
@@ -86,7 +89,7 @@ impl FunctionData {
 
         let mut block_alloc_state:
             RegallocMap<Label, (RegallocMap<Value, Place>, FreePlaces)> =
-                RegallocMap::default();
+                RegallocMap::new_with_capacity(self.blocks.len());
 
         let mut inst_alloc_state:
             RegallocMap<Location, RegallocMap<Value, Place>> =
@@ -109,7 +112,7 @@ impl FunctionData {
         let lifetimes  = self.lifetimes();
 
         let mut next_slot = 0;
-        let mut used_regs = RegallocSet::default();
+        let mut used_regs = RegallocSet::new_with_capacity(hardware_registers);
 
         for label in labels {
             // If there is not register allocation state for this block then take one
@@ -124,6 +127,9 @@ impl FunctionData {
 
             let block_allocs = block_alloc_state.get_mut(&label).unwrap();
             let block        = &self.blocks[&label];
+
+            inst_alloc_state.reserve(block.len());
+            block_allocs.0.reserve(block.len() / 2);
 
             for (inst_id, inst) in block.iter().enumerate() {
                 let location = Location::new(label, inst_id);
@@ -201,7 +207,7 @@ impl FunctionData {
             }
         }
 
-        let mut arguments = RegallocMap::default();
+        let mut arguments = RegallocMap::new_with_capacity(self.argument_values.len());
 
         for (index, argument) in self.argument_values.iter().enumerate() {
             arguments.insert(*argument, Place::Argument(index));

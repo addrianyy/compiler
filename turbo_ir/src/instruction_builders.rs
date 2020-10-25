@@ -1,5 +1,5 @@
 use super::{Module, Instruction, Value, Label, Function, Type, UnaryOp, BinaryOp,
-           IntPredicate, Cast};
+            IntPredicate, Cast};
 
 macro_rules! implement_arithmetic_unary {
     ($name: ident, $op: expr) => {

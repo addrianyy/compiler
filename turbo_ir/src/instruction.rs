@@ -191,7 +191,7 @@ impl Instruction {
                 ]
             }
             Instruction::Call { dst, func, ref args } => {
-                let mut params = Vec::new();
+                let mut params = Vec::with_capacity(args.len() + 2);
 
                 if let Some(dst) = dst {
                     params.push(Out(Param::Value(dst)));

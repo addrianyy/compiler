@@ -1,16 +1,26 @@
 use std::collections::VecDeque;
 
-use super::{FunctionData, Label, Map, Set};
+use super::{FunctionData, Label, Map, Set, CapacityExt};
 
 pub type FlowGraph  = Map<Label, Set<Label>>;
 pub type Dominators = Map<Label, Label>;
 
 impl FunctionData {
+    fn preferred_capacity(&self, start: Label) -> usize {
+        if start == Label(0) {
+            self.blocks.len()
+        } else {
+            0
+        }
+    }
+
     fn traverse_dfs_postorder(&self, start: Label) -> Vec<Label> {
-        let mut result   = Vec::new();
-        let mut stack    = Vec::new();
-        let mut visited  = Set::default();
-        let mut finished = Set::default();
+        let capacity = self.preferred_capacity(start);
+
+        let mut result   = Vec::with_capacity(capacity);
+        let mut stack    = Vec::with_capacity(capacity / 4);
+        let mut visited  = Set::new_with_capacity(capacity);
+        let mut finished = Set::new_with_capacity(capacity);
 
         stack.push(start);
 
@@ -130,8 +140,10 @@ impl FunctionData {
         include_start: bool,
         mut callback:  impl FnMut(Label),
     ) {
-        let mut visited = Set::default();
-        let mut queue   = VecDeque::new();
+        let capacity = self.preferred_capacity(start);
+
+        let mut visited = Set::new_with_capacity(capacity);
+        let mut queue   = VecDeque::with_capacity(capacity / 4);
 
         queue.push_back(start);
 
@@ -164,7 +176,7 @@ impl FunctionData {
     }
 
     pub(super) fn traverse_bfs(&self, start: Label, include_start: bool) -> Vec<Label> {
-        let mut result = Vec::new();
+        let mut result = Vec::with_capacity(self.preferred_capacity(start));
 
         self.for_each_label_bfs(start, include_start, |label| {
             result.push(label);
@@ -175,7 +187,7 @@ impl FunctionData {
 
     #[allow(unused)]
     pub(super) fn flow_graph_outgoing(&self) -> FlowGraph {
-        let mut flow_graph = Map::default();
+        let mut flow_graph = Map::new_with_capacity(self.blocks.len());
 
         self.for_each_label_bfs(Label(0), true, |label| {
             let entry = flow_graph.entry(label).or_insert_with(Set::default);
@@ -189,7 +201,7 @@ impl FunctionData {
     }
 
     pub(super) fn flow_graph_incoming(&self) -> FlowGraph {
-        let mut flow_graph = Map::default();
+        let mut flow_graph = Map::new_with_capacity(self.blocks.len());
 
         self.for_each_label_bfs(Label(0), true, |label| {
             for target in self.targets(label) {

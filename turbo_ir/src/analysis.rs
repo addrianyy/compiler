@@ -465,11 +465,10 @@ impl FunctionData {
     }
 
     pub(super) fn validate_ssa(&self) {
-        let labels     = self.reachable_labels();
         let dominators = self.dominators();
         let creators   = self.value_creators();
 
-        for &label in &labels {
+        for label in self.reachable_labels() {
             let _    = self.targets(label);
             let body = &self.blocks[&label];
 
@@ -497,15 +496,11 @@ impl FunctionData {
     pub(super) fn value_creators(&self) -> Map<Value, Location> {
         let mut creators = Map::default();
 
-        for label in self.reachable_labels() {
-            let body = &self.blocks[&label];
-
-            for (inst_id, inst) in body.iter().enumerate() {
-                if let Some(value) = inst.created_value() {
-                    creators.insert(value, Location::new(label, inst_id));
-                }
+        self.for_each_instruction(|location, instruction| {
+            if let Some(value) = instruction.created_value() {
+                creators.insert(value,location);
             }
-        }
+        });
 
         creators
     }
