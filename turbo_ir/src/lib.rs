@@ -161,20 +161,23 @@ impl FunctionData {
 
     fn optimize(&mut self) {
         let passes: &[&dyn passes::Pass]  = &[
-            &passes::RemoveDeadCodePass,
-            &passes::RemoveAliasesPass,
-            &passes::RemoveNopsPass,
             &passes::RemoveIneffectiveOperationsPass,
             &passes::SimplifyCFGPass,
             &passes::ConstPropagatePass,
             &passes::SimplifyComparesPass,
+            &passes::SimplifyExpressionsPass,
             &passes::DeduplicatePass,
             &passes::RemoveKnownLoadsPass,
             &passes::RemoveDeadStoresPass,
+            &passes::SimplifyExpressionsPass,
 
             // Architecture specific reorder pass must be after generic reorder pass.
             &passes::ReorderPass,
             &passes::X86ReorderPass,
+
+            &passes::RemoveDeadCodePass,
+            &passes::RemoveAliasesPass,
+            &passes::RemoveNopsPass,
         ];
 
         loop {

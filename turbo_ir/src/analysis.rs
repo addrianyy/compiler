@@ -4,7 +4,7 @@ use super::{FunctionData, Value, Location, Label, Dominators, Map, Instruction, 
 
 pub(super) type Const = u64;
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub(super) enum ConstType {
     U1,
     U8,

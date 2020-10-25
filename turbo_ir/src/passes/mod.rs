@@ -1,4 +1,5 @@
 mod remove_ineffective_operations;
+mod simplify_expressions;
 mod remove_known_loads;
 mod remove_dead_stores;
 mod simplify_compares;
@@ -18,6 +19,7 @@ pub(super) trait Pass {
 }
 
 pub(super) use remove_ineffective_operations::RemoveIneffectiveOperationsPass;
+pub(super) use simplify_expressions::SimplifyExpressionsPass;
 pub(super) use remove_dead_stores::RemoveDeadStoresPass;
 pub(super) use remove_known_loads::RemoveKnownLoadsPass;
 pub(super) use simplify_compares::SimplifyComparesPass;
