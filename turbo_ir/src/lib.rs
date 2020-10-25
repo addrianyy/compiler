@@ -10,7 +10,7 @@ mod type_inference;
 mod register_allocation;
 mod passes;
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{HashMap, HashSet};
 use std::io::{self, Write};
 use std::rc::Rc;
 
@@ -34,8 +34,8 @@ pub struct Label(usize);
 #[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct Location(Label, usize);
 
-type Map<K, V> = BTreeMap<K, V>;
-type Set<T>    = BTreeSet<T>;
+type Map<K, V> = HashMap<K, V>;
+type Set<T>    = HashSet<T>;
 
 type BasicBlock = Vec<Instruction>;
 type TypeInfo   = Map<Value, Type>;
