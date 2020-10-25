@@ -6,8 +6,9 @@ mod x86reorder;
 mod reorder;
 mod deduplicate;
 mod simplify_cfg;
-mod simplify_compares;
 mod const_propagate;
+mod simplify_compares;
+mod remove_known_loads;
 mod remove_ineffective_operations;
 
 use super::{FunctionData, Instruction};
@@ -17,6 +18,7 @@ pub(super) trait Pass {
 }
 
 pub(super) use remove_ineffective_operations::RemoveIneffectiveOperationsPass;
+pub(super) use remove_known_loads::RemoveKnownLoadsPass;
 pub(super) use simplify_compares::SimplifyComparesPass;
 pub(super) use stackalloc_to_reg::StackallocToRegPass;
 pub(super) use remove_dead_code::RemoveDeadCodePass;
