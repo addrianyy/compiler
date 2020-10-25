@@ -520,20 +520,4 @@ impl FunctionData {
 
         uses
     }
-
-    pub (super) fn find_stackallocs(&self, required_size: Option<usize>)
-        -> Vec<(Value, Location)>
-    {
-        let mut results = Vec::new();
-
-        self.for_each_instruction(|location, inst| {
-            if let Instruction::StackAlloc { dst, size, .. } = inst {
-                if required_size.is_none() || Some(*size) == required_size {
-                    results.push((*dst, location));
-                }
-            }
-        });
-
-        results
-    }
 }
