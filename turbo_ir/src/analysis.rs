@@ -86,6 +86,34 @@ impl PointerAnalysis {
 }
 
 impl FunctionData {
+    pub(super) fn can_call_affect_pointer(&self, pointer_analysis: &PointerAnalysis,
+                                          call: &Instruction, pointer: Value) -> bool {
+        if let Instruction::Call { args, .. } = call {
+            if args.is_empty() {
+                // No pointer can be changed if this function doesn't take any parameters.
+                false
+            } else {
+                // Try to get stackalloc form provided pointer.
+                let origin     = pointer_analysis.origins[&pointer];
+                let stackalloc = pointer_analysis.stackallocs.get(&origin);
+
+                if let Some(true) = stackalloc {
+                    // Pointer is safely used stackalloc. If no argument originates from
+                    // the same stackalloc, this call cannot affect the pointer.
+
+                    args.iter().any(|arg| pointer_analysis.origins.get(arg) == Some(&origin))
+                } else {
+                    // We have no idea about non-safe stackallocs or pointers
+                    // with unknown origin.
+
+                    true
+                }
+            }
+        } else {
+            panic!("Non call instruction provided to `can_call_affect_pointer`.");
+        }
+    }
+
     fn get_pointer_origin(&self, pointer: Value,
                           cx: &mut PointerAnalysisContext) -> Value {
         // If pointer origin is unknown or it's at its primary origin this function will

@@ -85,10 +85,12 @@ impl Pass for DeduplicatePass {
 
                                     match instruction {
                                         Instruction::Call  { .. } => {
-                                            // It's hard to reason about calls so
-                                            // they are always deduplication barrier for loads.
+                                            // If call can affect this pointer we cannot
+                                            // continue further.
 
-                                            false
+                                            !function.can_call_affect_pointer(&pointer_analysis,
+                                                                              instruction,
+                                                                              loaded_ptr)
                                         }
                                         Instruction::Store { ptr, .. } => {
                                             // Make sure that stored pointer can't
