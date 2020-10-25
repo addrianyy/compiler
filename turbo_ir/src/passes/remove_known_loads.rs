@@ -3,6 +3,10 @@ use crate::{FunctionData, Instruction, Map};
 pub struct RemoveKnownLoadsPass;
 
 impl super::Pass for RemoveKnownLoadsPass {
+    fn name(&self) -> &str {
+        "known load elimination"
+    }
+
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let pointer_analysis = function.analyse_pointers();
         let dominators       = function.dominators();

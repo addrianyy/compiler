@@ -3,6 +3,10 @@ use crate::{FunctionData, Instruction, Map};
 pub struct X86ReorderPass;
 
 impl super::Pass for X86ReorderPass {
+    fn name(&self) -> &str {
+        "x86 reordering"
+    }
+
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let mut did_something = false;
 

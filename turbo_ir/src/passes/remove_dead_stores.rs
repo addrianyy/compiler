@@ -3,6 +3,10 @@ use crate::{FunctionData, Instruction, Map};
 pub struct RemoveDeadStoresPass;
 
 impl super::Pass for RemoveDeadStoresPass {
+    fn name(&self) -> &str {
+        "dead store elimination"
+    }
+
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let dominators       = function.dominators();
         let pointer_analysis = function.analyse_pointers();

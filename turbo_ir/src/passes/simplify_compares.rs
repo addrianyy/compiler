@@ -3,6 +3,10 @@ use crate::{FunctionData, Instruction, IntPredicate};
 pub struct SimplifyComparesPass;
 
 impl super::Pass for SimplifyComparesPass {
+    fn name(&self) -> &str {
+        "compare simplification"
+    }
+
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let creators = function.value_creators();
         let consts   = function.constant_values();

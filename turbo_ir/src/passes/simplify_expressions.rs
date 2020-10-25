@@ -11,6 +11,10 @@ struct Chain {
 pub struct SimplifyExpressionsPass;
 
 impl super::Pass for SimplifyExpressionsPass {
+    fn name(&self) -> &str {
+        "expression simplification"
+    }
+
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let consts       = function.constant_values();
         let creators     = function.value_creators();

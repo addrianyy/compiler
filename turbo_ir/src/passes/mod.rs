@@ -14,6 +14,7 @@ mod reorder;
 
 pub(super) trait Pass {
     fn run_on_function(&self, function: &mut crate::FunctionData) -> bool;
+    fn name(&self) -> &str;
 }
 
 pub(super) use remove_ineffective_operations::RemoveIneffectiveOperationsPass;

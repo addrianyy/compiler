@@ -4,6 +4,10 @@ use crate::{FunctionData, Instruction, Type, BinaryOp, UnaryOp, Cast,
 pub struct ConstPropagatePass;
 
 impl super::Pass for ConstPropagatePass {
+    fn name(&self) -> &str {
+        "constant propagation"
+    }
+
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let mut consts = function.constant_values();
 

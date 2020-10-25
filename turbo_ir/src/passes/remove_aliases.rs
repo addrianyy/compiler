@@ -3,6 +3,10 @@ use crate::{FunctionData, Instruction};
 pub struct RemoveAliasesPass;
 
 impl super::Pass for RemoveAliasesPass {
+    fn name(&self) -> &str {
+        "alias elimination"
+    }
+
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let mut did_something = false;
         let     labels        = function.reachable_labels();

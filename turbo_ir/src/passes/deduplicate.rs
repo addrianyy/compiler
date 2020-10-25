@@ -3,6 +3,10 @@ use crate::{FunctionData, Instruction, Location, LargeKeyMap};
 pub struct DeduplicatePass;
 
 impl super::Pass for DeduplicatePass {
+    fn name(&self) -> &str {
+        "deduplication"
+    }
+
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let mut did_something = false;
         let pointer_analysis  = function.analyse_pointers();

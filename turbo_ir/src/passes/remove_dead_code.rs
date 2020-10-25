@@ -3,6 +3,10 @@ use crate::{FunctionData, Instruction};
 pub struct RemoveDeadCodePass;
 
 impl super::Pass for RemoveDeadCodePass {
+    fn name(&self) -> &str {
+        "dead code elimination"
+    }
+
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let mut did_something  = false;
         let mut used_values    = vec![false; function.value_count()];

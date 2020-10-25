@@ -3,6 +3,10 @@ use crate::{FunctionData, Instruction, Label, Map};
 pub struct SimplifyCFGPass;
 
 impl super::Pass for SimplifyCFGPass {
+    fn name(&self) -> &str {
+        "CFG simplification"
+    }
+
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let mut did_something = false;
         

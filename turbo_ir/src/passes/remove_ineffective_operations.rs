@@ -4,6 +4,10 @@ use crate::{FunctionData, Instruction, Cast, Value, ConstType, IntPredicate, Typ
 pub struct RemoveIneffectiveOperationsPass;
 
 impl super::Pass for RemoveIneffectiveOperationsPass {
+    fn name(&self) -> &str {
+        "ineffective operation elimination"
+    }
+
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let mut sign_extensions = Map::default();
 

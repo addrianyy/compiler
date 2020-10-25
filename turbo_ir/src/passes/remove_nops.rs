@@ -3,6 +3,10 @@ use crate::{FunctionData, Instruction};
 pub struct RemoveNopsPass;
 
 impl super::Pass for RemoveNopsPass {
+    fn name(&self) -> &str {
+        "nop elimination"
+    }
+
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         // Nops are created by optimization passes to eliminate unneeded instructions.
         // This pass will go through every block and remove nops from it.

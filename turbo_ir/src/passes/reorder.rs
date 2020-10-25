@@ -3,6 +3,10 @@ use crate::{FunctionData, Instruction, Location};
 pub struct ReorderPass;
 
 impl super::Pass for ReorderPass {
+    fn name(&self) -> &str {
+        "reordering"
+    }
+
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let mut did_something = false;
         let creators          = function.value_creators();

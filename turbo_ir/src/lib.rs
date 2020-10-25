@@ -11,6 +11,7 @@ mod register_allocation;
 mod passes;
 mod collections;
 
+use std::time::Instant;
 use std::io::{self, Write};
 use std::rc::Rc;
 
@@ -186,6 +187,12 @@ impl FunctionData {
     }
 
     fn optimize(&mut self) {
+        #[derive(Debug, Default, Clone)]
+        struct PassStatistics {
+            time:      f64,
+            successes: u32,
+        }
+
         let passes: &[&dyn passes::Pass]  = &[
             &passes::RemoveIneffectiveOperationsPass,
             &passes::SimplifyCFGPass,
@@ -195,7 +202,6 @@ impl FunctionData {
             &passes::DeduplicatePass,
             &passes::RemoveKnownLoadsPass,
             &passes::RemoveDeadStoresPass,
-            &passes::SimplifyExpressionsPass,
 
             // Architecture specific reorder pass must be after generic reorder pass.
             &passes::ReorderPass,
@@ -206,16 +212,80 @@ impl FunctionData {
             &passes::RemoveNopsPass,
         ];
 
+        let mut statistics = vec![PassStatistics::default(); passes.len()];
+        let mut iterations = 0;
+
+        let start = Instant::now();
+
         loop {
             let mut did_something = false;
 
-            for pass in passes {
-                did_something |= pass.run_on_function(self)
+            for (index, pass) in passes.iter().enumerate() {
+                let start   = Instant::now();
+                let success = pass.run_on_function(self);
+                let elapsed = start.elapsed().as_secs_f64();
+
+                did_something |= success;
+
+                let statistics = &mut statistics[index];
+
+                statistics.successes += success as u32;
+                statistics.time      += elapsed;
             }
+
+            iterations += 1;
 
             if !did_something {
                 break;
             }
+        }
+
+        let elapsed = start.elapsed().as_secs_f64();
+
+        if true && !passes.is_empty() {
+            println!("Optimized {} in {} iterations and {}s.", self.prototype.name, 
+                     iterations, elapsed);
+
+            statistics.sort_by(|a, b| b.time.partial_cmp(&a.time).unwrap());
+
+            let mut longest_pass_name = None;
+            let mut total_passes_time = 0.0;
+
+            for (index, pass) in passes.iter().enumerate() {
+                let name       = pass.name();
+                let statistics = &statistics[index];
+
+                let is_longer = match longest_pass_name {
+                    Some(other) => name.len() > other,
+                    None        => true
+                };
+
+                if is_longer {
+                    longest_pass_name = Some(name.len());
+                }
+
+                total_passes_time += statistics.time;
+            }
+
+            let longest_pass_name = longest_pass_name.expect("Failed to get longest pass name.");
+
+            for (index, pass) in passes.iter().enumerate() {
+                let name       = pass.name();
+                let statistics = &statistics[index];
+
+                print!("{} ", name);
+
+                for _ in 0..(longest_pass_name - name.len()) {
+                    print!(" ");
+                }
+
+                println!("| {:>2} successes | {:>8.4} ms elapsed [{:>6.2}%]",
+                         statistics.successes,
+                         statistics.time * 1000.0,
+                         (statistics.time / total_passes_time) * 100.0);
+            }
+
+            println!();
         }
 
         self.validate_ssa();
