@@ -1,13 +1,14 @@
 pub mod x86backend;
-mod execmem;
+mod executable_memory;
 
 use crate::{Function, FunctionData, Module, Map};
-use execmem::ExecutableMemory;
+use executable_memory::ExecutableMemory;
 
 pub type FunctionMCodeMap = Map<Function, (usize, usize)>;
 
 pub(super) trait Backend {
     fn new(ir: &Module) -> Self;
+
     fn generate_function(&mut self, function: Function, data: &FunctionData);
     fn finalize(self) -> (Vec<u8>, FunctionMCodeMap);
 }
@@ -29,7 +30,7 @@ impl MachineCode {
 
     pub fn function_buffer(&self, function: Function) -> &[u8] {
         let (offset, size) = *self.functions.get(&function)
-            .expect("Invalid function specified");
+            .expect("Invalid function specified.");
 
         &self.buffer[offset..][..size]
     }
