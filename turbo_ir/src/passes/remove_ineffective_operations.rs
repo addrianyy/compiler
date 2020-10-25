@@ -1,4 +1,4 @@
-use crate::{FunctionData, Instruction, Cast, Value, ConstType,
+use crate::{FunctionData, Instruction, Cast, Value, ConstType, IntPredicate, Type,
             BinaryOp, UnaryOp, Map};
 
 pub struct RemoveIneffectiveOperationsPass;
@@ -82,6 +82,26 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
                         replacement = Some(Instruction::Alias {
                             dst,
                             value: on_true,
+                        });
+                    }
+                }
+                Instruction::IntCompare { dst, a, pred, b } => {
+                    // If both operands to int comapare instruction are the same we can
+                    // calculate the result at compile time.
+                    if values_equal(a, b) {
+                        let result = match pred {
+                            IntPredicate::Equal    => true,
+                            IntPredicate::NotEqual => false,
+                            IntPredicate::GtS      => false,
+                            IntPredicate::GteS     => true,
+                            IntPredicate::GtU      => false,
+                            IntPredicate::GteU     => true,
+                        };
+
+                        replacement = Some(Instruction::Const {
+                            dst,
+                            imm: result as u64,
+                            ty:  Type::U1,
                         });
                     }
                 }

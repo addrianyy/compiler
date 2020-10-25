@@ -11,6 +11,7 @@ fn recreate_directory(path: &str) {
 }
 
 fn main() {
+    /*
     let source       = std::fs::read_to_string("test/1.tc").unwrap();
     let parsed       = parser::parse(&source);
     let mut compiled = compiler::compile(&parsed);
@@ -51,6 +52,24 @@ fn main() {
             println!("return value: {}. buffer: {:?}", result, buffer);
         }
     }
+    */
+
+    use turbo_ir as ir;
+
+    let mut ir = ir::Module::new();
+
+    let func = ir.create_function("test", Some(ir::Type::U1), vec![ir::Type::U32, 
+                                                                    ir::Type::U32.ptr()]);
+
+    ir.switch_function(func);
+    let arg = ir.argument(1);
+    let xd  = ir.compare_eq(arg, arg);
+
+    ir.ret(Some(xd));
+
+    ir.finalize();
+    ir.optimize();
+    ir.dump_function_text(func, &mut std::io::stdout()).unwrap();
 
     /*
     use turbo_ir as ir;

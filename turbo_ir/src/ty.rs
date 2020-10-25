@@ -14,11 +14,11 @@ pub struct Type {
 }
 
 impl Type {
-    pub(super) const U1:  Type = Type { kind: TypeKind::U1,  indirection: 0 };
-    pub        const U8:  Type = Type { kind: TypeKind::U8,  indirection: 0 };
-    pub        const U16: Type = Type { kind: TypeKind::U16, indirection: 0 };
-    pub        const U32: Type = Type { kind: TypeKind::U32, indirection: 0 };
-    pub        const U64: Type = Type { kind: TypeKind::U64, indirection: 0 };
+    pub const U1:  Type = Type { kind: TypeKind::U1,  indirection: 0 };
+    pub const U8:  Type = Type { kind: TypeKind::U8,  indirection: 0 };
+    pub const U16: Type = Type { kind: TypeKind::U16, indirection: 0 };
+    pub const U32: Type = Type { kind: TypeKind::U32, indirection: 0 };
+    pub const U64: Type = Type { kind: TypeKind::U64, indirection: 0 };
 
     pub fn with_indirection(self, indirection: usize) -> Type {
         Self {

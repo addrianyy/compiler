@@ -114,9 +114,6 @@ impl FunctionData {
 
                 assert!(a == b, "Int compare instruction requires all \
                         input operands to be of the same type");
-
-                assert!(a.is_arithmetic() || a == Type::U1, "Int compare instruction can be \
-                        only done on arithmetic types or U1.");
             }
             Instruction::Load { dst, ptr } => {
                 let dst = get_type!(*dst);
@@ -200,6 +197,7 @@ impl FunctionData {
                 let value = get_type!(*value);
 
                 assert!(dst == *ty, "{} destination must be the same type as cast type.", cast);
+                assert!(value != Type::U1 && *ty != Type::U1, "Cannot cast U1s.");
 
                 match cast {
                     Cast::ZeroExtend | Cast::SignExtend | Cast::Truncate => {
@@ -217,8 +215,6 @@ impl FunctionData {
                     Cast::Bitcast => {
                         assert!(value.size() == ty.size(), "{} must cast between values \
                                 with the same size.", cast);
-
-                        assert!(value != Type::U1 && *ty != Type::U1, "Cannot bitcast U1s.");
                     }
                 }
             }
