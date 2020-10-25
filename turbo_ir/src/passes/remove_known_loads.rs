@@ -24,7 +24,7 @@ impl Pass for RemoveKnownLoadsPass {
         let mut loads  = Vec::new();
         let mut stores = HashMap::new();
 
-        // Create a database for all loads and stores in the function.
+        // Create a database of all loads and stores in the function.
         function.for_each_instruction(|location, instruction| {
             match instruction {
                 Instruction::Load { dst, ptr } => {
@@ -61,7 +61,7 @@ impl Pass for RemoveKnownLoadsPass {
                             Instruction::Call { .. } => {
                                 // If call can affect this pointer we cannot continue further.
 
-                                !function.can_call_affect_pointer(&pointer_analysis,
+                                !function.can_call_access_pointer(&pointer_analysis,
                                                                   instruction, load_ptr)
                             }
                             Instruction::Store { ptr, .. } => {

@@ -5,6 +5,7 @@ i32 main(u8* buffer) {
 
     while (buffer[index] != 0u8) {
         buffer[index] += 1u8;
+        buffer[index] += 1u8;
         index += 1;
     }
 

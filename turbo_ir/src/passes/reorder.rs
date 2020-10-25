@@ -69,7 +69,7 @@ impl Pass for ReorderPass {
                 // Basically check that new creator location dominates all other uses.
                 // Also count number of instructions.
                 for &other_location in &uses {
-                    // We don't dominate ourselves.
+                    // We don't care about ourselves.
                     if location == other_location {
                         continue;
                     }

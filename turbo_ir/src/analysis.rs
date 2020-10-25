@@ -86,7 +86,7 @@ impl PointerAnalysis {
 }
 
 impl FunctionData {
-    pub(super) fn can_call_affect_pointer(&self, pointer_analysis: &PointerAnalysis,
+    pub(super) fn can_call_access_pointer(&self, pointer_analysis: &PointerAnalysis,
                                           call: &Instruction, pointer: Value) -> bool {
         if let Instruction::Call { args, .. } = call {
             if args.is_empty() {

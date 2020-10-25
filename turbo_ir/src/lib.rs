@@ -171,6 +171,7 @@ impl FunctionData {
             &passes::SimplifyComparesPass,
             &passes::DeduplicatePass,
             &passes::RemoveKnownLoadsPass,
+            &passes::RemoveDeadStoresPass,
 
             // Architecture specific reorder pass must be after generic reorder pass.
             &passes::ReorderPass,

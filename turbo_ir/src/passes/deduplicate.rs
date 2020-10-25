@@ -88,7 +88,7 @@ impl Pass for DeduplicatePass {
                                             // If call can affect this pointer we cannot
                                             // continue further.
 
-                                            !function.can_call_affect_pointer(&pointer_analysis,
+                                            !function.can_call_access_pointer(&pointer_analysis,
                                                                               instruction,
                                                                               loaded_ptr)
                                         }
