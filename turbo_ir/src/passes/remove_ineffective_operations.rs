@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use super::{FunctionData, Instruction, Pass};
-use super::super::{Cast, Value, ConstType, BinaryOp};
+use super::super::{Cast, Value, ConstType, BinaryOp, UnaryOp};
 
 pub struct RemoveIneffectiveOperationsPass;
 
@@ -190,6 +190,15 @@ impl Pass for RemoveIneffectiveOperationsPass {
                                 replacement = constant!(0);
                             } else if cb == Some(0) {
                                 replacement = alias!(a);
+                            } else if ca == Some(0) {
+                                let value = b;
+
+                                // 0 - a = -a
+                                replacement = Some(Instruction::ArithmeticUnary {
+                                    dst,
+                                    value,
+                                    op: UnaryOp::Neg,
+                                });
                             }
                         }
                         BinaryOp::And => {
@@ -221,6 +230,24 @@ impl Pass for RemoveIneffectiveOperationsPass {
                                 replacement = alias!(a);
                             } else if ca == Some(0) {
                                 replacement = alias!(b);
+                            } else if ca == Some(ones) {
+                                let value = b;
+
+                                // a ^ ffffff... = !a
+                                replacement = Some(Instruction::ArithmeticUnary {
+                                    dst,
+                                    value,
+                                    op: UnaryOp::Not,
+                                });
+                            }  else if cb == Some(ones) {
+                                let value = a;
+
+                                // a ^ ffffff... = !a
+                                replacement = Some(Instruction::ArithmeticUnary {
+                                    dst,
+                                    value,
+                                    op: UnaryOp::Not,
+                                });
                             }
                         }
                         BinaryOp::Mul => {
