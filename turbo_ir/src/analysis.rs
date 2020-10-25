@@ -290,11 +290,17 @@ impl FunctionData {
         self.dominates(dominators, start_label, end_label)
     }
 
-    pub(super) fn validate_path_ex(&self, dominators: &Dominators,
-                                   start: Location, end: Location,
-                                   mut verifier: impl FnMut(&Instruction) -> bool) -> bool {
+    pub(super) fn validate_path_ex(
+        &self,
+        dominators:   &Dominators,
+        start:        Location,
+        end:          Location,
+        mut verifier: impl FnMut(&Instruction) -> bool,
+    ) -> Option<usize> {
         let start_label = start.0;
         let end_label   = end.0;
+
+        let mut instruction_count = 0;
 
         // Base case: both path points are in the same block.
         if start_label == end_label {
@@ -303,14 +309,16 @@ impl FunctionData {
                 // Verify all instructions between `start` and `end`.
                 for inst in &self.blocks[&start_label][start.1 + 1..end.1] {
                     if !verifier(inst) {
-                        return false;
+                        return None;
                     }
+
+                    instruction_count += 1;
                 }
 
-                return true;
+                return Some(instruction_count);
             }
 
-            return false;
+            return None;
         }
 
         // When path points are in different blocks then start block must dominate end block.
@@ -318,15 +326,19 @@ impl FunctionData {
             // Make sure there is no invalid instruction in the remaining part of start block.
             for inst in &self.blocks[&start_label][start.1 + 1..] {
                 if !verifier(inst) {
-                    return false;
+                    return None;
                 }
+
+                instruction_count += 1;
             }
 
             // Make sure there is no invalid instruction in the initial part of end block.
             for inst in &self.blocks[&end_label][..end.1] {
                 if !verifier(inst) {
-                    return false;
+                    return None;
                 }
+
+                instruction_count += 1;
             }
 
             // Find all blocks that are possible to hit when going from start to end.
@@ -365,16 +377,18 @@ impl FunctionData {
                     // that we can hit.
                     for inst in &self.blocks[&label] {
                         if !verifier(inst) {
-                            return false;
+                            return None;
                         }
+
+                        instruction_count += 1;
                     }
                 }
             }
 
-            return true;
+            return Some(instruction_count);
         }
         
-        false
+        None
     }
 
     pub(super) fn instruction(&self, location: Location) -> &Instruction {

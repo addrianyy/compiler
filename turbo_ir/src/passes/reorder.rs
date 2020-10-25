@@ -78,11 +78,12 @@ impl Pass for ReorderPass {
                     // Also count number of instructions. 
                     // Because we sum them up, it's not a perfect measure.
                     // TODO: Find better way of determining the best reorder.
-                    let valid = function.validate_path_ex(&dominators, location, other_location,
-                        |_| { instruction_count += 1; true }
-                    );
+                    let result = function.validate_path_ex(&dominators, location,
+                                                           other_location, |_| true);
 
-                    if !valid {
+                    if let Some(count) = result {
+                        instruction_count += count;
+                    } else {
                         continue 'next_location;
                     }
                 }

@@ -74,16 +74,10 @@ impl Pass for DeduplicatePass {
                             _ => None,
                         };
 
-                        let mut instruction_count = 0;
-
                         // Check if the path from candidate location to current location is
                         // valid. This will also count all hit instructions.
-                        let valid = function.validate_path_ex(&dominators, candidate, location,
+                        let result = function.validate_path_ex(&dominators, candidate, location,
                             |instruction| {
-                                // Count instructions hit when validating path. This will be
-                                // used to determine which deduplication candidate is the best.
-                                instruction_count += 1;
-
                                 if let Some(loaded_ptr) = load_info {
                                     // Special care needs to be taken if we want to deduplicate
                                     // load. Something inbetween two instructions may have
@@ -100,6 +94,7 @@ impl Pass for DeduplicatePass {
                                             // Make sure that stored pointer can't
                                             // alias a pointer loaded by candidate to
                                             // deduplicate.
+
                                             !pointer_analysis.can_alias(loaded_ptr, *ptr)
                                         }
                                         _ => true,
@@ -112,7 +107,7 @@ impl Pass for DeduplicatePass {
                             }
                         );
 
-                        if valid {
+                        if let Some(instruction_count) = result {
                             // If it's a valid candidate, check if it's closer then the
                             // best one. If it is then set it as current best.
                             let better = match best_icount {
