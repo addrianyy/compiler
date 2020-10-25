@@ -11,7 +11,6 @@ fn recreate_directory(path: &str) {
 }
 
 fn main() {
-    /*
     let source       = std::fs::read_to_string("test/1.tc").unwrap();
     let parsed       = parser::parse(&source);
     let mut compiled = compiler::compile(&parsed);
@@ -52,24 +51,50 @@ fn main() {
             println!("return value: {}. buffer: {:?}", result, buffer);
         }
     }
-    */
 
+    /*
     use turbo_ir as ir;
 
     let mut ir = ir::Module::new();
 
-    let func = ir.create_function("test", Some(ir::Type::U1), vec![ir::Type::U32, 
-                                                                    ir::Type::U32.ptr()]);
+    let func = ir.create_function("test", Some(ir::Type::U1), vec![ir::Type::U1.ptr()]);
 
     ir.switch_function(func);
-    let arg = ir.argument(1);
-    let xd  = ir.compare_eq(arg, arg);
+    */
+    /*
+    let null = ir.iconst(0u32, ir::Type::U32.ptr());
+    let arg1 = ir.argument(1);
+    let xd  = ir.compare_eq(arg, null);
 
     ir.ret(Some(xd));
 
     ir.finalize();
     ir.optimize();
     ir.dump_function_text(func, &mut std::io::stdout()).unwrap();
+
+    let mcode = ir.generate_machine_code();
+    let buffer = mcode.function_buffer(func);
+    std::fs::write("asm_dump.bin", buffer).unwrap();
+    */
+
+    /*
+    let arg  = ir.argument(0);
+    let x = ir.iconst(1u32, ir::Type::U1);
+    let idx = ir.iconst(2u32, ir::Type::U32);
+    let v = ir.get_element_ptr(arg, idx);
+    ir.store(v, x);
+
+    let c = ir.iconst(0u32, ir::Type::U1);
+    ir.ret(Some(c));
+
+    ir.finalize();
+    ir.optimize();
+    ir.dump_function_text(func, &mut std::io::stdout()).unwrap();
+
+    let mcode = ir.generate_machine_code();
+    let buffer = mcode.function_buffer(func);
+    std::fs::write("asm_dump.bin", buffer).unwrap();
+    */
 
     /*
     use turbo_ir as ir;

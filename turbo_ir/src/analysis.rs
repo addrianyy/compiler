@@ -184,6 +184,7 @@ impl FunctionData {
                 }
                 Instruction::Load          { .. } => {},
                 Instruction::Return        { .. } => {},
+                Instruction::IntCompare    { .. } => {},
                 Instruction::GetElementPtr { dst, source, .. } => {
                     if *source != pointer {
                         return false;

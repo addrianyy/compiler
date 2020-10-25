@@ -28,8 +28,6 @@ impl Type {
     }
 
     pub fn ptr(self) -> Self {
-        assert!(self.kind != TypeKind::U1);
-
         Self {
             kind:        self.kind,
             indirection: self.indirection + 1,

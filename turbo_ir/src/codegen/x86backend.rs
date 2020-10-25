@@ -57,22 +57,22 @@ impl Registers {
     }
 }
 
-fn type_to_operand_size(ty: Type, pointer: bool) -> OperandSize {
-    fn type_to_size(ty: Type, pointer: bool) -> usize {
-        if ty.is_pointer() {
-            assert!(pointer, "Found unexpected pointer.");
+fn type_to_size(ty: Type, pointer: bool) -> usize {
+    if ty.is_pointer() {
+        assert!(pointer, "Found unexpected pointer.");
 
-            return 8;
-        }
-
-        // U1 -> U8.
-        if ty == Type::U1 {
-            return 1;
-        }
-
-        ty.size()
+        return 8;
     }
 
+    // U1 -> U8.
+    if ty == Type::U1 {
+        return 1;
+    }
+
+    ty.size()
+}
+
+fn type_to_operand_size(ty: Type, pointer: bool) -> OperandSize {
     match type_to_size(ty, pointer) {
         1 => OperandSize::Bits8,
         2 => OperandSize::Bits16,
@@ -299,7 +299,7 @@ impl X86Backend {
                 let on_false_s: &str = &format!(".{}", on_false);
 
                 let ty   = func.value_type(*a);
-                let size = type_to_operand_size(ty, false);
+                let size = type_to_operand_size(ty, true);
                 
                 let mut pred = *pred;
                 let mut a    = resolver.resolve(*a);
@@ -372,10 +372,10 @@ impl X86Backend {
                 // directly and avoid 2 compares and conditional instructions.
 
                 let cmp_ty   = func.value_type(*a);
-                let cmp_size = type_to_operand_size(cmp_ty, false);
+                let cmp_size = type_to_operand_size(cmp_ty, true);
 
                 let sel_ty   = func.value_type(*on_true);
-                let sel_size = type_to_operand_size(sel_ty, false);
+                let sel_size = type_to_operand_size(sel_ty, true);
 
                 // Resolve all operands with apropriate resolvers.
                 let a        = resolver.resolve(*a);
@@ -830,10 +830,8 @@ impl X86Backend {
                         let index_size = func.value_type(*index).size();
 
                         // Scale is equal to size of element that pointer points to.
-                        let scale = func.value_type(*source)
-                            .strip_ptr()
-                            .unwrap()
-                            .size();
+                        let scale = type_to_size(func.value_type(*source)
+                                                 .strip_ptr().unwrap(), true);
 
                         let dst    = r.resolve(*dst);
                         let source = r.resolve(*source);
@@ -910,7 +908,7 @@ impl X86Backend {
                     }
                     Instruction::BranchCond { cond, on_true, on_false } => {
                         // Get textual representation of true and false labels.
-                        let on_true_s = &format!(".{}", on_true);
+                        let on_true_s  = &format!(".{}", on_true);
                         let on_false_s = &format!(".{}", on_false);
 
                         // Check if condition is true (nonzero) or false (zero).
@@ -934,7 +932,7 @@ impl X86Backend {
                     }
                     Instruction::IntCompare { dst, a, pred, b } => {
                         let ty   = func.value_type(*a);
-                        let size = type_to_operand_size(ty, false);
+                        let size = type_to_operand_size(ty, true);
 
                         let dst = r.resolve(*dst);
                         let a   = r.resolve(*a);
@@ -975,7 +973,7 @@ impl X86Backend {
                     }
                     Instruction::Select { dst, cond, on_true, on_false } => {
                         let ty   = func.value_type(*on_true);
-                        let size = type_to_operand_size(ty, false);
+                        let size = type_to_operand_size(ty, true);
 
                         let dst      = r.resolve(*dst);
                         let on_false = r.resolve(*on_false);
