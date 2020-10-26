@@ -202,6 +202,19 @@ impl FunctionData {
                 write!(w, "{} = select {} {}, {} {}, {}", dst, self.display_type(*cond),
                        cond, self.display_type(*on_true), on_true, on_false)?;
             }
+            Instruction::Phi { dst, incoming } => {
+                write!(w, "{} = phi {} [", dst, self.display_type(incoming[0].1))?;
+
+                for (index, (label, value)) in incoming.iter().enumerate() {
+                    write!(w, "{}:  {}", label, value)?;
+
+                    if index + 1 != incoming.len() {
+                        write!(w, ", ")?;
+                    }
+                }
+
+                write!(w, "]")?;
+            }
             Instruction::Alias { dst, value } => {
                 write!(w, "{} = alias {} {}", dst, self.display_type(*value), value)?;
             }

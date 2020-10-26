@@ -60,11 +60,12 @@ impl FunctionData {
 
                 on_true
             }
-            Instruction::StackAlloc    { ty, ..     } => ty.ptr(),
-            Instruction::Const         { ty, ..     } => *ty,
-            Instruction::GetElementPtr { source, .. } => get_type!(*source),
-            Instruction::Cast          { ty, ..     } => *ty,
-            Instruction::Alias         { value, ..  } => get_type!(*value),
+            Instruction::Phi           { incoming, .. } => get_type!(incoming[0].1),
+            Instruction::StackAlloc    { ty, ..       } => ty.ptr(),
+            Instruction::Const         { ty, ..       } => *ty,
+            Instruction::GetElementPtr { source, ..   } => get_type!(*source),
+            Instruction::Cast          { ty, ..       } => *ty,
+            Instruction::Alias         { value, ..    } => get_type!(*value),
             _ => {
                 panic!("Unexpected value creator: {:?}.", creator);
             }
@@ -227,6 +228,13 @@ impl FunctionData {
                 assert!(cond == Type::U1, "Select condition input must be U1.");
                 assert!(on_true == on_false && dst == on_true, "Select values and destination \
                         must have the same type.");
+            }
+            Instruction::Phi { dst, incoming } => {
+                let dst = get_type!(*dst);
+
+                for (_label, value) in incoming {
+                    assert!(get_type!(*value) == dst, "PHI values must have the same types.");
+                }
             }
             Instruction::Nop => {
             }

@@ -11,6 +11,7 @@ fn recreate_directory(path: &str) {
 }
 
 fn main() {
+    /*
     let source       = std::fs::read_to_string("test/1.tc").unwrap();
     let parsed       = parser::parse(&source);
     let mut compiled = compiler::compile(&parsed);
@@ -51,6 +52,7 @@ fn main() {
             println!("return value: {}. buffer: {:?}", result, buffer);
         }
     }
+    */
 
     /*
     use turbo_ir as ir;

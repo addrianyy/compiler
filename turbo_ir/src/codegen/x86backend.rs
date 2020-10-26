@@ -468,6 +468,7 @@ impl X86Backend {
                 let asm = &mut self.asm;
 
                 match inst {
+                    Instruction::Phi   { .. } => panic!(),
                     Instruction::Const { dst, ty, imm } => {
                         let size = type_to_operand_size(*ty, true);
 

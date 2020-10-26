@@ -111,6 +111,10 @@ pub enum Instruction {
         on_true:  Value,
         on_false: Value,
     },
+    Phi {
+        dst:      Value,
+        incoming: Vec<(Label, Value)>,
+    },
     Alias {
         dst:   Value,
         value: Value,
@@ -261,6 +265,18 @@ impl Instruction {
                     In(Param::Value(on_false)),
                 ]
             }
+            Instruction::Phi { dst, ref incoming } => {
+                let mut params = Vec::with_capacity(incoming.len() * 2 + 1);
+
+                params.push(Out(Param::Value(dst)));
+
+                for (label, value) in incoming {
+                    params.push(In(Param::Label(*label)));
+                    params.push(In(Param::Value(*value)));
+                }
+
+                params
+            }
             Instruction::Alias { dst, value } => {
                 vec![
                     Out(Param::Value(dst)),
@@ -289,6 +305,7 @@ impl Instruction {
             Instruction::GetElementPtr    { dst, .. } => Some(dst),
             Instruction::Cast             { dst, .. } => Some(dst),
             Instruction::Select           { dst, .. } => Some(dst),
+            Instruction::Phi              { dst, .. } => Some(dst),
             Instruction::Alias            { dst, .. } => Some(dst),
             Instruction::Nop                          => None,
         }
@@ -316,6 +333,11 @@ impl Instruction {
             Instruction::Nop                                    => vec![],
             Instruction::Select { cond, on_true, on_false, .. } => {
                 vec![cond, on_true, on_false]
+            }
+            Instruction::Phi { ref incoming, .. } => {
+                incoming.iter()
+                    .map(|(_label, value)| *value)
+                    .collect()
             }
         }
     }
@@ -348,6 +370,11 @@ impl Instruction {
             Instruction::Select { cond, on_true, on_false, .. } => {
                 f(cond); f(on_true); f(on_false);
             }
+            Instruction::Phi { ref mut incoming, .. } => {
+                for (_label, value) in incoming {
+                    f(value);
+                }
+            }
         }
     }
 
@@ -372,6 +399,6 @@ impl Instruction {
     }
 
     pub fn can_be_reordered(&self) -> bool {
-        !self.is_volatile() && !matches!(self, Instruction::Load { .. })
+        !self.is_volatile() && !matches!(self, Instruction::Load { .. } | Instruction::Phi { .. })
     }
 }
