@@ -11,6 +11,41 @@ fn recreate_directory(path: &str) {
 }
 
 fn main() {
+    use turbo_ir as ir;
+
+    let mut ir = ir::Module::new();
+
+    let func = ir.create_function("test", None, vec![ir::Type::U32]);
+        
+    ir.switch_function(func);
+
+    let entry = ir.entry_label();
+    let body  = ir.create_label();
+    let exit  = ir.create_label();
+
+    let count = ir.argument(0);
+    let zero  = ir.iconst(0u32, ir::Type::U32);
+
+    ir.branch(body);
+    ir.switch_label(body);
+    let iter      = ir.phi();
+    let one       = ir.iconst(1u32, ir::Type::U32);
+    let next_iter = ir.add(iter, one);
+    let five      = ir.iconst(5u32, ir::Type::U32);
+    let cond      = ir.compare_ne(next_iter, five);
+    ir.branch_cond(cond, body, exit);
+
+    ir.add_phi_incoming(iter, entry, zero);
+    ir.add_phi_incoming(iter, body,  next_iter);
+
+    ir.switch_label(exit);
+    ir.ret(None);
+
+    ir.finalize();
+    ir.dump_function_text(func, &mut std::io::stdout()).unwrap();
+
+
+
     /*
     let source       = std::fs::read_to_string("test/1.tc").unwrap();
     let parsed       = parser::parse(&source);

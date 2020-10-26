@@ -146,4 +146,8 @@ impl Module {
     pub fn select(&mut self, cond: Value, on_true: Value, on_false: Value) -> Value {
         self.with_output(|dst| Instruction::Select { dst, cond, on_true, on_false })
     }
+
+    pub fn phi(&mut self) -> Value {
+        self.with_output(|dst| Instruction::Phi { dst, incoming: Vec::new() })
+    }
 }

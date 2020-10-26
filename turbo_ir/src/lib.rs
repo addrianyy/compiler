@@ -86,6 +86,7 @@ struct FunctionData {
     next_label:      Label,
     function_info:   Option<Rc<CrossFunctionInfo>>,
     type_info:       Option<TypeInfo>,
+    phi_locations:   Map<Value, Location>,
 }
 
 impl FunctionData {
@@ -100,6 +101,7 @@ impl FunctionData {
             next_label:      Label(0),
             function_info:   None,
             type_info:       None,
+            phi_locations:   Map::default(),
         };
 
         data.allocate_label();
@@ -133,9 +135,14 @@ impl FunctionData {
     }
 
     fn insert(&mut self, label: Label, instruction: Instruction) {
-        self.blocks.get_mut(&label)
-            .expect("Invalid insertion label.")
-            .push(instruction);
+        let block    = self.blocks.get_mut(&label).expect("Invalid insertion label.");
+        let position = block.len();
+
+        if let Instruction::Phi { dst, .. } = instruction {
+            self.phi_locations.insert(dst, Location::new(label, position));
+        }
+
+        block.push(instruction);
     }
 
     fn targets(&self, label: Label) -> Vec<Label> {
@@ -294,6 +301,24 @@ impl FunctionData {
     fn value_count(&self) -> usize {
         self.next_value.0 as usize
     }
+
+    fn register_phi(&mut self, phi: Value, location: Label) {
+    }
+
+    fn add_phi_incoming(&mut self, phi: Value, label: Label, value: Value) {
+        let location = self.phi_locations[&phi];
+
+        if let Instruction::Phi { incoming, .. } = self.instruction_mut(location) {
+            let duplicate = incoming.iter().any(|(used_label, _)| *used_label == label);
+            if  duplicate {
+                panic!("Cannot add multiple incoming values from the same label.");
+            }
+
+            incoming.push((label, value));
+        } else {
+            panic!("Cannot add incoming value to non-phi value.");
+        }
+    }
 }
 
 #[derive(Copy, Clone)]
@@ -443,6 +468,11 @@ impl Module {
         self.function_mut(self.active_point().function).allocate_label()
     }
 
+    pub fn add_phi_incoming(&mut self, phi: Value, label: Label, value: Value) {
+        self.function_mut(self.active_point().function)
+            .add_phi_incoming(phi, label, value);
+    }
+
     pub fn is_terminated(&self, label: Option<Label>) -> bool {
         let point = self.active_point();
         let label = label.unwrap_or(point.label);
@@ -497,6 +527,10 @@ impl Module {
         }
 
         self.finalized = true;
+    }
+
+    pub fn entry_label(&self) -> Label {
+        Label(0)
     }
 
     pub fn dump_function_graph(&self, function: Function, path: &str) {

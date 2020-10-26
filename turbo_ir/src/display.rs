@@ -206,7 +206,7 @@ impl FunctionData {
                 write!(w, "{} = phi {} [", dst, self.display_type(incoming[0].1))?;
 
                 for (index, (label, value)) in incoming.iter().enumerate() {
-                    write!(w, "{}:  {}", label, value)?;
+                    write!(w, "{}: {}", label, value)?;
 
                     if index + 1 != incoming.len() {
                         write!(w, ", ")?;

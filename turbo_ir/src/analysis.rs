@@ -457,8 +457,9 @@ impl FunctionData {
     }
 
     pub(super) fn validate_ssa(&self) {
-        let dominators = self.dominators();
-        let creators   = self.value_creators();
+        let dominators    = self.dominators();
+        let creators      = self.value_creators();
+        let flow_incoming = self.flow_graph_incoming();
 
         for label in self.reachable_labels() {
             let _    = self.targets(label);
@@ -469,7 +470,42 @@ impl FunctionData {
                         inst, label);
             }
 
+            let mut can_see_phi = true;
+
             for (inst_id, inst) in body.iter().enumerate() {
+                if let Instruction::Phi { dst, incoming, .. } = inst {
+                    assert!(can_see_phi, "PHI nodes are not at the function beginning.");
+                    assert!(label != Label(0), "Entry labels cannot have PHI nodes.");
+                    assert!(!incoming.is_empty(), "PHI nodes cannot be empty.");
+
+                    let incoming_labels: Set<Label> = incoming.into_iter()
+                        .map(|(label, _value)| *label)
+                        .collect();
+
+                    assert!(incoming_labels == flow_incoming[&label], "PHI node incoming \
+                            labels and block predecessors don't match.");
+
+                    for &(label, value) in incoming {
+                        if self.is_value_argument(value) {
+                            continue;
+                        }
+
+                        let other_body = &self.blocks[&label];
+
+                        // Simulate usage at the end of predecessor.
+                        let creation_loc = *creators.get(&value)
+                            .expect("Value used but not created.");
+                        let usage_loc = Location::new(label, other_body.len());
+
+                        assert!(self.validate_path(&dominators, creation_loc, usage_loc),
+                                "PHI value {} is used before being created.", value);
+                    }
+
+                    continue;
+                } 
+
+                can_see_phi = false;
+
                 for value in inst.read_values() {
                     if self.is_value_argument(value) {
                         continue;
