@@ -40,39 +40,66 @@ fn stack_pop_prefer(stack: &mut Vec<usize>, prefer: Option<usize>) -> Option<usi
 }
 
 impl FunctionData {
-    fn lifetimes(&self) -> RegallocMap<Location, Vec<bool>> {
-        let mut lifetimes = RegallocMap::default();
+    fn lifetimes(&self) -> Map<Location, Vec<bool>> {
+        let mut lifetimes = Map::default();
         let creators      = self.value_creators();
 
+        // For every location in the program create a list of values which are used AFTER
+        // instruction at that location.
+
         for label in self.reachable_labels() {
+            // We start without any values used.
             let mut used = vec![false; self.value_count()];
 
+            // Go through every block that we can reach from current label and get all
+            // values which are being used there. This will include ourselves if we can
+            // reach ourselves via loop.
             for target_label in self.traverse_bfs(label, false) {
-                for inst in &self.blocks[&target_label] {
-                    for input in inst.read_values() {
-                        let argument = self.is_value_argument(input);
+                for instruction in &self.blocks[&target_label] {
+                    for input in instruction.read_values() {
+                        // If value is being used in the same block it's being created
+                        // then there is no need to set it as used. It will be recreated.
+                        // It is especially important if we can reach ourselves via loop.
+                        //
+                        // In this case:
+                        // 1. Value is being created in current block and used before our
+                        //    instruction. In this case we don't need to mark it as used
+                        //    as it will be recreated.
+                        //
+                        // 2. Value is being created in current block dominator and used
+                        //    before our instruction. In this case we must mark value as
+                        //    used.
+                        //
+                        // We don't care about arguments and mark them as not used for now.
+                        let not_used = self.is_value_argument(input) ||
+                                       creators[&input].label() == target_label;
 
-                        // Make sure to not include arguments.
-                        if !argument && creators[&input].label() != target_label {
+                        if !not_used {
                             used[input.index()] = true;
                         }
                     }
                 }
             }
+
+            // We have computed all values which are being used in blocks
+            // that are reachable from current label. These are common for all instructions
+            // in this block. Now calculate per-instruction usage data.
             
             let block = &self.blocks[&label];
 
-            lifetimes.reserve(block.len());
-
+            // Go through every instruction and calculate used registers.
             for (inst_id, _) in block.iter().enumerate() {
+                // Copy all used value from common data computed above.
                 let mut used = used.clone();
 
-                for inst in &block[inst_id + 1..] {
-                    for input in inst.read_values() {
+                // Get all values which are used AFTER this instruction.
+                for instruction in &block[inst_id + 1..] {
+                    for input in instruction.read_values() {
                         used[input.index()] = true;
                     }
                 }
 
+                // Calculation for this location is now done.
                 lifetimes.insert(Location::new(label, inst_id), used);
             }
         }

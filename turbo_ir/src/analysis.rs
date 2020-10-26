@@ -473,7 +473,7 @@ impl FunctionData {
             let mut can_see_phi = true;
 
             for (inst_id, inst) in body.iter().enumerate() {
-                if let Instruction::Phi { dst, incoming, .. } = inst {
+                if let Instruction::Phi { dst, incoming } = inst {
                     assert!(can_see_phi, "PHI nodes are not at the function beginning.");
                     assert!(label != Label(0), "Entry labels cannot have PHI nodes.");
                     assert!(!incoming.is_empty(), "PHI nodes cannot be empty.");
