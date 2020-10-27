@@ -459,6 +459,15 @@ impl FunctionData {
         // Coalesce values and create VirtualRegisters which will hold Values.
         let value_to_register = self.coalesce(&lifetimes);
 
+        let mut register_to_values = Map::default();
+
+        // Create reverse mapping from VR to Values.
+        for (value, register) in &value_to_register {
+            assert!(register_to_values.entry(*register)
+                    .or_insert_with(Set::default)
+                    .insert(*value));
+        }
+
         // State of used values for each block.
         let mut block_alloc_state: Map<Label, Vec<Value>> =
             Map::new_with_capacity(self.blocks.len());
@@ -536,18 +545,9 @@ impl FunctionData {
 
         if DEBUG_ALLOCATOR {
             /*
-            println!("{}: Colored interference graph with {} colors.", 
-                     self.prototype.name, coloring.color_list.len());
+            println!("{}: Colored interference graph with {} colors. HR: {}.", 
+                     self.prototype.name, coloring.color_list.len(), hardware_registers);
             */
-
-            let mut register_to_values = Map::default();
-
-            // Create reverse mapping from VR to Values for debugging.
-            for (value, register) in &value_to_register {
-                assert!(register_to_values.entry(*register)
-                        .or_insert_with(Set::default)
-                        .insert(*value));
-            }
 
             // Dump colored interference graph to file.
             self.dump_interference_graph(&interference, &coloring,
@@ -558,10 +558,15 @@ impl FunctionData {
             // We can't fit all VRs in hardware registers. We need to move some VRs to
             // the memory. Get usage counts to figure out best candidates.
 
+            let usage_counts = self.usage_counts();
+
             let mut usages: Map<Color, usize> = Map::default();
 
-            for (_, &color) in coloring.vertex_color.iter() {
-                *usages.entry(color).or_insert(0) += 1;
+            for (register, &color) in coloring.vertex_color.iter() {
+                for &value in &register_to_values[register] {
+                    *usages.entry(color).or_insert(0) +=
+                        usage_counts[value.index()] as usize;
+                }
             }
 
             assert!(usages.len() == required_registers, "Color count mismatch.");
