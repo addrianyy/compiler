@@ -10,6 +10,7 @@ mod type_inference;
 mod register_allocation;
 mod passes;
 mod collections;
+mod dot;
 
 use std::time::Instant;
 use std::io::{self, Write};
