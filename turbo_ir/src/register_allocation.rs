@@ -1,5 +1,5 @@
-use super::{FunctionData, Value, Location, Label, Map, Set, CapacityExt};
-use super::{Dominators, FlowGraph};
+use super::{FunctionData, Value, Location, Label, Map, Set,
+            Dominators, FlowGraph, CapacityExt};
 
 const DEBUG_ALLOCATOR: bool = true;
 
