@@ -23,6 +23,7 @@ use instruction::Instruction;
 use analysis::ConstType;
 use codegen::Backend;
 use graph::Dominators;
+use graph::FlowGraph;
 use collections::{Map, Set, LargeKeyMap, CapacityExt};
 
 #[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]

@@ -11,7 +11,8 @@ i32 main(u8* buffer) {
     while (buffer[index] != 0u8) {
         buffer[index] += 1u8;
         buffer[index] += 1u8;
-        if (buffer[index] == 12u8) {
+        buffer[index] += buffer[index] + buffer[index] +buffer[index];
+        if (buffer[index] == 255u8) {
             while (1) {
             }
         }

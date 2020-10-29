@@ -1,4 +1,5 @@
 use super::{FunctionData, Value, Location, Label, Map, Set, CapacityExt};
+use super::{Dominators, FlowGraph};
 
 const DEBUG_ALLOCATOR: bool = true;
 
@@ -30,6 +31,147 @@ impl RegisterAllocation {
 
         self.allocation.get(&value).copied()
             .unwrap_or_else(|| panic!("Cannot resolve {} at location {:?}", value, location))
+    }
+}
+
+struct LivenessContext<'a> {
+    function:      &'a FunctionData,
+    dominators:    &'a Dominators,
+    flow_incoming: &'a FlowGraph,
+}
+
+#[derive(Default)]
+struct Liveness {
+    values: Map<Value, ValueLiveness>,
+}
+
+impl Liveness {
+    fn value_dies(&self, location: Location, value: Value) -> bool {
+        self.values[&value].value_dies(location)
+    }
+}
+
+struct Interval {
+    block: Label,
+
+    /// Instruction ID where value was last used in the block. Equal to block size if
+    /// value is used in successors too.
+    end: usize,
+}
+
+struct ValueLiveness {
+    /// Block where value was created.
+    creation_block: Label,
+
+    /// Instruction ID where value was created.
+    creation_start: usize,
+
+    /// Instruction ID where value was last used in the block. Equal to block size if
+    /// value is used in successors too.
+    creation_end: usize,
+
+    intervals: Vec<Interval>,
+}
+
+impl ValueLiveness {
+    fn new(creation: Location) -> Self {
+        // Create liveness state with empty interval.
+        Self {
+            creation_block: creation.label(),
+            creation_start: creation.index(),
+            creation_end:   creation.index(),
+            intervals:      Vec::new(),
+        }
+    }
+
+    fn add_usage_internal(&mut self, location: Location, cx: &LivenessContext) -> bool {
+        // Mark value as used at `location`. This will not make predecessors aware of
+        // value liveness.
+
+        // Check if this value is used in the same block its created.
+        if location.label() == self.creation_block {
+            // Make sure that the value is not used before being created.
+            assert!(location.index() > self.creation_start,
+                    "Value is used before being created.");
+
+            // Update last usage index in creation block.
+            self.creation_end = usize::max(self.creation_end, location.index());
+
+            // No more work needed.
+            return false;
+        }
+
+        for interval in &mut self.intervals {
+            if interval.block == location.label() {
+                // This value was already used in `location.block()`. Update last usage index.
+                interval.end = usize::max(interval.end, location.index());
+
+                // No more work needed.
+                return false;
+            }
+        }
+
+        // This value wasn't marked as used in `location.block()`. Create a new interval for it.
+
+        // Make sure that this value can be used at `location`.
+        let creation = Location::new(self.creation_block, self.creation_start);
+        let valid    = cx.function.validate_path(cx.dominators, creation, location);
+        assert!(valid, "This value cannot be used at that location.");
+
+        self.intervals.push(Interval {
+            block: location.label(),
+            end:   location.index(),
+        });
+
+        // Return true so `add_usage` will handle changing liveness of this value for
+        // predecessors.
+        true
+    }
+
+    fn add_usage(&mut self, location: Location, cx: &LivenessContext) {
+        // Mark value as used at `location`. If this is the first time value is used
+        // in `location.block()` we need to also mark value as used in every predecessor.
+
+        if self.add_usage_internal(location, cx) {
+            let mut work_list = vec![location.label()];
+
+            // First time used in this block. Mark it as used in predecessors.
+            while let Some(block) = work_list.pop() {
+                for &predecessor in &cx.flow_incoming[&block] {
+                    // We inform that value is used in other blocks by setting
+                    // it's last use index to block length.
+                    let length = cx.function.blocks[&predecessor].len();
+
+                    // Mark as used and check if we need to mark value as used in
+                    // predecessors of this predecessor.
+                    if self.add_usage_internal(Location::new(predecessor, length), cx) {
+                        work_list.push(predecessor);
+                    }
+                }
+            }
+        }
+    }
+
+    fn value_dies(&self, location: Location) -> bool {
+        // This code assumes that if value is used in block successors, it's `end` usage index is
+        // equal to block size.
+
+        if location.label() == self.creation_block {
+            // `location` is in the same block where value was created. This value dies
+            // if last use is before or on instruction at `location`.
+            return self.creation_end <= location.index();
+        }
+
+        for interval in &self.intervals {
+            if interval.block == location.label() {
+                // We have found interval that describes usage for block of interest.
+                // This value dies if last use is before or on instruction at `location`.
+                return interval.end <= location.index();
+            }
+        }
+
+        // This value doesn't live in this block.
+        true
     }
 }
 
@@ -230,6 +372,116 @@ impl InterferenceGraph {
 }
 
 impl FunctionData {
+    #[allow(unused)]
+    fn lifetimes(&self) -> Map<Location, Vec<bool>> {
+        let mut lifetimes = Map::default();
+        let creators      = self.value_creators();
+
+        // For every location in the program create a list of values which are used AFTER
+        // instruction at that location.
+
+        for label in self.reachable_labels() {
+            // We start without any values used.
+            let mut used = vec![false; self.value_count()];
+
+            // Get all reachable blocks from current one.
+            let reachable_labels = self.traverse_bfs(label, false);
+
+            // Go through every block that we can reach from current label and get all
+            // values which are being used there. This will include ourselves if we can
+            // reach ourselves via loop.
+            for &target_label in &reachable_labels {
+                for instruction in &self.blocks[&target_label] {
+                    for input in instruction.read_values() {
+                        // We don't care about arguments for now.
+                        if self.is_value_argument(input) {
+                            continue;
+                        }
+
+                        // If value is being used in the same block it's being created
+                        // then there is no need to set it as used. It will be recreated.
+                        //
+                        // If we can reach ourselves via loop:
+                        // 1. Value is being created in current block and used before our
+                        //    instruction. In this case we don't need to mark it as used
+                        //    as it will be recreated.
+                        //
+                        // 2. Value is being created in current block dominator and used
+                        //    before our instruction. In this case we must mark value as
+                        //    used.
+                        //
+                        // TODO: Improve this to handle more cases where value gets recreated.
+                        let creator   = creators[&input].label();
+                        let recreated = target_label == creator;
+
+                        if !recreated {
+                            used[input.index()] = true;
+                        }
+                    }
+                }
+            }
+
+            // We have computed all values which are being used in blocks
+            // that are reachable from current label. These are common for
+            // all instructions in this block. Now calculate per-instruction usage data.
+            
+            let block = &self.blocks[&label];
+
+            // Go through every instruction and calculate used registers.
+            for (inst_id, _) in block.iter().enumerate() {
+                // Copy all used value from common data computed above.
+                let mut used = used.clone();
+
+                // Get all values which are used AFTER this instruction.
+                for instruction in &block[inst_id + 1..] {
+                    for input in instruction.read_values() {
+                        used[input.index()] = true;
+                    }
+                }
+
+                // Calculation for this location is now done.
+                lifetimes.insert(Location::new(label, inst_id), used);
+            }
+        }
+
+        lifetimes
+    }
+
+    fn liveness(&self, dominators: &Dominators) -> Liveness {
+        let mut liveness = Liveness::default();
+
+        let flow_incoming = self.flow_graph_incoming();
+        let cx            = LivenessContext {
+            function:      self,
+            flow_incoming: &flow_incoming,
+            dominators,
+        };
+
+        self.for_each_instruction(|location, instruction| {
+            if let Some(value) = instruction.created_value() {
+                // Create a new, empty liveness state for output value.
+                assert!(liveness.values.insert(value, ValueLiveness::new(location)).is_none(),
+                        "Value created multiple times.");
+            }
+
+            for input in instruction.read_values() {
+                // Ignore all function arguments.
+                if self.is_value_argument(input) {
+                    continue;
+                }
+
+                // Get liveness state for this input value.
+                let input_liveness = liveness.values.get_mut(&input)
+                    .expect("Failed to get liveness state for value.");
+
+                // Mark that this value is used at `location`.
+                input_liveness.add_usage(location, &cx);
+            }
+        });
+
+        liveness
+    }
+
     fn dump_interference_graph(&self, interference: &InterferenceGraph, coloring: &Coloring,
                                register_to_values: &Map<VirtualRegister, Set<Value>>) {
         const COLOR_LIST: &[&str] = &[
@@ -310,81 +562,7 @@ impl FunctionData {
                                                        self.prototype.name));
     }
 
-    fn lifetimes(&self) -> Map<Location, Vec<bool>> {
-        let mut lifetimes = Map::default();
-        let creators      = self.value_creators();
-
-        // For every location in the program create a list of values which are used AFTER
-        // instruction at that location.
-
-        for label in self.reachable_labels() {
-            // We start without any values used.
-            let mut used = vec![false; self.value_count()];
-
-            // Get all reachable blocks from current one.
-            let reachable_labels = self.traverse_bfs(label, false);
-
-            // Go through every block that we can reach from current label and get all
-            // values which are being used there. This will include ourselves if we can
-            // reach ourselves via loop.
-            for &target_label in &reachable_labels {
-                for instruction in &self.blocks[&target_label] {
-                    for input in instruction.read_values() {
-                        // We don't care about arguments for now.
-                        if self.is_value_argument(input) {
-                            continue;
-                        }
-
-                        // If value is being used in the same block it's being created
-                        // then there is no need to set it as used. It will be recreated.
-                        //
-                        // If we can reach ourselves via loop:
-                        // 1. Value is being created in current block and used before our
-                        //    instruction. In this case we don't need to mark it as used
-                        //    as it will be recreated.
-                        //
-                        // 2. Value is being created in current block dominator and used
-                        //    before our instruction. In this case we must mark value as
-                        //    used.
-                        //
-                        // TODO: Improve this to handle more cases where value gets recreated.
-                        let creator   = creators[&input].label();
-                        let recreated = target_label == creator;
-
-                        if !recreated {
-                            used[input.index()] = true;
-                        }
-                    }
-                }
-            }
-
-            // We have computed all values which are being used in blocks
-            // that are reachable from current label. These are common for
-            // all instructions in this block. Now calculate per-instruction usage data.
-            
-            let block = &self.blocks[&label];
-
-            // Go through every instruction and calculate used registers.
-            for (inst_id, _) in block.iter().enumerate() {
-                // Copy all used value from common data computed above.
-                let mut used = used.clone();
-
-                // Get all values which are used AFTER this instruction.
-                for instruction in &block[inst_id + 1..] {
-                    for input in instruction.read_values() {
-                        used[input.index()] = true;
-                    }
-                }
-
-                // Calculation for this location is now done.
-                lifetimes.insert(Location::new(label, inst_id), used);
-            }
-        }
-
-        lifetimes
-    }
-
-    fn coalesce(&self, lifetimes: &Map<Location, Vec<bool>>) -> Map<Value, VirtualRegister> {
+    fn coalesce(&self, liveness: &Liveness) -> Map<Value, VirtualRegister> {
         // Given a sequence:
         // %5 = add %4, %1
         // If it's the last usage of %4 then %5 and %4 should be allocated in the same
@@ -428,7 +606,7 @@ impl FunctionData {
 
                     // If first operand dies after this instruction we can coalesce
                     // it with output Value.
-                    if !lifetimes[&location][input.index()] {
+                    if liveness.value_dies(location, input) {
                         coalesce_values(output, input);
                     }
                 }
@@ -454,10 +632,10 @@ impl FunctionData {
     pub(super) fn allocate_registers(&self, hardware_registers: usize) -> RegisterAllocation {
         let labels     = self.reachable_labels();
         let dominators = self.dominators();
-        let lifetimes  = self.lifetimes();
+        let liveness   = self.liveness(&dominators);
 
         // Coalesce values and create VirtualRegisters which will hold Values.
-        let value_to_register = self.coalesce(&lifetimes);
+        let value_to_register = self.coalesce(&liveness);
 
         let mut register_to_values = Map::default();
 
@@ -506,7 +684,7 @@ impl FunctionData {
 
                 // Get a list of all values which aren't used anymore and can be freed.
                 for &value in block_allocs.iter() {
-                    if !lifetimes[&location][value.index()] {
+                    if liveness.value_dies(location, value) {
                         to_free.push(value);
                     }
                 }
@@ -544,10 +722,8 @@ impl FunctionData {
         let required_registers = coloring.color_list.len();
 
         if DEBUG_ALLOCATOR {
-            /*
             println!("{}: Colored interference graph with {} colors. HR: {}.", 
                      self.prototype.name, coloring.color_list.len(), hardware_registers);
-            */
 
             // Dump colored interference graph to file.
             self.dump_interference_graph(&interference, &coloring,
