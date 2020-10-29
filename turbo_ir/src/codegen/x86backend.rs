@@ -130,7 +130,11 @@ impl<'a> Resolver<'a> {
     fn resolve(&self, value: Value) -> Operand<'static> {
         let place = self.context.x86_data.regalloc.get(self.location, value);
 
-        self.context.x86_data.place_to_operand[&place]
+        if let Place::Constant(constant) = place {
+            Imm(constant as i64)
+        } else {
+            self.context.x86_data.place_to_operand[&place]
+        }
     }
 }
 
@@ -464,6 +468,11 @@ impl X86Backend {
                 // Calculate values for next iteration.
                 inst_id      += 1;
                 instructions = &instructions[1..];
+
+                // Skip instructions which create constants and are removable.
+                if cx.x86_data.regalloc.skips.contains(&location) {
+                    continue;
+                }
 
                 let asm = &mut self.asm;
 

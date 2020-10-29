@@ -76,7 +76,7 @@ fn main() {
     let next_sum  = ir.add(sum, iter);
     let one       = ir.iconst(1u32, ir::Type::U32);
     let next_iter = ir.add(iter, one);
-    let five      = ir.iconst(6u32, ir::Type::U32);
+    let five      = ir.iconst(8u32, ir::Type::U32);
     let cond      = ir.compare_ne(next_iter, five);
     ir.branch_cond(cond, body, exit);
 

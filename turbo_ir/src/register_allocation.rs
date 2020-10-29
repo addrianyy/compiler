@@ -1,5 +1,5 @@
-use super::{FunctionData, Value, Location, Label, Map, Set,
-            Dominators, FlowGraph, CapacityExt, Instruction};
+use super::{FunctionData, Value, Location, Label, Map, Set, ConstType,
+            Dominators, FlowGraph, CapacityExt, Instruction, BinaryOp};
 
 const DEBUG_ALLOCATOR: bool = true;
 
@@ -8,6 +8,7 @@ pub enum Place {
     Argument(usize),
     StackSlot(usize),
     Register(usize),
+    Constant(usize),
 }
 
 pub struct RegisterAllocation {
@@ -15,6 +16,7 @@ pub struct RegisterAllocation {
     pub allocation: Map<Value, Place>,
     pub arguments:  Map<Value, Place>,
     pub used_regs:  Set<usize>,
+    pub skips:      Set<Location>,
     pub slots:      usize,
 }
 
@@ -786,6 +788,56 @@ impl FunctionData {
         // Rewrite PHIs using aliases.
         self.rewrite_phis();
 
+        let mut constants = Map::default();
+        let mut skips     = Set::default();
+
+        let creators = self.value_creators();
+
+        'skip: for (value, (ty, constant)) in self.constant_values() {
+            // Check if constant fits in imm32.
+            if !(constant as i64 >= i32::MIN as i64 && constant as i64 <= i32::MAX as i64) {
+                continue;
+            }
+
+            // Sign extend constant to 64 bit value.
+            let constant = match ConstType::new(ty) {
+                ConstType::U1  => (constant & 1) as i64,
+                ConstType::U8  => constant as u8  as i8  as i64,
+                ConstType::U16 => constant as u16 as i16 as i64,
+                ConstType::U32 => constant as u32 as i32 as i64,
+                ConstType::U64 => constant as i64,
+            };
+
+            for usage in self.find_uses(value) {
+                let instruction = self.instruction(usage);
+
+                // Try to determine if we can easily use constant in particular x86 instruction.
+                match instruction {
+                    Instruction::ArithmeticBinary { a, op, b, .. } => {
+                        let op = *op;
+
+                        if *a == value || *b != value {
+                            continue 'skip;
+                        }
+
+                        if op == BinaryOp::Mul || op == BinaryOp::DivU || op == BinaryOp::DivS {
+                            continue 'skip;
+                        }
+                    }
+                    Instruction::IntCompare { a, b, .. } => {
+                        if *a == value || *b != value {
+                            continue 'skip;
+                        }
+                    }
+                    _ => continue 'skip,
+                }
+            }
+
+            // This is optimizable constant, add it to the list.
+            constants.insert(value, constant);
+            skips.insert(creators[&value]);
+        }
+
         let labels     = self.reachable_labels();
         let dominators = self.dominators();
         let liveness   = self.liveness(&dominators);
@@ -867,6 +919,11 @@ impl FunctionData {
                 }
 
                 if let Some(output) = instruction.created_value() {
+                    // Skip optimizable constants.
+                    if constants.get(&output).is_some() {
+                        continue;
+                    }
+
                     // Get RA entity of value to allocate.
                     let output_entity = get_entity(output);
 
@@ -969,6 +1026,13 @@ impl FunctionData {
             // or this value is dead.
         }
 
+        // Fill in optimized constants.
+        for (&value, &constant) in &constants {
+            // Assign constant to this value.
+            assert!(value_to_place.insert(value, Place::Constant(constant as usize)).is_none(),
+                    "Multiple places assigned to the value.");
+        }
+
         let mut arguments = Map::new_with_capacity(self.argument_values.len());
 
         // Fill in places of function arguments.
@@ -981,6 +1045,7 @@ impl FunctionData {
             slots:      stack_slots,
             used_regs:  used_registers,
             arguments,
+            skips,
         }
     }
 
