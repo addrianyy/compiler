@@ -614,7 +614,7 @@ impl X86Backend {
                                     [Reg(Rax), Reg(Rax)]
                                 }
                                 OpType::Normal => {
-                                    if two_operands {
+                                    if two_operands && !(*op == BinaryOp::Mul && a.is_memory()) {
                                         // We can modify value in place.
 
                                         if a.is_memory() && b.is_memory() {
