@@ -506,7 +506,11 @@ impl X86Backend {
                                 asm.mov(&[Reg(Rax), Imm(imm)]);
                                 asm.mov(&[dst, Reg(Rax)]);
                             } else {
-                                asm.mov(&[dst, Imm(imm)]);
+                                if imm != 0 || dst.is_memory() {
+                                    asm.mov(&[dst, Imm(imm)]);
+                                } else {
+                                    asm.xor(&[dst, dst]);
+                                }
                             }
                         });
                     }
