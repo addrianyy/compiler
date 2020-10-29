@@ -31,6 +31,34 @@ impl IRFormatter for BlankFormatter {
     }
 }
 
+struct ConsoleFormatter;
+
+impl IRFormatter for ConsoleFormatter {
+    fn fmt_value(&self, value: Value) -> String {
+        format!("\x1b[1;33m{}\x1b[0m", value)
+    }
+
+    fn fmt_type(&self, name: String) -> String {
+        format!("\x1b[1;34m{}\x1b[0m", name)
+    }
+
+    fn fmt_inst(&self, name: String) -> String {
+        format!("\x1b[1;32m{}\x1b[0m", name)
+    }
+
+    fn fmt_label(&self, label: Label) -> String {
+        format!("\x1b[1;37m{}\x1b[0m", label)
+    }
+
+    fn fmt_literal(&self, literal: String) -> String {
+        literal
+    }
+
+    fn fmt_function(&self, name: &str) -> String {
+        name.to_owned()
+    }
+}
+
 impl FunctionData {
     fn prototype_representation<F: IRFormatter>(&self, formatter: &F) -> String {
         let return_type = match self.prototype.return_type {
@@ -114,7 +142,7 @@ impl FunctionData {
     }
 
     pub fn dump_text<W: Write>(&self, w: &mut W) -> io::Result<()> {
-        let formatter = &BlankFormatter;
+        let formatter = &ConsoleFormatter;
 
         writeln!(w, "{} {{", self.prototype_representation(formatter))?;
 

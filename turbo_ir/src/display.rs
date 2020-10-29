@@ -221,13 +221,14 @@ impl FunctionData {
             Instruction::Const { dst, ty, imm } => {
                 match *ty {
                     Type::U1 => {
-                        match imm {
-                            0 => write!(w, "{} = {} {}", fmt_value!(*dst), fmt_raw_type!(ty),
-                                        fmt_literal!("false"))?,
-                            1 => write!(w, "{} = {} {}", fmt_value!(*dst), fmt_raw_type!(ty),
-                                        fmt_literal!("true"))?,
+                        let value = match imm {
+                            0 => "false",
+                            1 => "true",
                             _ => panic!("Invalid U1 constant {}.", imm),
-                        }
+                        };
+
+                        write!(w, "{} = {} {}", fmt_value!(*dst), fmt_raw_type!(ty),
+                               fmt_literal!(value))?
                     }
                     _ => {
                         let value = match *ty {
