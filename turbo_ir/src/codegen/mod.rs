@@ -9,7 +9,7 @@ pub type FunctionMCodeMap = Map<Function, (usize, usize)>;
 pub(super) trait Backend {
     fn new(ir: &Module) -> Self;
 
-    fn generate_function(&mut self, function: Function, data: &FunctionData);
+    fn generate_function(&mut self, function: Function, data: &mut FunctionData);
     fn finalize(self) -> (Vec<u8>, FunctionMCodeMap);
 }
 

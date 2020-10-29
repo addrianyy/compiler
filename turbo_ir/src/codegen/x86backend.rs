@@ -140,7 +140,7 @@ pub struct X86Backend {
 }
 
 impl X86Backend {
-    fn x86_function_data(func: &FunctionData) -> X86FunctionData {
+    fn x86_function_data(func: &mut FunctionData) -> X86FunctionData {
         let regalloc = func.allocate_registers(AVAILABLE_REGISTERS.len());
 
         let mut place_to_operand = Map::default();
@@ -468,7 +468,10 @@ impl X86Backend {
                 let asm = &mut self.asm;
 
                 match inst {
-                    Instruction::Phi   { .. } => panic!(),
+                    Instruction::Phi { .. } => {
+                        // PHI is nop. All input values are mapped to the same register
+                        // as destination.
+                    }
                     Instruction::Const { dst, ty, imm } => {
                         let size = type_to_operand_size(*ty, true);
 
@@ -1088,7 +1091,29 @@ impl X86Backend {
                             });
                         }
                     }
-                    Instruction::Alias { .. } | Instruction::Nop => {
+                    Instruction::Alias { dst, value } => {
+                        // Copy value from one register to another. This will be
+                        // created by register allocator to help handling PHIs.
+  
+                        let ty   = func.value_type(*dst);
+                        let size = type_to_operand_size(ty, true);
+
+                        let dst   = r.resolve(*dst);
+                        let value = r.resolve(*value);
+
+                        if dst != value {
+                            asm.with_size(size, |asm| {
+                                if dst.is_memory() && value.is_memory() {
+                                    // Use intermediate register for memory-memory mov.
+                                    asm.mov(&[Reg(Rax), value]);
+                                    asm.mov(&[dst, Reg(Rax)]);
+                                } else {
+                                    asm.mov(&[dst, value]);
+                                }
+                            });
+                        }
+                    }
+                    Instruction::Nop => {
                         // Optimization passes create these instructions and they must
                         // be removed before exiting `optimize` function.
                         panic!("This should never happen...");
@@ -1107,7 +1132,7 @@ impl super::Backend for X86Backend {
         }
     }
 
-    fn generate_function(&mut self, function_id: Function, function: &FunctionData) {
+    fn generate_function(&mut self, function_id: Function, function: &mut FunctionData) {
         let function_offset = self.asm.current_offset();
         let x86_data        = Self::x86_function_data(function);
 

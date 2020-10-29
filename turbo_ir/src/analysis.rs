@@ -109,7 +109,7 @@ impl FunctionData {
                 }
             }
         } else {
-            panic!("Non call instruction provided to `can_call_affect_pointer`.");
+            panic!("Non call instruction provided to `can_call_access_pointer`.");
         }
     }
 
@@ -147,6 +147,21 @@ impl FunctionData {
 
                 // GEP result pointer must be originating from it's source.
                 Instruction::GetElementPtr { source, .. } => self.get_pointer_origin(*source, cx),
+
+                Instruction::Phi { incoming, .. } => {
+                    // Get origin of first incoming value.
+                    let origin = self.get_pointer_origin(incoming[0].1, cx);
+
+                    // Make sure that all incoming values have the same origin.
+                    for &other in &incoming[1..] {
+                        if self.get_pointer_origin(other.1, cx) != origin {
+                            // No idea about origin.
+                            return pointer;
+                        }
+                    }
+
+                    origin
+                }
 
                 // Other instructions should never create pointers.
                 x => panic!("Unexpected instruction {:?} created pointer.", x),
@@ -198,6 +213,12 @@ impl FunctionData {
                 }
                 Instruction::Alias { dst, .. } => {
                     // Make sure that aliased pointer is safely used.
+                    if !self.is_pointer_safely_used(*dst) {
+                        return false;
+                    }
+                }
+                Instruction::Phi { dst, .. } => {
+                    // Make sure that resulting pointer is safely used.
                     if !self.is_pointer_safely_used(*dst) {
                         return false;
                     }
@@ -473,7 +494,7 @@ impl FunctionData {
             let mut can_see_phi = true;
 
             for (inst_id, inst) in body.iter().enumerate() {
-                if let Instruction::Phi { dst, incoming } = inst {
+                if let Instruction::Phi { incoming, .. } = inst {
                     assert!(can_see_phi, "PHI nodes are not at the function beginning.");
                     assert!(label != Label(0), "Entry labels cannot have PHI nodes.");
                     assert!(!incoming.is_empty(), "PHI nodes cannot be empty.");

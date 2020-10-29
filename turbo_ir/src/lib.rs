@@ -10,6 +10,7 @@ mod type_inference;
 mod register_allocation;
 mod passes;
 mod collections;
+mod dot;
 
 use std::time::Instant;
 use std::io::{self, Write};
@@ -22,6 +23,7 @@ use instruction::Instruction;
 use analysis::ConstType;
 use codegen::Backend;
 use graph::Dominators;
+use graph::FlowGraph;
 use collections::{Map, Set, LargeKeyMap, CapacityExt};
 
 #[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
@@ -302,9 +304,6 @@ impl FunctionData {
         self.next_value.0 as usize
     }
 
-    fn register_phi(&mut self, phi: Value, location: Label) {
-    }
-
     fn add_phi_incoming(&mut self, phi: Value, label: Label, value: Value) {
         let location = self.phi_locations[&phi];
 
@@ -551,12 +550,12 @@ impl Module {
         }
     }
 
-    pub fn generate_machine_code(&self) -> MachineCode {
+    pub fn generate_machine_code(&mut self) -> MachineCode {
         assert!(self.finalized, "Cannot generate machine code before finalization.");
 
         let mut backend = codegen::x86backend::X86Backend::new(self);
 
-        for (function, internal) in &self.functions {
+        for (function, internal) in &mut self.functions {
             if let FunctionInternal::Local(data) = internal {
                 backend.generate_function(*function, data);
             }
