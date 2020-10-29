@@ -1,21 +1,51 @@
 use std::io::{self, Write};
 
-use super::{FunctionData, Instruction, Label};
+use super::{FunctionData, Instruction, Label, Value};
+use super::display::IRFormatter;
+
+struct BlankFormatter;
+
+impl IRFormatter for BlankFormatter {
+    fn fmt_value(&self, value: Value) -> String {
+        format!("{}", value)
+    }
+
+    fn fmt_type(&self, name: String) -> String {
+        name
+    }
+
+    fn fmt_inst(&self, name: String) -> String {
+        name
+    }
+
+    fn fmt_label(&self, label: Label) -> String {
+        format!("{}", label)
+    }
+
+    fn fmt_literal(&self, literal: String) -> String {
+        literal
+    }
+
+    fn fmt_function(&self, name: &str) -> String {
+        name.to_owned()
+    }
+}
 
 impl FunctionData {
-    fn prototype_representation(&self) -> String {
-        let return_type;
+    fn prototype_representation<F: IRFormatter>(&self, formatter: &F) -> String {
+        let return_type = match self.prototype.return_type {
+            Some(ty) => formatter.fmt_type(format!("{}", ty)),
+            None     => formatter.fmt_type(String::from("void")),
+        };
 
-        match self.prototype.return_type {
-            Some(ty) => return_type = format!("{}", ty),
-            None     => return_type = String::from("void"),
-        }
-
-        let mut name = format!("{} {}(", return_type, self.prototype.name);
+        let mut name = format!("{} {}(", return_type,
+                               formatter.fmt_function(&self.prototype.name));
 
         for index in 0..self.prototype.arguments.len() {
-            name.push_str(&format!("{} {}", self.prototype.arguments[index],
-                                    self.argument_values[index]));
+            name.push_str(&format!("{} {}",
+                formatter.fmt_type(format!("{}", self.prototype.arguments[index])),
+                formatter.fmt_value(self.argument_values[index])
+            ));
 
             if index != self.prototype.arguments.len() - 1 {
                 name.push_str(", ");
@@ -27,14 +57,17 @@ impl FunctionData {
         name
     }
 
-    fn instruction_string(&self, instruction: &Instruction) -> String {
+    fn instruction_string<F: IRFormatter>(&self, instruction: &Instruction,
+                                          formatter: &F) -> String {
         let mut buffer = Vec::new();
-        self.print_instruction(&mut buffer, instruction).unwrap();
+
+        self.print_instruction(&mut buffer, instruction, formatter).unwrap();
 
         String::from_utf8(buffer).unwrap()
     }
 
     pub fn dump_graph(&self, path: &str) {
+        let formatter    = &BlankFormatter;
         let mut dotgraph = String::new();
 
         dotgraph.push_str("digraph G {\n");
@@ -44,20 +77,20 @@ impl FunctionData {
             let targets    = self.targets(label);
 
             let name = match label {
-                Label(0) => self.prototype_representation(),
-                _        => format!("{}:", label),
+                Label(0) => self.prototype_representation(formatter),
+                _        => format!("{}:", formatter.fmt_label(label)),
             };
 
             dotgraph.push_str(&format!(r#"{} [shape=box fontname="Consolas" label="{}\n"#,
                                        label, name));
 
             if label == Label(0) {
-                dotgraph.push_str(&format!(r#"\n{}:\n"#, label));
+                dotgraph.push_str(&format!(r#"\n{}:\n"#, formatter.fmt_label(label)));
             }
 
             for (inst_idx, inst) in insts.iter().enumerate() {
                 dotgraph.push_str(&format!("{:>3}: {}\\l", inst_idx,
-                                           self.instruction_string(inst)));
+                                           self.instruction_string(inst, formatter)));
             }
 
             dotgraph.push_str("\"];\n");
@@ -81,7 +114,9 @@ impl FunctionData {
     }
 
     pub fn dump_text<W: Write>(&self, w: &mut W) -> io::Result<()> {
-        writeln!(w, "{} {{", self.prototype_representation())?;
+        let formatter = &BlankFormatter;
+
+        writeln!(w, "{} {{", self.prototype_representation(formatter))?;
 
         let     indent = "  ";
         let mut first  = true;
@@ -93,10 +128,10 @@ impl FunctionData {
 
             first = false;
 
-            writeln!(w, "{}:", label)?;
+            writeln!(w, "{}:", formatter.fmt_label(label))?;
 
             for inst in &self.blocks[&label] {
-                writeln!(w, "{}{}", indent, self.instruction_string(inst))?;
+                writeln!(w, "{}{}", indent, self.instruction_string(inst, formatter))?;
             }
         }
 

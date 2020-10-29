@@ -100,49 +100,94 @@ impl fmt::Display for Type {
     }
 }
 
+pub trait IRFormatter {
+    fn fmt_value(&self, value: Value) -> String;
+    fn fmt_type(&self, name: String) -> String;
+    fn fmt_inst(&self, name: String) -> String;
+    fn fmt_label(&self, label: Label) -> String;
+    fn fmt_literal(&self, literal: String) -> String;
+    fn fmt_function(&self, name: &str) -> String;
+}
+
 impl FunctionData {
     fn display_type(&self, value: Value) -> String {
         match self.type_info.as_ref() {
             Some(type_info) => format!("{}", type_info[&value]),
-            None            => String::from("unk"),
+            None            => String::from("unknown"),
         }
     }
 
-    pub(super) fn print_instruction<W: Write>(&self, w: &mut W, 
-                                              instruction: &Instruction) -> io::Result<()> {
+    pub(super) fn print_instruction<W: Write, F: IRFormatter>(
+        &self,
+        w:           &mut W,
+        instruction: &Instruction,
+        formatter:   &F,
+    ) -> io::Result<()> {
+        macro_rules! fmt_type {
+            ($value: expr) => { formatter.fmt_type(self.display_type($value)) }
+        }
+
+        macro_rules! fmt_raw_type {
+            ($type: expr) => { formatter.fmt_type(format!("{}", $type)) }
+        }
+
+        macro_rules! fmt_value {
+            ($value: expr) => { formatter.fmt_value($value) }
+        }
+
+        macro_rules! fmt_inst {
+            ($name: expr) => { formatter.fmt_inst(format!("{}", $name)) }
+        }
+
+        macro_rules! fmt_label {
+            ($label: expr) => { formatter.fmt_label($label) }
+        }
+
+        macro_rules! fmt_literal {
+            ($literal: expr) => { formatter.fmt_literal(format!("{}", $literal)) }
+        }
+
+        macro_rules! fmt_function {
+            ($name: expr) => { formatter.fmt_function($name) }
+        }
+
         match instruction {
             Instruction::ArithmeticUnary { dst, op, value } => {
-                write!(w, "{} = {} {} {}", dst, op, self.display_type(*value), value)?;
+                write!(w, "{} = {} {} {}", fmt_value!(*dst), fmt_inst!(*op),
+                       fmt_type!(*value), fmt_value!(*value))?;
             }
             Instruction::ArithmeticBinary { dst, a, op, b } => {
-                write!(w, "{} = {} {} {}, {}", dst, op, self.display_type(*a), a, b)?;
+                write!(w, "{} = {} {} {}, {}", fmt_value!(*dst), fmt_inst!(*op),
+                       fmt_type!(*a), fmt_value!(*a), fmt_value!(*b))?;
             }
             Instruction::IntCompare { dst, a, pred, b } => {
-                write!(w, "{} = icmp {} {} {}, {}", dst, pred, self.display_type(*a), a, b)?;
+                write!(w, "{} = {} {} {} {}, {}", fmt_value!(*dst), fmt_inst!("icmp"), 
+                       fmt_inst!(*pred), fmt_type!(*a), fmt_value!(*a), fmt_value!(*b))?;
             }
             Instruction::Load { dst, ptr } => {
-                write!(w, "{} = load {}, {} {}", dst, self.display_type(*dst),
-                       self.display_type(*ptr), ptr)?;
+                write!(w, "{} = {} {}, {} {}", fmt_value!(*dst), fmt_inst!("load"),
+                       fmt_type!(*dst), fmt_type!(*ptr), fmt_value!(*ptr))?;
             }
             Instruction::Store { ptr, value } => {
-                write!(w, "store {} {}, {} {}", self.display_type(*ptr), ptr,
-                       self.display_type(*value), value)?;
+                write!(w, "{} {} {}, {} {}", fmt_inst!("store"), fmt_type!(*ptr),
+                       fmt_value!(*ptr), fmt_type!(*value), fmt_value!(*value))?;
             }
             Instruction::Call { dst, func, args } => {
                 let prototype   = self.function_prototype(*func);
                 let return_type = match prototype.return_type {
-                    Some(return_type) => format!("{}", return_type),
-                    None              => String::from("void"),
+                    Some(return_type) => fmt_raw_type!(return_type),
+                    None              => fmt_raw_type!("void"),
                 };
 
                 if let Some(dst) = dst {
-                    write!(w, "{} = ", dst)?;
+                    write!(w, "{} = ", fmt_value!(*dst))?;
                 }
 
-                write!(w, "call {} {}(", return_type, prototype.name)?;
+                write!(w, "{} {} {}(", fmt_inst!("call"), return_type,
+                       fmt_function!(&prototype.name))?;
 
                 for (index, arg) in args.iter().enumerate() {
-                    write!(w, "{} {}", self.display_type(*arg), arg)?;
+                    write!(w, "{} {}", fmt_type!(*arg), fmt_value!(*arg))?;
 
                     if index != prototype.arguments.len() - 1 {
                         write!(w, ", ")?;
@@ -152,31 +197,35 @@ impl FunctionData {
                 write!(w, ")")?;
             }
             Instruction::Branch { target } => {
-                write!(w, "branch {}", target)?;
+                write!(w, "{} {}", fmt_inst!("branch"), fmt_label!(*target))?;
             }
             Instruction::BranchCond { cond, on_true, on_false } => {
-                write!(w, "bcond {} {}, {}, {}", self.display_type(*cond),
-                       cond, on_true, on_false)?;
+                write!(w, "{} {} {}, {}, {}", fmt_inst!("bcond"), fmt_type!(*cond),
+                       fmt_value!(*cond), fmt_label!(*on_true), fmt_label!(*on_false))?;
             }
             Instruction::StackAlloc { dst, ty, size } => {
-                write!(w, "{} = stackalloc {}", dst, ty)?;
+                write!(w, "{} = {} {}", fmt_value!(*dst), fmt_inst!("stackalloc"),
+                       fmt_raw_type!(*ty))?;
 
                 if *size != 1 {
-                    write!(w, ", {}", size)?;
+                    write!(w, ", {}", fmt_literal!(*size))?;
                 }
             }
             Instruction::Return { value } => {
                 match value {
-                    Some(value) => write!(w, "ret {} {}", self.display_type(*value), value)?,
-                    None        => write!(w, "ret void")?,
+                    Some(value) => write!(w, "{} {} {}", fmt_inst!("ret"), fmt_type!(*value),
+                                          fmt_value!(*value))?,
+                    None => write!(w, "{} {}", fmt_inst!("ret"), fmt_raw_type!("void"))?,
                 }
             }
             Instruction::Const { dst, ty, imm } => {
                 match *ty {
                     Type::U1 => {
                         match imm {
-                            0 => write!(w, "{} = {} false", dst, ty)?,
-                            1 => write!(w, "{} = {} true", dst, ty)?,
+                            0 => write!(w, "{} = {} {}", fmt_value!(*dst), fmt_raw_type!(ty),
+                                        fmt_literal!("false"))?,
+                            1 => write!(w, "{} = {} {}", fmt_value!(*dst), fmt_raw_type!(ty),
+                                        fmt_literal!("true"))?,
                             _ => panic!("Invalid U1 constant {}.", imm),
                         }
                     }
@@ -189,27 +238,32 @@ impl FunctionData {
                             _         => *imm as i64,
                         };
 
-                        write!(w, "{} = {} {}", dst, ty, value)?;
+                        write!(w, "{} = {} {}", fmt_value!(*dst), fmt_raw_type!(*ty),
+                               fmt_literal!(value))?;
                     }
                 }
             }
             Instruction::GetElementPtr { dst, source, index } => {
-                write!(w, "{} = gep {} {}, {} {}", dst, self.display_type(*source),
-                       source, self.display_type(*index), index)?;
+                write!(w, "{} = {} {} {}, {} {}", fmt_value!(*dst), fmt_inst!("gep"),
+                       fmt_type!(*source), fmt_value!(*source), fmt_type!(*index),
+                       fmt_value!(*index))?;
             }
             Instruction::Cast { dst, cast, value, ty } => {
-                write!(w, "{} = {} {} {} to {}", dst, cast, self.display_type(*value),
-                       value, ty)?;
+                write!(w, "{} = {} {} {} {} {}", fmt_value!(*dst), fmt_inst!(*cast),
+                       fmt_type!(*value), fmt_value!(*value), fmt_inst!("to"),
+                       fmt_raw_type!(*ty))?;
             }
             Instruction::Select { dst, cond, on_true, on_false } => {
-                write!(w, "{} = select {} {}, {} {}, {}", dst, self.display_type(*cond),
-                       cond, self.display_type(*on_true), on_true, on_false)?;
+                write!(w, "{} = {} {} {}, {} {}, {}", fmt_value!(*dst), fmt_inst!("select"),
+                       fmt_type!(*cond), fmt_value!(*cond), fmt_type!(*on_true),
+                       fmt_value!(*on_true), fmt_value!(*on_false))?;
             }
             Instruction::Phi { dst, incoming } => {
-                write!(w, "{} = phi {} [", dst, self.display_type(incoming[0].1))?;
+                write!(w, "{} = {} {} [", fmt_value!(*dst), fmt_inst!("phi"),
+                       fmt_type!(incoming[0].1))?;
 
                 for (index, (label, value)) in incoming.iter().enumerate() {
-                    write!(w, "{}: {}", label, value)?;
+                    write!(w, "{}: {}", fmt_label!(*label), fmt_value!(*value))?;
 
                     if index + 1 != incoming.len() {
                         write!(w, ", ")?;
@@ -219,10 +273,11 @@ impl FunctionData {
                 write!(w, "]")?;
             }
             Instruction::Alias { dst, value } => {
-                write!(w, "{} = alias {} {}", dst, self.display_type(*value), value)?;
+                write!(w, "{} = {} {} {}", fmt_value!(*dst), fmt_inst!("alias"), fmt_type!(*value),
+                       fmt_value!(*value))?;
             }
             Instruction::Nop => {
-                write!(w, "nop")?;
+                write!(w, "{}", fmt_inst!("nop"))?;
             }
         }
 
