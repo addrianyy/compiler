@@ -45,14 +45,14 @@ impl FunctionData {
 
             let name = match label {
                 Label(0) => self.prototype_representation(),
-                _        => format!("{}", label),
+                _        => format!("{}:", label),
             };
 
-            dotgraph.push_str(&format!(r#"{} [shape=box fontname="Consolas" label="{}:\n"#,
+            dotgraph.push_str(&format!(r#"{} [shape=box fontname="Consolas" label="{}\n"#,
                                        label, name));
 
             if label == Label(0) {
-                dotgraph.push_str(&format!(r#"\n{}\n"#, label));
+                dotgraph.push_str(&format!(r#"\n{}:\n"#, label));
             }
 
             for (inst_idx, inst) in insts.iter().enumerate() {

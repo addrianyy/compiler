@@ -76,7 +76,7 @@ fn main() {
     let next_sum  = ir.add(sum, iter);
     let one       = ir.iconst(1u32, ir::Type::U32);
     let next_iter = ir.add(iter, one);
-    let five      = ir.iconst(8u32, ir::Type::U32);
+    let five      = count; //ir.iconst(8u32, ir::Type::U32);
     let cond      = ir.compare_ne(next_iter, five);
     ir.branch_cond(cond, body, exit);
 
@@ -91,6 +91,7 @@ fn main() {
 
     ir.finalize();
     ir.dump_function_text(func, &mut std::io::stdout()).unwrap();
+    ir.dump_function_graph(func, "graphs/test.svg");
 
 
     let mcode = ir.generate_machine_code();
@@ -103,7 +104,7 @@ fn main() {
         let result = unsafe {
             let func = mcode.function_ptr::<Func>(func);
 
-            func(3)
+            func(5)
         };
 
         println!("return value: {}.", result);

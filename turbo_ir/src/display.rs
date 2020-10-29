@@ -6,13 +6,16 @@ use super::{FunctionData, Instruction, Value, Label, BinaryOp, UnaryOp, IntPredi
 
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "%{}", self.0 as i64)
+        write!(f, "v{}", self.0 as i64)
     }
 }
 
 impl fmt::Display for Label {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "label_{}", self.0)
+        match self.0 {
+            0 => write!(f, "entry"),
+            _ => write!(f, "block_{}", self.0)
+        }
     }
 }
 
