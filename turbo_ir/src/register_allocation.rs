@@ -498,6 +498,8 @@ impl FunctionData {
                 //
                 // 1. PHI inputs must live to the end of block which predeceses PHI.
                 // 2. PHI inputs must live in PHI block to the correct PHI instruction.
+                //
+                // Register allocator must handle use before creation for PHI instructions.
 
                 for (label, value) in incoming {
                     // Get liveness state for this incoming value.
@@ -506,7 +508,7 @@ impl FunctionData {
 
                     let length = self.blocks[&label].len();
 
-                    // Make incoming value live to the end of the block (ase 1).
+                    // Make incoming value live to the end of the block (case 1).
                     value_liveness.add_usage(Location::new(*label, length), &cx);
 
                     // Queue use of value in PHI block (case 2).
@@ -650,6 +652,19 @@ impl FunctionData {
             let block_allocs = block_alloc_state.get_mut(&label).unwrap();
             let block        = &self.blocks[&label];
 
+            // PHI values can be used before being defined so we must make them alive
+            // in this block.
+            for instruction in block.iter() {
+                if let Instruction::Phi { incoming, .. } = instruction {
+                    for (_, value) in incoming {
+                        // Make PHI input value alive if it's currently not.
+                        if block_allocs.iter().position(|x| x == value).is_none() {
+                            block_allocs.push(*value);
+                        }
+                    }
+                }
+            }
+
             // Process register usage for every instruction in the block.
             for (inst_id, instruction) in block.iter().enumerate() {
                 let location = Location::new(label, inst_id);
@@ -659,6 +674,7 @@ impl FunctionData {
                 // Get a list of all values which aren't used anymore and can be freed.
                 for &value in block_allocs.iter() {
                     if liveness.value_dies(location, value) {
+                        //println!("{} dies at {:?}", value, location);
                         to_free.push(value);
                     }
                 }
