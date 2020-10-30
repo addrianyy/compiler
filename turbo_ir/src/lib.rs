@@ -10,6 +10,7 @@ mod type_inference;
 mod register_allocation;
 mod passes;
 mod collections;
+mod phi_updater;
 mod dot;
 
 use std::time::Instant;
@@ -20,6 +21,7 @@ pub use ty::Type;
 pub use instruction::{UnaryOp, BinaryOp, IntPredicate, Cast};
 pub use codegen::MachineCode;
 use instruction::Instruction;
+use phi_updater::PhiUpdater;
 use analysis::ConstType;
 use codegen::Backend;
 use graph::Dominators;
@@ -203,22 +205,26 @@ impl FunctionData {
         }
 
         let passes: &[&dyn passes::Pass]  = &[
+            &passes::ConstPropagatePass,
             &passes::RemoveIneffectiveOperationsPass,
             &passes::SimplifyCFGPass,
-            &passes::ConstPropagatePass,
             &passes::SimplifyComparesPass,
             &passes::SimplifyExpressionsPass,
+            &passes::RemoveDeadCodePass,
+
+            /*
             &passes::DeduplicatePass,
             &passes::RemoveKnownLoadsPass,
             &passes::RemoveDeadStoresPass,
+            */
+
+            &passes::RemoveAliasesPass,
+            &passes::RemoveNopsPass,
+
 
             // Architecture specific reorder pass must be after generic reorder pass.
             &passes::ReorderPass,
             &passes::X86ReorderPass,
-
-            &passes::RemoveDeadCodePass,
-            &passes::RemoveAliasesPass,
-            &passes::RemoveNopsPass,
         ];
 
         let mut statistics = vec![PassStatistics::default(); passes.len()];

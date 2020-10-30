@@ -12,7 +12,6 @@ pub enum Place {
 }
 
 pub struct RegisterAllocation {
-    //pub allocation: Map<Location, Map<Value, Place>>,
     pub allocation: Map<Value, Place>,
     pub arguments:  Map<Value, Place>,
     pub used_regs:  Set<usize>,
@@ -25,11 +24,6 @@ impl RegisterAllocation {
         if let Some(place) = self.arguments.get(&value) {
             return *place;
         }
-
-        /*
-        self.allocation[&location].get(&value).copied()
-            .unwrap_or_else(|| panic!("Cannot resolve {} at location {:?}", value, location))
-        */
 
         self.allocation.get(&value).copied()
             .unwrap_or_else(|| panic!("Cannot resolve {} at location {:?}", value, location))
@@ -497,17 +491,13 @@ impl FunctionData {
         // Now handle PHI input values.
         self.for_each_instruction(|location, instruction| {
             if let Instruction::Phi { incoming, .. } = instruction {
-                // All PHI input values and output value will be mapped to the same register.
+                // All PHI input values will be mapped to the same register.
                 //
                 // It is important that we properly set liveness of PHI inputs. There are
                 // two things which we need to take care of.
                 //
                 // 1. PHI inputs must live to the end of block which predeceses PHI.
                 // 2. PHI inputs must live in PHI block to the correct PHI instruction.
-                //
-                // Because inputs will be in the same register as destination, the actual
-                // use will get extended and register allocator will create correct
-                // interference graph.
 
                 for (label, value) in incoming {
                     // Get liveness state for this incoming value.
@@ -719,20 +709,17 @@ impl FunctionData {
     ) -> VirtualRegisters {
         let mut virtual_registers = VirtualRegisters::default();
 
-        // Given a PHI instruction, every input and output must be mapped to the same
+        // Given a PHI instruction, every input must be mapped to the same
         // register. This won't create problems because  `rewrite_phis` should make
         // copies of all incoming values for PHIs.
         self.for_each_instruction(|_location, instruction| {
-            if let Instruction::Phi { dst, incoming } = instruction {
+            if let Instruction::Phi { incoming, .. } = instruction {
                 let register = virtual_registers.allocate();
 
-                // Map all inputs and outputs to the same register.
-
+                // Map all inputs to the same register.
                 for (_, value) in incoming {
                     virtual_registers.map(*value, register);
                 }
-
-                virtual_registers.map(*dst, register);
             }
         });
 
@@ -772,6 +759,8 @@ impl FunctionData {
                 (Ok(_), Ok(_)) => {
                     // Either values are already coalesced or they are in different VRs.
                     // We cannot do anything here.
+
+                    false
                 }
                 (Ok(map_register), Err(value)) | (Err(value), Ok(map_register)) => {
                     let mut valid = true;
@@ -796,6 +785,8 @@ impl FunctionData {
                     if valid {
                         virtual_registers.map(value, map_register);
                     }
+
+                    valid
                 }
                 (Err(_), Err(_)) => {
                     // Both Values don't have assigned VirtualRegister.
@@ -813,29 +804,39 @@ impl FunctionData {
                     // Assign the same new VR for both Values.
                     virtual_registers.map(v1, register);
                     virtual_registers.map(v2, register);
+
+                    true
                 }
             }
         };
 
-        // Coalesce Values by assigning the same VirtualRegisters to them.
-        self.for_each_instruction(|location, instruction| {
-            if let Some(output) = instruction.created_value() {
-                if let Some(&input) = instruction.read_values().get(0) {
-                    // We cannot coalesce arguments or constants.
-                    if self.is_value_argument(input)    ||
-                        constants.get(&input).is_some() ||
-                        constants.get(&output).is_some() {
-                        return;
-                    }
+        loop {
+            let mut did_something = false;
 
-                    // If first operand dies after this instruction we can coalesce
-                    // it with output Value.
-                    if liveness.value_dies(location, input) {
-                        coalesce_values(output, input);
+            // Coalesce Values by assigning the same VirtualRegisters to them.
+            self.for_each_instruction(|location, instruction| {
+                if let Some(output) = instruction.created_value() {
+                    if let Some(&input) = instruction.read_values().get(0) {
+                        // We cannot coalesce arguments or constants.
+                        if self.is_value_argument(input)    ||
+                            constants.get(&input).is_some() ||
+                            constants.get(&output).is_some() {
+                            return;
+                        }
+
+                        // If first operand dies after this instruction we can coalesce
+                        // it with output Value.
+                        if liveness.value_dies(location, input) && coalesce_values(output, input) {
+                            did_something = true;
+                        }
                     }
                 }
+            });
+
+            if !did_something {
+                break;
             }
-        });
+        }
 
         // Values which are left will get unique VirtualRegisters.
         virtual_registers.uniquely_map_rest(self);

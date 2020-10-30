@@ -1,0 +1,15 @@
+DONE - pointer_analysis
+DONE - remove_aliases
+DONE - remove_nops
+DONE - const_propagate
+DONE - remove_ineffective_operations
+DONE - simplify_compares
+DONE - simplify_expressions
+DONE - remove_dead_code
+DONE - x86reorder
+DONE - simplify_cfg
+DONE - reorder
+
+TODO - deduplicate
+TODO - remove_dead_stores
+TODO - remove_known_loads

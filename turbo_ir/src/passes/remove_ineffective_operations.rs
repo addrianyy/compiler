@@ -72,7 +72,8 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
                 }
                 Instruction::BranchCond { on_true, on_false, .. } => {
                     // If both targets of the bcond instruction are the same we can
-                    // convert it to non-conditional branch.
+                    // convert it to non-conditional branch. As we don't really modify
+                    // control flow we don't need to update PHIs.
                     if on_true == on_false {
                         replacement = Some(Instruction::Branch {
                             target: on_true,
@@ -322,6 +323,27 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
                                 replacement = alias!(a);
                             }
                         }
+                    }
+                }
+                Instruction::Phi { dst, ref incoming } => {
+                    let     incoming_value = incoming[0].1;
+                    let mut valid          = true;
+
+                    // If all incoming values are the same we can replace phi with alias.
+                    // This will also handle phi with one incoming value.
+                    for (_label, value) in &incoming[1..] {
+                        if *value != incoming_value {
+                            valid = false;
+                            break;
+                        }
+                    }
+
+                    // Replace single incoming value with just alias.
+                    if valid {
+                        replacement = Some(Instruction::Alias {
+                            dst,
+                            value: incoming_value,
+                        });
                     }
                 }
                 _ => {}

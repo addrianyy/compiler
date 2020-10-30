@@ -46,7 +46,7 @@ impl super::Pass for ReorderPass {
             // We must be able to get creator position.
             let creator = new_creator.expect("Something is broken.");
 
-            // Loads and volatile instructions cannot be reordered.
+            // Loads, PHIs and volatile instructions cannot be reordered.
             if !body[creator.index()].can_be_reordered() {
                 continue;
             }
@@ -62,8 +62,12 @@ impl super::Pass for ReorderPass {
                 // block as one use ordering isn't that bad. Don't touch it.
                 if location.label() == creator.label() {
                     best_location = None;
-
                     break;
+                }
+
+                // Ignore uses by PHI. `validate_path_ex` will always return false for them.
+                if function.instruction(location).is_phi() {
+                    continue;
                 }
 
                 let mut instruction_count = 0;
@@ -77,8 +81,13 @@ impl super::Pass for ReorderPass {
                         continue;
                     }
 
+                    // Ignore uses by PHI. `validate_path_ex` will always return false for them.
+                    if function.instruction(other_location).is_phi() {
+                        continue;
+                    }
+
                     // Make sure that with reordered creator this use will be still valid.
-                    // Also count number of instructions. 
+                    // Also count number of instructions.
                     // Because we sum them up, it's not a perfect measure.
                     // TODO: Find better way of determining the best reorder.
                     let result = function.validate_path_ex(&dominators, location,

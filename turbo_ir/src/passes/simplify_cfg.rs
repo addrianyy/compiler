@@ -1,4 +1,4 @@
-use crate::{FunctionData, Instruction, Label, Map};
+use crate::{FunctionData, Instruction, Label, Map, Location};
 
 pub struct SimplifyCFGPass;
 
@@ -26,6 +26,7 @@ impl super::Pass for SimplifyCFGPass {
 
         'merge_loop: loop {
             let incoming = function.flow_graph_incoming();
+            let outgoing = function.flow_graph_outgoing();
 
             for (&target, predecessors) in &incoming {
                 // Don't do anything if it's entry block or if it has more then 1 entry point.
@@ -42,6 +43,22 @@ impl super::Pass for SimplifyCFGPass {
                 // We can only merge if current block is entered by a non-conditional branch.
                 if !matches!(function.last_instruction(dominator), Instruction::Branch { .. }) {
                     continue;
+                }
+
+                // Merged block shouldn't contain PHIs. If they do, another optimization pass
+                // will remove it and we will be able to merge block later.
+                if function.block_contains_phi(target) {
+                    continue;
+                }
+
+                // Check if PHI instruction depends on the control flow.
+                if !function.can_remove_block(&outgoing, target, dominator) {
+                    continue;
+                }
+
+                // All successors PHI nodes should now refer to `dominator` instead of `target`.
+                for successor in &outgoing[&target] {
+                    function.replace_phi_incoming(*successor, target, dominator);
                 }
 
                 // All conditions met: we can merge target into dominator.
@@ -109,31 +126,75 @@ impl super::Pass for SimplifyCFGPass {
         }
 
         // Do a second pass to actually flatten CFG.
-        function.for_each_instruction_mut(|_, instruction| {
-            // Find branch instructions which target intermediate blocks and change their
-            // target to true destination.
+        for &label in &labels {
+            let mut body  = &function.blocks[&label];
+            let block_len = body.len();
 
-            match instruction {
-                Instruction::Branch { target } => {
-                    if let Some(&new_target) = branch_labels.get(&target) {
-                        *target       = new_target;
-                        did_something = true;
+            for inst_id in 0..block_len {
+                let mut phi_updates = Vec::new();
+                let mut replacement = None;
+
+                // Find branch instructions which target intermediate blocks and change their
+                // target to real destination.
+                match body[inst_id] {
+                    Instruction::Branch { target } => {
+                        if let Some(&new_target) = branch_labels.get(&target) {
+                            // Check if PHI instruction depends on the control flow.
+                            if !function.depends_on_predecessors(new_target, &[label, target]) {
+                                replacement = Some(Instruction::Branch { 
+                                    target: new_target,
+                                });
+
+                                phi_updates.push((target, new_target));
+                            }
+                        }
                     }
+                    Instruction::BranchCond { cond, on_true, on_false } => {
+                        let mut changed_true  = on_true;
+                        let mut changed_false = on_false;
+
+                        if let Some(&new_true) = branch_labels.get(&on_true) {
+                            // Check if PHI instruction depends on the control flow.
+                            if !function.depends_on_predecessors(new_true, &[label, on_true]) {
+                                changed_true = new_true;
+                                phi_updates.push((on_true, new_true));
+                            }
+                        }
+
+                        if let Some(&new_false) = branch_labels.get(&on_false) {
+                            // Check if PHI instruction depends on the control flow.
+                            if !function.depends_on_predecessors(new_false, &[label, on_false]) {
+                                changed_false = new_false;
+                                phi_updates.push((on_false, new_false));
+                            }
+                        }
+
+                        // Create replacement instruction if we have changed anything.
+                        if changed_true != on_true || changed_false != on_false {
+                            replacement = Some(Instruction::BranchCond {
+                                cond,
+                                on_true:  changed_true,
+                                on_false: changed_false,
+                            });
+                        }
+                    }
+                    _ => {}
                 }
-                Instruction::BranchCond { on_true, on_false, .. } => {
-                    if let Some(&new_true) = branch_labels.get(&on_true) {
-                        *on_true      = new_true;
-                        did_something = true;
+
+                if let Some(replacement) = replacement {
+                    // Fixup PHI incoming values.
+                    for (before, after) in phi_updates {
+                        function.replace_phi_incoming(after, before, label);
                     }
 
-                    if let Some(&new_false) = branch_labels.get(&on_false) {
-                        *on_false     = new_false;
-                        did_something = true;
-                    }
+                    // Replace instruction with our new one.
+                    *function.instruction_mut(Location::new(label, inst_id)) = replacement;
+
+                    body          = &function.blocks[&label];
+                    did_something = true;
                 }
-                _ => {}
             }
-        });
+        }
 
         did_something
     }

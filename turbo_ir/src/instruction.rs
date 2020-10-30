@@ -401,4 +401,8 @@ impl Instruction {
     pub fn can_be_reordered(&self) -> bool {
         !self.is_volatile() && !matches!(self, Instruction::Load { .. } | Instruction::Phi { .. })
     }
+
+    pub fn is_phi(&self) -> bool {
+        matches!(self, Instruction::Phi { .. })
+    }
 }

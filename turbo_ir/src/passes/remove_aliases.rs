@@ -48,7 +48,7 @@ impl super::Pass for RemoveAliasesPass {
                     for inst in function.blocks.get_mut(&label).unwrap().iter_mut() {
                         // Replace all uses of alias output value to alias operand.
                         inst.transform_inputs(|reg| {
-                            if *reg == alias.0 { 
+                            if *reg == alias.0 {
                                 *reg = alias.1;
                             }
                         });

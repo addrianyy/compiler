@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
 use super::{FunctionData, Value, Location, Label, Dominators, Map, Set,
-            Instruction, Type};
+            Instruction, Type, FlowGraph};
 
 pub(super) type Const = u64;
 
@@ -278,6 +278,141 @@ impl FunctionData {
         cx.analysis
     }
 
+    pub(super) fn depends_on_predecessors(&self, label: Label, predecessors: &[Label]) -> bool {
+        // Go through every PHI instruction in the block.
+        for instruction in &self.blocks[&label] {
+            if let Instruction::Phi { incoming, .. } = instruction {
+                // Check if there is any value which strictly depends on control flow.
+                let mut checks = vec![None; predecessors.len()];
+
+                // Get value for every `predecessor` if it exists.
+                for (label, value) in incoming.iter() {
+                    if let Some(index) = predecessors.iter().position(|x| x == label) {
+                        checks[index] = Some(*value);
+                    }
+                }
+
+                let mut last_value = None;
+
+                // Check if every value is the same.
+                for value in checks.into_iter().filter_map(|x| x) {
+                    if let Some(lv) = last_value {
+                        if lv != value {
+                            return true;
+                        }
+                    }
+
+                    last_value = Some(value);
+                }
+            }
+        }
+
+        false
+    }
+
+    pub(super) fn can_remove_block(&self, outgoing: &FlowGraph, b1: Label, b2: Label) -> bool {
+        assert!(b1 != b2, "Cannot check two the same blocks.");
+
+        let check_successor = |label: Label| {
+            // Go through every PHI instruction in the block.
+            for instruction in &self.blocks[&label] {
+                if let Instruction::Phi { incoming, .. } = instruction {
+                    // Check if there is any value which strictly depends on control flow.
+
+                    let mut b1_incoming = None;
+                    let mut b2_incoming = None;
+
+                    for (label, value) in incoming {
+                        if *label == b1 {
+                            b1_incoming = Some(*value);
+                        }
+
+                        if *label == b2 {
+                            b2_incoming = Some(*value);
+                        }
+                    }
+
+                    if let (Some(b1), Some(b2)) = (b1_incoming, b2_incoming) {
+                        // If both blocks are in incoming values then they need to
+                        // have the same values to not depend on control flow.
+                        return b1 == b2;
+                    }
+                }
+            }
+
+            true
+        };
+
+        // Check successors of `b1`.
+        for &successor in &outgoing[&b1] {
+            if !check_successor(successor) {
+                return false;
+            }
+        }
+
+        // Check successors of `b2`.
+        for &successor in &outgoing[&b2] {
+            if !check_successor(successor) {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    pub(super) fn replace_phi_incoming(&mut self, label: Label, old_incoming: Label,
+                                       new_incoming: Label) {
+        // Go through every PHI instruction in the block.
+        for instruction in self.blocks.get_mut(&label).unwrap() {
+            if let Instruction::Phi { incoming, .. } = instruction {
+                let mut existing_new = None;
+
+                // Go through incoming labels to check if there is already `new_incoming`
+                // value. If there is, we must just remove `old_incoming` values.
+                for (label, value) in incoming.iter() {
+                    if *label == new_incoming {
+                        existing_new = Some(*value);
+                        break;
+                    }
+                }
+
+                if let Some(existing_new) = existing_new {
+                    incoming.retain(|&(label, value)| {
+                        if label == old_incoming {
+                            // We need to remove this entry, but make sure that values are the
+                            // same.
+
+                            assert!(existing_new == value, "Tried to replace invalid \
+                                    PHI incoming.");
+
+                            return false;
+                        }
+
+                        true
+                    });
+                } else {
+                    // `new_incoming` isn't in the PHI node, replace all uses of `old_incoming`
+                    // to `new_incoming`.
+                    for (label, _) in incoming.iter_mut() {
+                        if *label == old_incoming {
+                            *label = new_incoming;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    pub(super) fn block_contains_phi(&self, label: Label) -> bool {
+        for instruction in &self.blocks[&label] {
+            if let Instruction::Phi { .. } = instruction {
+                return true;
+            }
+        }
+
+        false
+    }
+
     pub(super) fn constant_values(&self) -> Map<Value, (Type, Const)> {
         let mut consts = Map::default();
 
@@ -505,6 +640,9 @@ impl FunctionData {
 
                     assert!(incoming_labels == flow_incoming[&label], "PHI node incoming \
                             labels and block predecessors don't match.");
+
+                    assert!(incoming.len() == incoming_labels.len(),
+                            "PHI node has duplicate labels.");
 
                     for &(label, value) in incoming {
                         if self.is_value_argument(value) {

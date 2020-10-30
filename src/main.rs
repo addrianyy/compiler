@@ -61,9 +61,10 @@ fn main() {
         
     ir.switch_function(func);
 
-    let entry = ir.entry_label();
-    let body  = ir.create_label();
-    let exit  = ir.create_label();
+    let entry     = ir.entry_label();
+    let body      = ir.create_label();
+    let body_tmp  = ir.create_label();
+    let exit      = ir.create_label();
 
     let count = ir.argument(0);
     let zero  = ir.iconst(0u32, ir::Type::U32);
@@ -77,18 +78,22 @@ fn main() {
     let next_iter = ir.add(iter, one);
     let five      = count; //ir.iconst(8u32, ir::Type::U32);
     let cond      = ir.compare_ne(next_iter, five);
-    ir.branch_cond(cond, body, exit);
+    ir.branch_cond(cond, body_tmp, exit);
+
+    ir.switch_label(body_tmp);
+    ir.branch(body);
 
     ir.add_phi_incoming(iter, entry, zero);
-    ir.add_phi_incoming(iter, body,  next_iter);
+    ir.add_phi_incoming(iter, body_tmp,  next_iter);
 
     ir.add_phi_incoming(sum, entry, zero);
-    ir.add_phi_incoming(sum, body,  next_sum);
+    ir.add_phi_incoming(sum, body_tmp,  next_sum);
 
     ir.switch_label(exit);
-    ir.ret(Some(sum));
+    ir.ret(Some(next_sum));
 
     ir.finalize();
+    ir.optimize();
     ir.dump_function_text(func, &mut std::io::stdout()).unwrap();
     ir.dump_function_graph(func, "graphs/test.svg");
 
@@ -108,6 +113,43 @@ fn main() {
 
         println!("return value: {}.", result);
     }
+
+    /*
+    use turbo_ir as ir;
+    let mut ir = ir::Module::new();
+    let func = ir.create_function("test", Some(ir::Type::U32), vec![ir::Type::U32]);
+        
+    ir.switch_function(func);
+
+    let entry  = ir.entry_label();
+    let truel  = ir.create_label();
+    let falsel = ir.create_label();
+    let exit   = ir.create_label();
+
+    let cond = ir.iconst(1u8, ir::Type::U1);
+    ir.branch_cond(cond, truel, falsel);
+
+    ir.switch_label(truel);
+    let truev = ir.iconst(33u32, ir::Type::U32);
+    ir.branch(exit);
+
+    ir.switch_label(falsel);
+    let falsev = ir.iconst(88u32, ir::Type::U32);
+    ir.branch(exit);
+
+    ir.switch_label(exit);
+    let ret = ir.phi();
+    ir.add_phi_incoming(ret, truel, truev);
+    ir.add_phi_incoming(ret, falsel, falsev);
+    ir.ret(Some(ret));
+
+    ir.finalize();
+    ir.optimize();
+    ir.dump_function_text(func, &mut std::io::stdout()).unwrap();
+    */
+
+
+
 
 
     /*

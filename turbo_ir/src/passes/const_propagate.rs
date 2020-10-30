@@ -1,5 +1,5 @@
 use crate::{FunctionData, Instruction, Type, BinaryOp, UnaryOp, Cast,
-            IntPredicate, ConstType};
+            IntPredicate, ConstType, PhiUpdater};
 
 pub struct ConstPropagatePass;
 
@@ -9,7 +9,8 @@ impl super::Pass for ConstPropagatePass {
     }
 
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
-        let mut consts = function.constant_values();
+        let mut consts      = function.constant_values();
+        let mut phi_updater = PhiUpdater::new();
 
         // Optimize instructions with constant operands.
         //
@@ -121,7 +122,7 @@ impl super::Pass for ConstPropagatePass {
         function.for_each_instruction(|location, instruction| {
             let mut propagated = None;
 
-            // Check all adequate instructions if they have constant operands. If they do, 
+            // Check all adequate instructions if they have constant operands. If they do,
             // compute result of their operation.
             match instruction {
                 Instruction::ArithmeticUnary { op, value, .. } => {
@@ -174,15 +175,18 @@ impl super::Pass for ConstPropagatePass {
                         // If condition is constant then only one branch will be taken.
                         // Convert instruction to simple branch instruction.
 
-                        let target = match cond {
-                            0 => *on_false,
-                            1 => *on_true,
+                        let (target, removed) = match cond {
+                            0 => (*on_false, *on_true),
+                            1 => (*on_true,  *on_false),
                             _ => panic!("Invalid U1 constant {}.", cond),
                         };
 
                         replacements.push((location, Instruction::Branch {
                             target,
                         }));
+
+                        // We have modified the control flow. Queue update of PHI instructions.
+                        phi_updater.removed_branch(location.label(), removed);
                     }
                 }
                 Instruction::Cast { cast, value, ty: dst_ty, ..} => {
@@ -255,6 +259,9 @@ impl super::Pass for ConstPropagatePass {
         for (location, replacement) in replacements {
             *function.instruction_mut(location) = replacement;
         }
+
+        // Update PHI instructions.
+        phi_updater.apply(function);
 
         did_something
     }
