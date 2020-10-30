@@ -85,6 +85,8 @@ struct ValueLiveness {
     creation_end: usize,
 
     intervals: Vec<Interval>,
+
+    holes: Set<usize>,
 }
 
 impl ValueLiveness {
@@ -95,6 +97,7 @@ impl ValueLiveness {
             creation_start: creation.index(),
             creation_end:   creation.index(),
             intervals:      Vec::new(),
+            holes:          Set::default(),
         }
     }
 
@@ -179,6 +182,11 @@ impl ValueLiveness {
         // equal to block size.
 
         if location.label() == self.creation_block {
+            // Check if `location` is part of hole in creator block.
+            if self.holes.contains(&location.index()) {
+                return true;
+            }
+
             // `location` is in the same block where value was created. This value dies
             // if last use is before or on instruction at `location`.
             return self.creation_end <= location.index();
@@ -517,6 +525,8 @@ impl FunctionData {
             }
         });
 
+        let creators = self.value_creators();
+
         // Handle uses of incoming values in PHI blocks.
         for (location, value) in special_phi_uses {
             // Get liveness state for this incoming value.
@@ -524,9 +534,20 @@ impl FunctionData {
                 .expect("Failed to get liveness state for value.");
 
             // We don't want to use `add_usage` here because it will propagate uses
-            // to all predecessors which we don't want for PHI incoming values. Therefore
+            // to all predecessors which we don't want for PHI incoming values. Therefore we
             // use internal function which won't modify liveness in predecessors.
             value_liveness.add_usage_internal(location, &cx, true);
+
+            // If PHI input value is defined in the same block it's used its lifetime
+            // will be normally whole block. This is not true. This value will live
+            // from block start to PHI instruction and then from definition to end of block.
+            // Make holes in creator block to represent this.
+            let creator = creators[&value];
+            if  creator.label() == location.label() {
+                for inst_id in location.index()..creator.index() {
+                    value_liveness.holes.insert(inst_id);
+                }
+            }
         }
 
         liveness
