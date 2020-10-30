@@ -203,9 +203,57 @@ impl ValueLiveness {
     }
 }
 
+#[derive(Clone, Default)]
+struct VirtualRegisters {
+    value_to_register: Map<Value, VirtualRegister>,
+    registers:         Map<VirtualRegister, Set<Value>>,
+    next_register:     VirtualRegister,
+}
+
+impl VirtualRegisters {
+    fn allocate(&mut self) -> VirtualRegister {
+        let register = self.next_register;
+
+        self.next_register = VirtualRegister(register.0 + 1);
+        self.registers.insert(register, Set::default());
+
+        register
+    }
+
+    fn map(&mut self, value: Value, register: VirtualRegister) {
+        self.value_to_register.insert(value, register);
+        self.registers.get_mut(&register).unwrap().insert(value);
+    }
+    
+    fn value_register(&self, value: Value) -> VirtualRegister {
+        self.value_to_register[&value]
+    }
+
+    fn register_values(&self, register: VirtualRegister) -> &Set<Value> {
+        &self.registers[&register]
+    }
+
+    fn get(&self, value: Value) -> Option<VirtualRegister> {
+        self.value_to_register.get(&value).cloned()
+    }
+
+    fn uniquely_map_rest(&mut self, function: &FunctionData) {
+        for value in 0..function.value_count() {
+            let value = Value(value as u32);
+
+            // If we already don't have VR for this Value, create and assign one.
+            if self.value_to_register.get(&value).is_none() {
+                let register = self.allocate();
+
+                self.map(value, register);
+            }
+        }
+    }
+}
+
 type Entity = VirtualRegister;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct VirtualRegister(u32);
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -287,6 +335,11 @@ impl InterferenceGraph {
         }
 
         result
+    }
+
+    fn interfere(&self, e1: Entity, e2: Entity) -> bool {
+        // We return false if e1 == e2.
+        self.edges[&e1].contains(&e2)
     }
 
     fn coloring_order(&self, reverse: bool) -> Vec<Entity> {
@@ -567,65 +620,211 @@ impl FunctionData {
                                                        self.prototype.name));
     }
 
-    fn coalesce(&self, liveness: &Liveness) -> Map<Value, VirtualRegister> {
-        // Given a sequence:
-        // %5 = add %4, %1
-        // If it's the last usage of %4 then %5 and %4 should be allocated in the same
-        // register. To make this possible we an make abstracion over Values - VirtualRegisters.
-        // In this case %4 and %5 will get assigned the same VirtualRegister.
+    fn interference_graph(
+        &self,
+        bfs_labels:         &[Label],
+        virtual_registers:  &VirtualRegisters,
+        liveness:           &Liveness,
+        dominators:         &Dominators,
+        constants:          &Map<Value, i64>,
+    ) -> InterferenceGraph {
+        // State of used values for each block.
+        let mut block_alloc_state: Map<Label, Vec<Value>> =
+            Map::new_with_capacity(self.blocks.len());
 
-        let mut value_registers = Map::default();
-        let mut next_register   = VirtualRegister(0);
+        // Entry block starts with empty state.
+        block_alloc_state
+            .entry(Label(0))
+            .or_insert_with(Default::default);
+
+        let get_entity = |value: Value| {
+            // Register allocation entity is not a Value, it's a VirtualRegister.
+            virtual_registers.value_register(value)
+        };
+
+        let mut interference = InterferenceGraph::default();
+
+        // Because of how `liveness` and `coalesce` work there is no special case for PHI here.
+
+        for &label in bfs_labels {
+            // If there is no register usage state for this block then take one
+            // from immediate dominator (as we can only use values originating from it).
+            #[allow(clippy::map_entry)]
+            if !block_alloc_state.contains_key(&label) {
+                let idom   = dominators[&label];
+                let allocs = block_alloc_state[&idom].clone();
+
+                block_alloc_state.insert(label, allocs);
+            }
+
+            let block_allocs = block_alloc_state.get_mut(&label).unwrap();
+            let block        = &self.blocks[&label];
+
+            // Process register usage for every instruction in the block.
+            for (inst_id, instruction) in block.iter().enumerate() {
+                let location = Location::new(label, inst_id);
+
+                let mut to_free: Vec<Value> = Vec::new();
+
+                // Get a list of all values which aren't used anymore and can be freed.
+                for &value in block_allocs.iter() {
+                    if liveness.value_dies(location, value) {
+                        to_free.push(value);
+                    }
+                }
+
+                // Free all queued values.
+                for value in to_free {
+                    // Get index of unused value.
+                    let item = block_allocs.iter()
+                        .position(|&x| x == value)
+                        .unwrap();
+
+                    block_allocs.remove(item);
+                }
+
+                if let Some(output) = instruction.created_value() {
+                    // Skip optimizable constants.
+                    if constants.get(&output).is_some() {
+                        continue;
+                    }
+
+                    // Get RA entity of value to allocate.
+                    let output_entity = get_entity(output);
+
+                    // Because of coalescing it's possible that `output_entity` is already in
+                    // the interference graph. In this case it won't be added.
+                    interference.add_vertex(output_entity);
+
+                    // Newly created VR interferes with all currently alive VRs.
+                    for &value in block_allocs.iter() {
+                        interference.add_edge(output_entity, get_entity(value));
+                    }
+
+                    // Add allocated value to usage state.
+                    block_allocs.push(output);
+                }
+            }
+        }
+
+        interference
+    }
+
+    fn map_virtual_registers(
+        &self,
+        bfs_labels: &[Label],
+        liveness:   &Liveness,
+        dominators: &Dominators,
+        constants:  &Map<Value, i64>,
+    ) -> VirtualRegisters {
+        let mut virtual_registers = VirtualRegisters::default();
 
         // Given a PHI instruction, every input and output must be mapped to the same
         // register. This won't create problems because  `rewrite_phis` should make
         // copies of all incoming values for PHIs.
         self.for_each_instruction(|_location, instruction| {
             if let Instruction::Phi { dst, incoming } = instruction {
-                // Allocate a new register.
-                let register  = next_register;
-                next_register = VirtualRegister(next_register.0 + 1);
+                let register = virtual_registers.allocate();
 
                 // Map all inputs and outputs to the same register.
 
                 for (_, value) in incoming {
-                    value_registers.insert(*value, register);
+                    virtual_registers.map(*value, register);
                 }
 
-                value_registers.insert(*dst, register);
+                virtual_registers.map(*dst, register);
             }
         });
 
+        // Save initial Value->Register mapping for PHI values only.
+        let phi_registers = virtual_registers.clone();
+
+        // Uniquely map all other values.
+        virtual_registers.uniquely_map_rest(self);
+
+        // Build interference graph which is required for coalescing.
+        let interference = self.interference_graph(
+            bfs_labels,
+            &virtual_registers,
+            liveness,
+            dominators,
+            constants,
+        );
+
+        // Given a sequence:
+        // %5 = add %4, %1
+        // If it's the last usage of %4 then %5 and %4 should be allocated in the same
+        // register. To make this possible we an make abstracion over Values - VirtualRegisters.
+        // In this case %4 and %5 will get assigned the same VirtualRegister.
+
+        let     interference_registers = virtual_registers;
+        let mut virtual_registers      = phi_registers;
+
         let mut coalesce_values = |v1: Value, v2: Value| {
             // Try to assign the same VirtualRegister to both Values.
-            match (value_registers.get(&v1).cloned(), value_registers.get(&v2).cloned()) {
-                (Some(_), Some(_)) => {
+
+            let v1_vr = virtual_registers.get(v1).ok_or(v1);
+            let v2_vr = virtual_registers.get(v2).ok_or(v2);
+
+            // TODO: Improve this.
+
+            match (v1_vr, v2_vr) {
+                (Ok(_), Ok(_)) => {
                     // Either values are already coalesced or they are in different VRs.
                     // We cannot do anything here.
-                },
-                (Some(r), None) | (None, Some(r)) => {
-                    // One Value has already assigned VR, make other one use the same VR.
-                    value_registers.insert(v1, r);
-                    value_registers.insert(v2, r);
                 }
-                (None, None) => {
-                    let register  = next_register;
-                    next_register = VirtualRegister(next_register.0 + 1);
+                (Ok(map_register), Err(value)) | (Err(value), Ok(map_register)) => {
+                    let mut valid = true;
+
+                    // We need to make sure that `value` doesn't interfere
+                    // with any value mapped to `map_register`.
+
+                    // Get old VR for `value`.
+                    let value_register = interference_registers.value_register(value);
+
+                    // Go through all values mapped to `map_register`.
+                    for &other in virtual_registers.register_values(map_register) {
+                        let other_register = interference_registers.value_register(other);
+
+                        // Make sure that nothing in `map_register` interferes with value.
+                        if interference.interfere(value_register, other_register) {
+                            valid = false;
+                            break;
+                        }
+                    }
+
+                    if valid {
+                        virtual_registers.map(value, map_register);
+                    }
+                }
+                (Err(_), Err(_)) => {
+                    // Both Values don't have assigned VirtualRegister.
+
+                    // Get old VirtualRegisters for given Values.
+                    let v1_old = interference_registers.value_register(v1);
+                    let v2_old = interference_registers.value_register(v2);
+
+                    // Make sure that values can be merged.
+                    assert!(!interference.interfere(v1_old, v2_old),
+                            "Tried to coalesce overlapping values.");
+
+                    let register = virtual_registers.allocate();
 
                     // Assign the same new VR for both Values.
-                    value_registers.insert(v1, register);
-                    value_registers.insert(v2, register);
+                    virtual_registers.map(v1, register);
+                    virtual_registers.map(v2, register);
                 }
             }
         };
 
         // Coalesce Values by assigning the same VirtualRegisters to them.
-        // TODO: Make sure this is absolutely correct.
         self.for_each_instruction(|location, instruction| {
             if let Some(output) = instruction.created_value() {
                 if let Some(&input) = instruction.read_values().get(0) {
-                    // We cannot coalesce arguments.
-                    if self.is_value_argument(input) {
+                    // We cannot coalesce arguments or constants.
+                    if self.is_value_argument(input)    ||
+                        constants.get(&input).is_some() ||
+                        constants.get(&output).is_some() {
                         return;
                     }
 
@@ -639,19 +838,9 @@ impl FunctionData {
         });
 
         // Values which are left will get unique VirtualRegisters.
-        for value in 0..self.value_count() {
-            let value = Value(value as u32);
+        virtual_registers.uniquely_map_rest(self);
 
-            // If we already don't have VR for this Value, create and assign one.
-            if value_registers.get(&value).is_none() {
-                let register  = next_register;
-                next_register = VirtualRegister(next_register.0 + 1);
-
-                value_registers.insert(value, register);
-            }
-        }
-
-        value_registers
+        virtual_registers
     }
 
     fn rewrite_phis(&mut self) {
@@ -850,97 +1039,20 @@ impl FunctionData {
             println!();
         }
 
-        // Coalesce values and create VirtualRegisters which will hold Values. Also required
-        // to connect PHIs.
-        let value_to_register = self.coalesce(&liveness);
+        let virtual_registers = self.map_virtual_registers(
+            &labels,
+            &liveness,
+            &dominators,
+            &constants
+        );
 
-        let mut register_to_values = Map::default();
-
-        // Create reverse mapping from VR to Values.
-        for (value, register) in &value_to_register {
-            assert!(register_to_values.entry(*register)
-                    .or_insert_with(Set::default)
-                    .insert(*value));
-        }
-
-        // State of used values for each block.
-        let mut block_alloc_state: Map<Label, Vec<Value>> =
-            Map::new_with_capacity(self.blocks.len());
-
-        // Entry block starts with empty state.
-        block_alloc_state
-            .entry(Label(0))
-            .or_insert_with(Default::default);
-
-        let get_entity = |value: Value| {
-            // Register allocation entity is not a Value, it's a VirtualRegister.
-            value_to_register[&value]
-        };
-
-        let mut interference = InterferenceGraph::default();
-
-        // Because of how `liveness` and `coalesce` work there is no special case for PHI here.
-
-        for label in labels {
-            // If there is no register usage state for this block then take one
-            // from immediate dominator (as we can only use values originating from it).
-            #[allow(clippy::map_entry)]
-            if !block_alloc_state.contains_key(&label) {
-                let idom   = dominators[&label];
-                let allocs = block_alloc_state[&idom].clone();
-
-                block_alloc_state.insert(label, allocs);
-            }
-
-            let block_allocs = block_alloc_state.get_mut(&label).unwrap();
-            let block        = &self.blocks[&label];
-
-            // Process register usage for every instruction in the block.
-            for (inst_id, instruction) in block.iter().enumerate() {
-                let location = Location::new(label, inst_id);
-
-                let mut to_free: Vec<Value> = Vec::new();
-
-                // Get a list of all values which aren't used anymore and can be freed.
-                for &value in block_allocs.iter() {
-                    if liveness.value_dies(location, value) {
-                        to_free.push(value);
-                    }
-                }
-
-                // Free all queued values.
-                for value in to_free {
-                    // Get index of unused value.
-                    let item = block_allocs.iter()
-                        .position(|&x| x == value)
-                        .unwrap();
-
-                    block_allocs.remove(item);
-                }
-
-                if let Some(output) = instruction.created_value() {
-                    // Skip optimizable constants.
-                    if constants.get(&output).is_some() {
-                        continue;
-                    }
-
-                    // Get RA entity of value to allocate.
-                    let output_entity = get_entity(output);
-
-                    // Because of coalescing it's possible that `output_entity` is already in
-                    // the interference graph. In this case it won't be added.
-                    interference.add_vertex(output_entity);
-
-                    // Newly created VR interferes with all currently alive VRs.
-                    for &value in block_allocs.iter() {
-                        interference.add_edge(output_entity, get_entity(value));
-                    }
-
-                    // Add allocated value to usage state.
-                    block_allocs.push(output);
-                }
-            }
-        }
+        let interference = self.interference_graph(
+            &labels,
+            &virtual_registers,
+            &liveness,
+            &dominators,
+            &constants
+        );
 
         let coloring           = interference.color();
         let required_registers = coloring.color_list.len();
@@ -951,7 +1063,7 @@ impl FunctionData {
 
             // Dump colored interference graph to file.
             self.dump_interference_graph(&interference, &coloring,
-                                         &register_to_values);
+                                         &virtual_registers.registers);
         }
 
         let colors = if required_registers > hardware_registers {
@@ -962,8 +1074,8 @@ impl FunctionData {
 
             let mut usages: Map<Color, usize> = Map::default();
 
-            for (register, &color) in coloring.vertex_color.iter() {
-                for &value in &register_to_values[register] {
+            for (&register, &color) in coloring.vertex_color.iter() {
+                for &value in virtual_registers.register_values(register) {
                     *usages.entry(color).or_insert(0) +=
                         usage_counts[value.index()] as usize;
                 }
@@ -1009,7 +1121,7 @@ impl FunctionData {
         let mut value_to_place = Map::default();
 
         // Remove all layers of abstractions to get finally Value to Place mapping.
-        for (&value, &register) in &value_to_register {
+        for (&value, &register) in &virtual_registers.value_to_register {
             if let Some(&color) =  coloring.vertex_color.get(&register) {
                 // Get place assigned to this color.
                 let place = color_to_place[&color];
@@ -1048,240 +1160,4 @@ impl FunctionData {
             skips,
         }
     }
-
-    /*
-    fn lifetimes(&self) -> Map<Location, Vec<bool>> {
-        let mut lifetimes = Map::default();
-        let creators      = self.value_creators();
-
-        // For every location in the program create a list of values which are used AFTER
-        // instruction at that location.
-
-        for label in self.reachable_labels() {
-            // We start without any values used.
-            let mut used = vec![false; self.value_count()];
-
-            // Get all reachable blocks from current one.
-            let reachable_labels = self.traverse_bfs(label, false);
-
-            // Go through every block that we can reach from current label and get all
-            // values which are being used there. This will include ourselves if we can
-            // reach ourselves via loop.
-            for &target_label in &reachable_labels {
-                for instruction in &self.blocks[&target_label] {
-                    for input in instruction.read_values() {
-                        // We don't care about arguments for now.
-                        if self.is_value_argument(input) {
-                            continue;
-                        }
-
-                        // If value is being used in the same block it's being created
-                        // then there is no need to set it as used. It will be recreated.
-                        //
-                        // If we can reach ourselves via loop:
-                        // 1. Value is being created in current block and used before our
-                        //    instruction. In this case we don't need to mark it as used
-                        //    as it will be recreated.
-                        //
-                        // 2. Value is being created in current block dominator and used
-                        //    before our instruction. In this case we must mark value as
-                        //    used.
-                        //
-                        // TODO: Improve this to handle more cases where value gets recreated.
-                        let creator   = creators[&input].label();
-                        let recreated = target_label == creator;
-
-                        if !recreated {
-                            used[input.index()] = true;
-                        }
-                    }
-                }
-            }
-
-            // We have computed all values which are being used in blocks
-            // that are reachable from current label. These are common for
-            // all instructions in this block. Now calculate per-instruction usage data.
-            
-            let block = &self.blocks[&label];
-
-            // Go through every instruction and calculate used registers.
-            for (inst_id, _) in block.iter().enumerate() {
-                // Copy all used value from common data computed above.
-                let mut used = used.clone();
-
-                // Get all values which are used AFTER this instruction.
-                for instruction in &block[inst_id + 1..] {
-                    for input in instruction.read_values() {
-                        used[input.index()] = true;
-                    }
-                }
-
-                // Calculation for this location is now done.
-                lifetimes.insert(Location::new(label, inst_id), used);
-            }
-        }
-
-        lifetimes
-    }
-    */
-
-    /*
-    pub(super) fn allocate_registers(&self, hardware_registers: usize) -> RegisterAllocation {
-        fn stack_pop_prefer(stack: &mut Vec<usize>, prefer: Option<usize>) -> Option<usize> {
-            if let Some(prefer) = prefer {
-                if let Some(idx) = stack.iter().position(|x| *x == prefer) {
-                    stack.remove(idx);
-
-                    return Some(prefer);
-                }
-            }
-
-            stack.pop()
-        }
-
-        #[derive(Default, Clone)]
-        struct FreePlaces {
-            registers:   Vec<usize>,
-            stack_slots: Vec<usize>,
-        }
-
-        let mut block_alloc_state:
-            Map<Label, (Map<Value, Place>, FreePlaces)> =
-                Map::new_with_capacity(self.blocks.len());
-
-        let mut inst_alloc_state:
-            Map<Location, Map<Value, Place>> =
-                Map::default();
-
-        {
-            // At first all hardware registers are usable.
-
-            let entry_state = block_alloc_state
-                .entry(Label(0))
-                .or_insert_with(Default::default);
-
-            for index in (0..hardware_registers).rev() {
-                entry_state.1.registers.push(index);
-            }
-
-        }
-
-        let labels     = self.reachable_labels();
-        let dominators = self.dominators();
-        let lifetimes  = self.lifetimes();
-
-        let mut next_slot = 0;
-        let mut used_regs = Set::new_with_capacity(hardware_registers);
-
-        for label in labels {
-            // If there is not register allocation state for this block then take one
-            // from immediate dominator (as we can only use values originating from it).
-            #[allow(clippy::map_entry)]
-            if !block_alloc_state.contains_key(&label) {
-                let idom   = dominators[&label];
-                let allocs = block_alloc_state[&idom].clone();
-
-                block_alloc_state.insert(label, allocs);
-            }
-
-            let block_allocs = block_alloc_state.get_mut(&label).unwrap();
-            let block        = &self.blocks[&label];
-
-            inst_alloc_state.reserve(block.len());
-            block_allocs.0.reserve(block.len() / 2);
-
-            for (inst_id, inst) in block.iter().enumerate() {
-                let location = Location::new(label, inst_id);
-
-                let mut inst_allocs                  = block_allocs.0.clone();
-                let mut to_free: Vec<(Value, Place)> = Vec::new();
-
-                for (&value, &place) in block_allocs.0.iter() {
-                    if !lifetimes[&location][value.index()] {
-                        to_free.push((value, place));
-                    }
-                }
-
-                for (value, place) in to_free {
-                    if !matches!(place, Place::Argument(_)) {
-                        block_allocs.0.remove(&value);
-                    }
-
-                    match place {
-                        Place::StackSlot(value) => {
-                            block_allocs.1.stack_slots.push(value);
-                        }
-                        Place::Register(value) => {
-                            block_allocs.1.registers.push(value);
-                        }
-                        Place::Argument(_) => {
-                        }
-                    }
-                }
-
-                if let Some(output) = inst.created_value() {
-                    // We will try to allocate output value at the same register as 
-                    // first input. This will help to generate better code by backend.
-                    let first_input = inst.read_values().get(0).and_then(|value| {
-                        // Fix for arguments.
-                        inst_allocs.get(&value).cloned()
-                    });
-
-                    let preg = if let Some(Place::Register(register)) = first_input {
-                        Some(register)
-                    } else {
-                        None
-                    };
-
-                    let pslot = if let Some(Place::StackSlot(slot)) = first_input {
-                        Some(slot)
-                    } else {
-                        None
-                    };
-
-                    let register = stack_pop_prefer(&mut block_allocs.1.registers, preg);
-
-                    let place = if let Some(register) = register {
-                        used_regs.insert(register);
-
-                        Place::Register(register)
-                    } else {
-                        let slot = stack_pop_prefer(&mut block_allocs.1.stack_slots, pslot);
-
-                        Place::StackSlot(slot.unwrap_or_else(|| {
-                            let slot = next_slot;
-
-                            next_slot += 1;
-
-                            slot
-                        }))
-                    };
-
-                    block_allocs.0.insert(output, place);
-                    inst_allocs.insert(output, place);
-                }
-
-                assert!(inst_alloc_state.insert(location, inst_allocs).is_none(), 
-                        "Multiple instruction allocation states.");
-            }
-        }
-
-        let total = next_slot + used_regs.len();
-
-        println!("Regalloc for {} required {} places.", self.prototype.name, total);
-
-        let mut arguments = Map::new_with_capacity(self.argument_values.len());
-
-        for (index, argument) in self.argument_values.iter().enumerate() {
-            arguments.insert(*argument, Place::Argument(index));
-        }
-
-        RegisterAllocation {
-            allocation: inst_alloc_state,
-            slots:      next_slot,
-            arguments,
-            used_regs,
-        }
-    }
-    */
 }
