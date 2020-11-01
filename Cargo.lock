@@ -3,7 +3,7 @@
 [[package]]
 name = "asm"
 version = "0.1.0"
-source = "git+https://github.com/addrianyy/assembler#0b76351debca3c1d88f66669850a2b008eaa5bcd"
+source = "git+https://github.com/addrianyy/assembler#12b5ae73788900a5aa4a94c3131d447423fcd2ec"
 
 [[package]]
 name = "compiler"
