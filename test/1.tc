@@ -44,3 +44,15 @@ i32 abc(i32 a) {
 i32 xd(i32 a) {
     return (~(~a & 0xffffffff)) * (1 + (a ^ a));
 }
+
+i32 turbo(i32 a) {
+    i32 result ;
+
+    if (a == 5) {
+        result = 44;
+    } else {
+        result = 55;
+    }
+
+    return result;
+}

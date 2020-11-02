@@ -22,7 +22,10 @@ impl super::Pass for RemoveDeadCodePass {
         // and which are not.
         function.for_each_instruction(|_location, instruction| {
             for value in instruction.read_values() {
-                used_values[value.index()] = true;
+                // Handle self-referential PHI instructions.
+                if instruction.created_value() != Some(value) {
+                    used_values[value.index()] = true;
+                }
             }
         });
 

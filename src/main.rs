@@ -11,7 +11,6 @@ fn recreate_directory(path: &str) {
 }
 
 fn main() {
-    /*
     let source       = std::fs::read_to_string("test/1.tc").unwrap();
     let parsed       = parser::parse(&source);
     let mut compiled = compiler::compile(&parsed);
@@ -52,8 +51,8 @@ fn main() {
             println!("return value: {}. buffer: {:?}", result, buffer);
         }
     }
-    */
 
+    /*
     use turbo_ir as ir;
     let mut ir = ir::Module::new();
 
@@ -61,6 +60,7 @@ fn main() {
         
     ir.switch_function(func);
 
+    /*
     let entry     = ir.entry_label();
     let body      = ir.create_label();
     let body_tmp  = ir.create_label();
@@ -91,11 +91,48 @@ fn main() {
 
     ir.switch_label(exit);
     ir.ret(Some(next_sum));
+    */
+
+    let body = ir.create_label();
+    let exit = ir.create_label();
+
+    let iter = ir.stack_alloc(ir::Type::U32, 1);
+    let sum  = ir.stack_alloc(ir::Type::U32, 1);
+
+    let zero  = ir.iconst(0u32, ir::Type::U32);
+    let one   = ir.iconst(1u32, ir::Type::U32);
+    let count = ir.argument(0);
+
+    ir.store(iter, zero);
+    ir.store(sum,  zero);
+
+    ir.branch(body);
+    ir.switch_label(body);
+
+    let citer = ir.load(iter);
+    let csum  = ir.load(sum);
+
+    let next_iter = ir.add(citer, one);
+    let next_sum  = ir.add(csum, citer);
+
+    ir.store(iter, next_iter);
+    ir.store(sum,  next_sum);
+
+    let cond = ir.compare_ne(next_iter, count);
+    ir.branch_cond(cond, body, exit);
+
+    ir.switch_label(exit);
+
+    let result = ir.load(sum);
+    ir.ret(Some(result));
+
 
     ir.finalize();
     ir.optimize();
     ir.dump_function_text(func, &mut std::io::stdout()).unwrap();
     ir.dump_function_graph(func, "graphs/test.svg");
+
+    println!();
 
 
     let mcode = ir.generate_machine_code();
@@ -113,6 +150,7 @@ fn main() {
 
         println!("return value: {}.", result);
     }
+    */
 
     /*
     use turbo_ir as ir;

@@ -211,6 +211,7 @@ impl FunctionData {
             &passes::SimplifyComparesPass,
             &passes::SimplifyExpressionsPass,
             &passes::RemoveDeadCodePass,
+            &passes::MemoryToSsaPass,
 
             /*
             &passes::DeduplicatePass,
@@ -220,7 +221,6 @@ impl FunctionData {
 
             &passes::RemoveAliasesPass,
             &passes::RemoveNopsPass,
-
 
             // Architecture specific reorder pass must be after generic reorder pass.
             &passes::ReorderPass,

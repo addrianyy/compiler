@@ -1,7 +1,7 @@
 use super::{FunctionData, Value, Location, Label, Map, Set, ConstType,
             Dominators, FlowGraph, CapacityExt, Instruction, BinaryOp};
 
-const DEBUG_ALLOCATOR: bool = true;
+const DEBUG_ALLOCATOR: bool = false;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Place {
