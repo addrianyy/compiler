@@ -67,7 +67,8 @@ impl super::Pass for ReorderPass {
 
                 // Ignore uses by PHI. `validate_path_ex` will always return false for them.
                 if function.instruction(location).is_phi() {
-                    continue;
+                    best_location = None;
+                    break;
                 }
 
                 let mut instruction_count = 0;
@@ -78,11 +79,6 @@ impl super::Pass for ReorderPass {
                 for &other_location in &uses {
                     // We don't care about ourselves.
                     if location == other_location {
-                        continue;
-                    }
-
-                    // Ignore uses by PHI. `validate_path_ex` will always return false for them.
-                    if function.instruction(other_location).is_phi() {
                         continue;
                     }
 

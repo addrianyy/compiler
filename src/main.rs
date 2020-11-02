@@ -37,6 +37,7 @@ fn main() {
 
         std::fs::write(format!("mcode/{}.bin", name), buffer).unwrap();
 
+        /*
         if name == "main" {
             let mut buffer = [1u8, 2u8, 3u8, 0u8];
             
@@ -50,9 +51,21 @@ fn main() {
 
             println!("return value: {}. buffer: {:?}", result, buffer);
         }
+        */
+
+        if name == "sum" {
+            type Func = extern "win64" fn(i32) -> i32;
+
+            let result = unsafe {
+                let func = mcode.function_ptr::<Func>(*function);
+
+                func(5)
+            };
+
+            println!("return value: {}.", result);
+        }
     }
 
-    /*
     use turbo_ir as ir;
     let mut ir = ir::Module::new();
 
@@ -93,6 +106,7 @@ fn main() {
     ir.ret(Some(next_sum));
     */
 
+    /*
     let body = ir.create_label();
     let exit = ir.create_label();
 
@@ -141,6 +155,8 @@ fn main() {
 
     {
         type Func = extern "win64" fn(i32) -> i32;
+
+        println!("Executing");
 
         let result = unsafe {
             let func = mcode.function_ptr::<Func>(func);

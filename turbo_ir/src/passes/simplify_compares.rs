@@ -128,7 +128,17 @@ impl super::Pass for SimplifyComparesPass {
                                     let (new_pred, needs_swap) = match pred {
                                         IntPredicate::Equal    => (IntPredicate::NotEqual, false),
                                         IntPredicate::NotEqual => (IntPredicate::Equal,    false),
-                                        _                      => (pred, true),
+                                        _                      => {
+                                            let pred = match pred {
+                                                IntPredicate::GtS  => IntPredicate::GteS,
+                                                IntPredicate::GteS => IntPredicate::GtS,
+                                                IntPredicate::GtU  => IntPredicate::GteU,
+                                                IntPredicate::GteU => IntPredicate::GtU,
+                                                _                  => unreachable!(),
+                                            };
+
+                                            (pred, true)
+                                        }
                                     };
 
                                     if needs_swap {

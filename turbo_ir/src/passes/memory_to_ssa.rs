@@ -2,6 +2,9 @@ use crate::{FunctionData, Instruction, Location, Label, Value, Map, FlowGraph};
 
 pub struct MemoryToSsaPass;
 
+type LoadAliases = Vec<(Location, Value, Value)>;
+type DeadStores  = Vec<Location>;
+
 impl MemoryToSsaPass {
     fn rewrite_memory_to_ssa(
         &self,
@@ -9,7 +12,7 @@ impl MemoryToSsaPass {
         pointer:          Value,
         stackalloc_label: Label,
         flow_incoming:    &FlowGraph,
-    ) -> Option<(Vec<(Location, Value, Value)>, Vec<Location>)> 
+    ) -> Option<(LoadAliases, DeadStores)> 
     {
         let mut load_aliases = Vec::new();
         let mut dead_stores  = Vec::new();

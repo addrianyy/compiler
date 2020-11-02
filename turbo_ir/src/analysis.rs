@@ -148,19 +148,9 @@ impl FunctionData {
                 // GEP result pointer must be originating from it's source.
                 Instruction::GetElementPtr { source, .. } => self.get_pointer_origin(*source, cx),
 
-                Instruction::Phi { incoming, .. } => {
-                    // Get origin of first incoming value.
-                    let origin = self.get_pointer_origin(incoming[0].1, cx);
-
-                    // Make sure that all incoming values have the same origin.
-                    for &other in &incoming[1..] {
-                        if self.get_pointer_origin(other.1, cx) != origin {
-                            // No idea about origin.
-                            return pointer;
-                        }
-                    }
-
-                    origin
+                Instruction::Phi { .. } => {
+                    // TODO: Handle self-referential PHIs.
+                    pointer
                 }
 
                 // Other instructions should never create pointers.
@@ -218,6 +208,11 @@ impl FunctionData {
                     }
                 }
                 Instruction::Phi { dst, .. } => {
+                    // Ignore self referential PHIs. TODO: Maybe we should return true here.
+                    if *dst == pointer {
+                        return false;
+                    }
+
                     // Make sure that resulting pointer is safely used.
                     if !self.is_pointer_safely_used(*dst) {
                         return false;
@@ -569,6 +564,8 @@ impl FunctionData {
                 }
             }
 
+            let reachable = self.reachable_labels();
+
             return Some(instruction_count);
         }
         
@@ -709,10 +706,24 @@ impl FunctionData {
     {
         let mut results = Vec::new();
 
-        self.for_each_instruction(|location, inst| {
-            if let Instruction::StackAlloc { dst, size, .. } = inst {
+        self.for_each_instruction(|location, instruction| {
+            if let Instruction::StackAlloc { dst, size, .. } = instruction {
                 if required_size.is_none() || Some(*size) == required_size {
                     results.push((*dst, location));
+                }
+            }
+        });
+
+        results
+    }
+
+    pub(super) fn phi_used_values(&self) -> Set<Value> {
+        let mut results = Set::default();
+
+        self.for_each_instruction(|_location, instruction| {
+            if let Instruction::Phi { incoming, .. } = instruction {
+                for (_, value) in incoming {
+                    results.insert(*value);
                 }
             }
         });

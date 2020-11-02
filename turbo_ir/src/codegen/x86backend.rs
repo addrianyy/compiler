@@ -323,7 +323,17 @@ impl X86Backend {
                     match pred {
                         IntPredicate::Equal    => pred = IntPredicate::NotEqual,
                         IntPredicate::NotEqual => pred = IntPredicate::Equal,
-                        _                      => std::mem::swap(&mut a, &mut b),
+                        _                      => {
+                            pred = match pred {
+                                IntPredicate::GtS  => IntPredicate::GteS,
+                                IntPredicate::GteS => IntPredicate::GtS,
+                                IntPredicate::GtU  => IntPredicate::GteU,
+                                IntPredicate::GteU => IntPredicate::GtU,
+                                _                  => unreachable!(),
+                            };
+
+                            std::mem::swap(&mut a, &mut b);
+                        }
                     }
                 }
 

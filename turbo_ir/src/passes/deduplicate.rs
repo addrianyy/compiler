@@ -28,10 +28,12 @@ impl super::Pass for DeduplicatePass {
         function.for_each_instruction(|location, instruction| {
             // Skip instructions which cannot be deduplicated.
             match instruction {
-                Instruction::Nop          => return,
-                Instruction::Alias { .. } => return,
-                x if x.is_volatile()      => return,
-                _                         => {}
+                Instruction::Nop               => return,
+                Instruction::Alias      { .. } => return,
+                Instruction::Phi        { .. } => return,
+                Instruction::StackAlloc { .. } => return,
+                x if x.is_volatile()           => return,
+                _                              => {}
             }
 
             // Create a unique key that will describe instruction type and its input operands.
@@ -46,6 +48,7 @@ impl super::Pass for DeduplicatePass {
         });
 
         let dominators = function.dominators();
+        let phi_used   = function.phi_used_values();
 
         for label in function.reachable_labels() {
             let mut body = &function.blocks[&label];
@@ -64,13 +67,26 @@ impl super::Pass for DeduplicatePass {
                 // cannot be deduplicated it will always return None.
                 if let Some(candidates) = dedup_list.get(&key) {
                     // Find the best candidate for deduplication.
-                    for &candidate in candidates {
+                    'skip: for &candidate in candidates {
                         let location = Location::new(label, inst_id);
 
                         // Deduplicating loads is a special case. Get information about the load.
                         let load_info = match instruction {
                             Instruction::Load { ptr, .. } => {
+                                // TODO: Doesn't work.
+                                continue 'skip;
+
+                                /*
+                                // If both locations are in different blocks and value
+                                // is used in PHI then `validate_path_ex` cannot reason about
+                                // it.
+                                // TODO: Fix this.
+                                if candidate.label() != location.label() &&
+                                        phi_used.contains(ptr) {
+                                }
+
                                 Some(*ptr)
+                                */
                             }
                             _ => None,
                         };

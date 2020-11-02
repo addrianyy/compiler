@@ -10,6 +10,7 @@ impl super::Pass for RemoveDeadStoresPass {
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let dominators       = function.dominators();
         let pointer_analysis = function.analyse_pointers();
+        let phi_used         = function.phi_used_values();
 
         let mut stores        = Map::default();
         let mut did_something = false;
@@ -52,6 +53,15 @@ impl super::Pass for RemoveDeadStoresPass {
                         // We don't care about ourselves.
                         if removed_location == other_location {
                             continue;
+                        }
+
+                        // If both locations are in different blocks and value
+                        // is used in PHI then `validate_path_ex` cannot reason about
+                        // it.
+                        // TODO: Fix this.
+                        if removed_location.label() != other_location.label() &&
+                                phi_used.contains(&pointer) {
+                            continue 'next_location;
                         }
 
                         let start = removed_location;

@@ -326,7 +326,7 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
                     }
                 }
                 Instruction::Phi { dst, ref incoming } => {
-                    let     incoming_value = incoming[0].1;
+                    let mut incoming_value = incoming[0].1;
                     let mut valid          = true;
 
                     // If all incoming values are the same we can replace phi with alias.
@@ -335,6 +335,17 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
                         if *value != incoming_value {
                             valid = false;
                             break;
+                        }
+                    }
+
+                    if !valid && incoming.len() == 2 {
+                        // Reduce self-referential PHIs.
+                        if incoming[0].1 == dst {
+                            incoming_value = incoming[1].1;
+                            valid          = true;
+                        } else if incoming[1].1 == dst {
+                            incoming_value = incoming[0].1;
+                            valid          = true;
                         }
                     }
 

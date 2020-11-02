@@ -10,6 +10,6 @@ DONE - x86reorder
 DONE - simplify_cfg
 DONE - reorder
 
-TODO - deduplicate
-TODO - remove_dead_stores
-TODO - remove_known_loads
+HALF - deduplicate
+HALF - remove_dead_stores
+HALF - remove_known_loads

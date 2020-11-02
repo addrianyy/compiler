@@ -212,12 +212,9 @@ impl FunctionData {
             &passes::SimplifyExpressionsPass,
             &passes::RemoveDeadCodePass,
             &passes::MemoryToSsaPass,
-
-            /*
             &passes::DeduplicatePass,
-            &passes::RemoveKnownLoadsPass,
-            &passes::RemoveDeadStoresPass,
-            */
+            //&passes::RemoveKnownLoadsPass,
+            //&passes::RemoveDeadStoresPass,
 
             &passes::RemoveAliasesPass,
             &passes::RemoveNopsPass,
@@ -257,7 +254,7 @@ impl FunctionData {
 
         let elapsed = start.elapsed().as_secs_f64();
 
-        if true && !passes.is_empty() {
+        if false && !passes.is_empty() {
             println!("Optimized {} in {} iterations and {}s.", self.prototype.name, 
                      iterations, elapsed);
 

@@ -56,3 +56,13 @@ i32 turbo(i32 a) {
 
     return result;
 }
+
+i32 sum(i32 count) {
+    i32 total = 0;
+
+    for (i32 i = 0; i < count; i += 1) {
+        total += i;
+    }
+
+    return total;
+}

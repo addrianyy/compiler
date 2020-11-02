@@ -10,6 +10,7 @@ impl super::Pass for RemoveKnownLoadsPass {
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let pointer_analysis = function.analyse_pointers();
         let dominators       = function.dominators();
+        let phi_used         = function.phi_used_values();
 
         // If a pointer is stored to and loaded afterwards, we will try to avoid
         // load and just return value recently stored. We need to make sure that
@@ -57,6 +58,15 @@ impl super::Pass for RemoveKnownLoadsPass {
                     let start = store_location;
                     let end   = load_location;
 
+                    // If both locations are in different blocks and value
+                    // is used in PHI then `validate_path_ex` cannot reason about
+                    // it.
+                    // TODO: Fix this.
+                    if load_location.label() != store_location.label() &&
+                            phi_used.contains(&load_ptr) {
+                        continue;
+                    }
+
                     // Check if we actually can source load from this store.
                     let result = function.validate_path_ex(&dominators, start, end, |instruction| {
                         match instruction {
@@ -70,11 +80,12 @@ impl super::Pass for RemoveKnownLoadsPass {
                                 // If pointers alias then something can possibly affect loaded
                                 // pointer. We can't source load from this store.
 
-                                !pointer_analysis.can_alias(load_ptr, *ptr)
+                                dbg!(!pointer_analysis.can_alias(load_ptr, *ptr))
                             }
                             _ => true,
                         }
                     });
+                    println!("{:?} {:?}: {:?}", start, end, result);
 
                     if let Some(instruction_count) = result {
                         // If it's a valid candidate, check if it's closer then the
