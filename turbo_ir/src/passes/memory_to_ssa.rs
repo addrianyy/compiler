@@ -239,13 +239,13 @@ impl super::Pass for MemoryToSsaPass {
                     continue;
                 }
 
-                // Get the first instruction which must be our inserted PHI.
-                let instruction = function.instruction_mut(Location::new(label, 0));
+                let body = function.blocks.get_mut(&label).unwrap();
 
-                if let Instruction::Phi { incoming, .. } = instruction {
+                // Get the first instruction which must be our inserted PHI.
+                if let Instruction::Phi { incoming, .. } = &body[0] {
                     // If this PHI isn't used or we failed rewriting then just remove it.
                     if incoming.is_empty() || !success {
-                        *instruction = Instruction::Nop;
+                        body.remove(0);
                     }
                 } else {
                     panic!("First instruction must be our inserted PHI.");
