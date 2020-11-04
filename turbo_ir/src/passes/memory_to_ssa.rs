@@ -2,113 +2,112 @@ use crate::{FunctionData, Instruction, Location, Label, Value, Map, FlowGraph};
 
 pub struct MemoryToSsaPass;
 
-type LoadAliases = Vec<(Location, Value, Value)>;
-type DeadStores  = Vec<Location>;
+fn rewrite_memory_to_ssa(function: &mut FunctionData, pointer: Value, start_label: Label,
+                         flow_incoming: &FlowGraph, undef: Value) {
+    let mut load_aliases = Vec::new();
+    let mut dead_stores  = Vec::new();
+    let mut phi_updates  = Vec::new();
+    let mut block_values = Map::default();
 
-impl MemoryToSsaPass {
-    fn rewrite_memory_to_ssa(
-        &self,
-        function:         &mut FunctionData,
-        pointer:          Value,
-        stackalloc_label: Label,
-        flow_incoming:    &FlowGraph,
-        undef:            Value,
-    ) -> Option<(LoadAliases, DeadStores)> 
-    {
-        let mut load_aliases = Vec::new();
-        let mut dead_stores  = Vec::new();
-        let mut block_values = Map::default();
+    // Go through every reachable label from `start_label` (including itself).
+    for label in function.traverse_bfs(start_label, true) {
+        let body = &function.blocks[&label];
 
-        let mut phi_updates = Vec::new();
+        // Try to get our inserted PHI output value. Maybe it will be used
+        // as an initial value in the current block.
+        let phi_value = match &body[0] {
+            Instruction::Phi { dst, .. } => Some(*dst),
+            _                            => None,
+        };
 
-        // Go through every reachable label from `stackalloc_label` (including itself).
-        for label in function.traverse_bfs(stackalloc_label, true) {
-            let body = &function.blocks[&label];
+        let mut used_phi = false;
 
-            // Try to get our inserted PHI output value. Maybe it will be used
-            // as an initial value in the current block.
-            let phi_value = match &body[0] {
-                Instruction::Phi { dst, .. } => Some(*dst),
-                _                            => None,
-            };
+        // Current value that is present in `pointer`.
+        let mut value = None;
 
-            let mut used_phi = false;
+        // Go through every instruction to rewrite all load and stores related
+        // to `stackallocs`.
+        for (inst_id, instruction) in body.iter().enumerate() {
+            let location = Location::new(label, inst_id);
 
-            // Current value that is present in `pointer`.
-            let mut value = None;
-
-            // Go through every instruction to rewrite all load and stores related
-            // to `stackallocs`.
-            for (inst_id, instruction) in body.iter().enumerate() {
-                let location = Location::new(label, inst_id);
-
-                match instruction {
-                    Instruction::Load { dst, ptr } => {
-                        if *ptr == pointer {
-                            if value.is_none() && phi_value.is_some() {
-                                // `pointer` wasn't written to in this block. We will need to
-                                // take `value` from PHI instruction.
-                                value    = phi_value;
-                                used_phi = true;
-                            }
-
-                            // This load will use currently known value or undef.
-                            load_aliases.push((location, *dst, value.unwrap_or(undef)));
+            match instruction {
+                Instruction::Load { dst, ptr } => {
+                    if *ptr == pointer {
+                        if value.is_none() && phi_value.is_some() {
+                            // `pointer` wasn't written to in this block. We will need to
+                            // take `value` from PHI instruction.
+                            value    = phi_value;
+                            used_phi = true;
                         }
+
+                        // This load will use currently known value or undef.
+                        load_aliases.push((location, *dst, value.unwrap_or(undef)));
                     }
-                    Instruction::Store { ptr, value: stored_value } => {
-                        if *ptr == pointer {
-                            // This store can be removed and current value at `pointer` is
-                            // now equal to `stored_value`.
-                            value = Some(*stored_value);
-                            dead_stores.push(location);
-                        }
-                    }
-                    _ => {}
                 }
-            }
-
-            // Make sure that if this is our first label PHI instruction wasn't used.
-            assert!(!(phi_value.is_none() && used_phi));
-
-            // If we are not at the beginning and value wasn't used than assume that
-            // we need PHI instruction for the successors.
-            if value.is_none() && phi_value.is_some() {
-                value    = phi_value;
-                used_phi = true;
-            }
-
-            // Insert value which `pointer` is equal to at the and of block `label`.
-            if let Some(value) = value {
-                assert!(block_values.insert(label, value).is_none());
-            }
-
-            // If PHI was used then queue update of PHI incoming values.
-            if used_phi {
-                phi_updates.push((label, phi_value.unwrap()));
+                Instruction::Store { ptr, value: stored_value } => {
+                    if *ptr == pointer {
+                        // This store can be removed and current value at `pointer` is
+                        // now equal to `stored_value`.
+                        value = Some(*stored_value);
+                        dead_stores.push(location);
+                    }
+                }
+                _ => {}
             }
         }
 
-        // Go through all queued PHI updates and update their incoming values.
-        for (label, phi_value) in phi_updates {
-            let mut incoming = Vec::new();
+        // Make sure that PHI actually exists if we have used its value.
+        assert!(!(phi_value.is_none() && used_phi), "Used value of non-existent PHI.");
 
-            // Get incoming value for every predecessor.
-            for &predecessor in &flow_incoming[&label] {
-                let value = block_values.get(&predecessor).copied()
-                    .unwrap_or(undef);
-
-                incoming.push((predecessor, value));
-            }
-
-            // Replace PHI with new incoming values.
-            *function.instruction_mut(Location::new(label, 0)) = Instruction::Phi {
-                dst: phi_value,
-                incoming,
-            };
+        // If there is a PHI available and value wasn't used then assume that
+        // we need this PHI instruction for the successors.
+        if value.is_none() && phi_value.is_some() {
+            value    = phi_value;
+            used_phi = true;
         }
 
-        Some((load_aliases, dead_stores))
+        // Insert value which is stored in `pointer` at the and of block `label`.
+        if let Some(value) = value {
+            assert!(block_values.insert(label, value).is_none(),
+                    "Multple exit values for the same block.");
+        }
+
+        // If PHI was used then queue update of PHI incoming values.
+        if used_phi {
+            phi_updates.push((label, phi_value.unwrap()));
+        }
+    }
+
+    // Go through all queued PHI updates and update their incoming values.
+    for (label, phi_value) in phi_updates {
+        let mut incoming = Vec::new();
+
+        // Get incoming value for every predecessor.
+        for &predecessor in &flow_incoming[&label] {
+            let value = block_values.get(&predecessor).copied()
+                .unwrap_or(undef);
+
+            incoming.push((predecessor, value));
+        }
+
+        // Replace PHI with new incoming values.
+        *function.instruction_mut(Location::new(label, 0)) = Instruction::Phi {
+            dst: phi_value,
+            incoming,
+        };
+    }
+
+    // Remove all stores to `stackalloc` output pointer.
+    for location in dead_stores {
+        *function.instruction_mut(location) = Instruction::Nop;
+    }
+
+    // Alias all `stackalloc` pointer loads to calculated value.
+    for (location, dst, value) in load_aliases {
+        *function.instruction_mut(location) = Instruction::Alias {
+            dst,
+            value,
+        };
     }
 }
 
@@ -202,30 +201,10 @@ impl super::Pass for MemoryToSsaPass {
             // Because we have inserted PHIs location.index() won't be correct anymore. But
             // label will be still right.
             let stackalloc_label = location.label();
+            let undef            = function.undefined_value(ty);
 
-            let undef = function.undefined_value(ty);
-
-            // Try to rewrite `stackalloc`.
-            let result = self.rewrite_memory_to_ssa(function, pointer, stackalloc_label,
-                                                    &flow_incoming, undef);
-            let success = result.is_some();
-
-            if let Some((load_aliases, dead_stores)) = result {
-                // Remove all stores to `stackalloc` output pointer.
-                for location in dead_stores {
-                    *function.instruction_mut(location) = Instruction::Nop;
-                }
-
-                // Alias all `stackalloc` pointer loads to calculated value.
-                for (location, dst, value) in load_aliases {
-                    *function.instruction_mut(location) = Instruction::Alias {
-                        dst,
-                        value,
-                    };
-                }
-
-                did_something = true;
-            }
+            // Perform the rewrite.
+            rewrite_memory_to_ssa(function, pointer, stackalloc_label, &flow_incoming, undef);
 
             // We are done, clean up all the mess that we have done.
             for &label in &labels {
@@ -238,14 +217,16 @@ impl super::Pass for MemoryToSsaPass {
 
                 // Get the first instruction which must be our inserted PHI.
                 if let Instruction::Phi { incoming, .. } = &body[0] {
-                    // If this PHI isn't used or we failed rewriting then just remove it.
-                    if incoming.is_empty() || !success {
+                    // If this PHI isn't used then just remove it.
+                    if incoming.is_empty() {
                         body.remove(0);
                     }
                 } else {
                     panic!("First instruction must be our inserted PHI.");
                 }
             }
+
+            did_something = true;
         }
 
         did_something
