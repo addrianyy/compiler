@@ -23,13 +23,18 @@ impl MemoryToSsaPass {
 
         // Go through every reachable label from `stackalloc_label` (including itself).
         for label in function.traverse_bfs(stackalloc_label, true) {
-            let body = &function.blocks[&label];
+            let body      = &function.blocks[&label];
+            let beginning = label == stackalloc_label;
 
             // Try to get our inserted PHI output value. Maybe it will be used
             // as an initial value in the current block.
             let phi_value = if let Instruction::Phi { dst, .. } = &body[0] {
+                assert!(!beginning);
+
                 Some(*dst)
             } else {
+                assert!(beginning);
+
                 None
             };
 
@@ -46,10 +51,10 @@ impl MemoryToSsaPass {
                 match instruction {
                     Instruction::Load { dst, ptr } => {
                         if *ptr == pointer {
-                            if value.is_none() {
+                            if value.is_none() && phi_value.is_some() {
                                 // `pointer` wasn't written to in this block. We will need to
                                 // take `value` from PHI instruction.
-                                value    = Some(phi_value.unwrap());
+                                value    = phi_value;
                                 used_phi = true;
                             }
 
@@ -69,16 +74,13 @@ impl MemoryToSsaPass {
                 }
             }
 
-            let beginning = label == stackalloc_label;
-
             // Make sure that if this is our first label PHI instruction wasn't used.
-            assert!(!(used_phi && beginning));
+            assert!(!(phi_value.is_none() && used_phi));
 
             // If we are not at the beginning and value wasn't used than assume that
             // we need PHI instruction for the successors.
-            // TODO: Add it to some list and verify if we actually need this PHI.
-            if !beginning && value.is_none() {
-                value    = Some(phi_value.unwrap());
+            if value.is_none() && phi_value.is_some() {
+                value    = phi_value;
                 used_phi = true;
             }
 
