@@ -46,17 +46,13 @@ i32 xd(i32 a) {
 }
 
 i32 turbo(i32 a) {
-    i32 result = 22;
-
-    if (a == 5) {
-        result = 44;
-    } else if (a == 8) {
-        result = 55;
+    if (a == 4) {
+        a = 555;
     } else {
-        result = 222;
+        a = 555;
     }
 
-    return result;
+    return a;
 }
 
 i32 sum(i32 count) {

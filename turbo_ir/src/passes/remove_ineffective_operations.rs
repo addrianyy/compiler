@@ -327,12 +327,19 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
                 }
                 Instruction::Phi { dst, ref incoming } => {
                     let mut incoming_value = incoming[0].1;
-                    let mut valid          = true;
+                    let mut incoming_const = consts.get(&incoming_value)
+                        .copied().map(|x| x.1);
+
+                    let mut valid = true;
 
                     // If all incoming values are the same we can replace phi with alias.
                     // This will also handle phi with one incoming value.
                     for (_label, value) in &incoming[1..] {
-                        if *value != incoming_value {
+                        let other_const = consts.get(&value).copied().map(|x| x.1);
+                        let const_match = incoming_const.is_some() &&
+                            incoming_const == other_const;
+
+                        if *value != incoming_value && !const_match  {
                             valid = false;
                             break;
                         }
@@ -343,17 +350,30 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
                         if incoming[0].1 == dst {
                             incoming_value = incoming[1].1;
                             valid          = true;
+                            incoming_const = None;
                         } else if incoming[1].1 == dst {
                             incoming_value = incoming[0].1;
                             valid          = true;
+                            incoming_const = None;
                         }
                     }
 
                     // Replace single incoming value with just alias.
                     if valid {
-                        replacement = Some(Instruction::Alias {
-                            dst,
-                            value: incoming_value,
+                        replacement = Some(match incoming_const {
+                            Some(constant) => {
+                                Instruction::Const {
+                                    dst,
+                                    imm: constant,
+                                    ty:  function.value_type(dst),
+                                }
+                            }
+                            None => {
+                                Instruction::Alias {
+                                    dst,
+                                    value: incoming_value,
+                                }
+                            }
                         });
                     }
                 }
