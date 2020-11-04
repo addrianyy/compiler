@@ -245,8 +245,18 @@ impl FunctionData {
                             _         => *imm as i64,
                         };
 
-                        write!(w, "{} = {} {}", fmt_value!(*dst), fmt_raw_type!(*ty),
-                               fmt_literal!(value))?;
+                        if ty.is_pointer() {
+                            let literal = match value {
+                                0 => fmt_literal!("null"),
+                                _ => fmt_literal!(format!("0x{:x}", value)),
+                            };
+
+                            write!(w, "{} = {} {}", fmt_value!(*dst), fmt_raw_type!(*ty),
+                                   literal)?;
+                        } else {
+                            write!(w, "{} = {} {}", fmt_value!(*dst), fmt_raw_type!(*ty),
+                                   fmt_literal!(value))?;
+                        }
                     }
                 }
             }
