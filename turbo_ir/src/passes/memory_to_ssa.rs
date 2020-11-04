@@ -23,19 +23,13 @@ impl MemoryToSsaPass {
 
         // Go through every reachable label from `stackalloc_label` (including itself).
         for label in function.traverse_bfs(stackalloc_label, true) {
-            let body      = &function.blocks[&label];
-            let beginning = label == stackalloc_label;
+            let body = &function.blocks[&label];
 
             // Try to get our inserted PHI output value. Maybe it will be used
             // as an initial value in the current block.
-            let phi_value = if let Instruction::Phi { dst, .. } = &body[0] {
-                assert!(!beginning);
-
-                Some(*dst)
-            } else {
-                assert!(beginning);
-
-                None
+            let phi_value = match &body[0] {
+                Instruction::Phi { dst, .. } => Some(*dst),
+                _                            => None,
             };
 
             let mut used_phi = false;

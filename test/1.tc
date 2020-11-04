@@ -59,7 +59,9 @@ i32 sum(i32 count) {
     i32 total = 0;
 
     for (i32 i = 0; i < count; i += 1) {
-        total += i;
+        for (i32 j = 0; j < i; j += 1) {
+            total += j;
+        }
     }
 
     return total;
