@@ -469,11 +469,12 @@ impl FunctionData {
         self.dominates(dominators, start_label, end_label)
     }
 
-    pub(super) fn validate_path_ex(
+    fn validate_path_internal(
         &self,
         dominators:   &Dominators,
         start:        Location,
         end:          Location,
+        cycle_check:  bool,
         mut verifier: impl FnMut(&Instruction) -> bool,
     ) -> Option<usize> {
         let start_label = start.label();
@@ -498,6 +499,26 @@ impl FunctionData {
             }
 
             return None;
+        }
+
+        if cycle_check {
+            let contains = |labels: &[Label], label: Label| -> bool {
+                labels.iter().any(|&x| x == label)
+            };
+
+            let start_reachable = self.traverse_bfs(start_label, false);
+
+            // If `start_label` is part of cycle then `end_label` must be part of it too.
+            if contains(&start_reachable, start_label) && !contains(&start_reachable, end_label) {
+                return None;
+            }
+
+            let end_reachable = self.traverse_bfs(end_label,   false);
+
+            // If `end_label` is part of cycle then `start_label` must be part of it too.
+            if contains(&end_reachable, end_label) && !contains(&end_reachable, start_label) {
+                return None;
+            }
         }
 
         // When path points are in different blocks then start block must dominate end block.
@@ -564,12 +585,29 @@ impl FunctionData {
                 }
             }
 
-            let reachable = self.reachable_labels();
-
             return Some(instruction_count);
         }
         
         None
+    }
+
+    pub(super) fn validate_path_memory(
+        &self,
+        dominators: &Dominators,
+        start:      Location,
+        end:        Location,
+        verifier:   impl FnMut(&Instruction) -> bool,
+    ) -> Option<usize> {
+        self.validate_path_internal(dominators, start, end, true, verifier)
+    }
+
+    pub(super) fn validate_path_count(
+        &self,
+        dominators: &Dominators,
+        start:      Location,
+        end:        Location,
+    ) -> Option<usize> {
+        self.validate_path_internal(dominators, start, end, false, |_| true)
     }
 
     pub(super) fn instruction(&self, location: Location) -> &Instruction {

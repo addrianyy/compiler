@@ -248,9 +248,8 @@ impl FunctionData {
             &passes::RemoveDeadCodePass,
             &passes::MemoryToSsaPass,
             &passes::DeduplicatePass,
-            //&passes::RemoveKnownLoadsPass,
-            //&passes::RemoveDeadStoresPass,
-
+            &passes::RemoveKnownLoadsPass,
+            &passes::RemoveDeadStoresPass,
             &passes::RemoveAliasesPass,
             &passes::RemoveNopsPass,
 

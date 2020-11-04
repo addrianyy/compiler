@@ -36,7 +36,7 @@ fn main() {
         let name   = &prototype.name;
 
         std::fs::write(format!("mcode/{}.bin", name), buffer).unwrap();
-
+        
         /*
         if name == "main" {
             let mut buffer = [1u8, 2u8, 3u8, 0u8];

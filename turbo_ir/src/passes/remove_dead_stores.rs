@@ -56,11 +56,10 @@ impl super::Pass for RemoveDeadStoresPass {
                         }
 
                         // If both locations are in different blocks and value
-                        // is used in PHI then `validate_path_ex` cannot reason about
-                        // it.
-                        // TODO: Fix this.
+                        // is used in PHI then `validate_path_memory` cannot reason about
+                        // it.  TODO: Fix this.
                         if removed_location.label() != other_location.label() &&
-                                phi_used.contains(&pointer) {
+                            phi_used.contains(&pointer) {
                             continue 'next_location;
                         }
 
@@ -70,27 +69,26 @@ impl super::Pass for RemoveDeadStoresPass {
                         // Path will go from `removed_location` to `other_location`. Make
                         // sure that there is nothing inbetween that can load our pointer.
                         // If there is something, we can't eliminate the store.
-                        let result = function.validate_path_ex(&dominators, start, end,
-                            |instruction| {
-                                match instruction {
-                                    Instruction::Load { ptr, .. } => {
-                                        // If pointers alias than this load can see ths pointer
-                                        // value and we cannot eliminate the store.
+                        let result = function.validate_path_memory(&dominators, start, end,
+                                                                   |instruction| {
+                            match instruction {
+                                Instruction::Load { ptr, .. } => {
+                                    // If pointers alias than this load can see ths pointer
+                                    // value and we cannot eliminate the store.
 
-                                        !pointer_analysis.can_alias(pointer, *ptr)
-                                    }
-                                    Instruction::Call { .. } => {
-                                        // If a function can access the pointer than it can
-                                        // see its value and we cannot eliminate the store.
-
-                                        !function.can_call_access_pointer(&pointer_analysis,
-                                                                          instruction,
-                                                                          pointer)
-                                    }
-                                    _ => true,
+                                    !pointer_analysis.can_alias(pointer, *ptr)
                                 }
+                                Instruction::Call { .. } => {
+                                    // If a function can access the pointer than it can
+                                    // see its value and we cannot eliminate the store.
+
+                                    !function.can_call_access_pointer(&pointer_analysis,
+                                                                      instruction,
+                                                                      pointer)
+                                }
+                                _ => true,
                             }
-                        );
+                        });
 
                         // We can't remove this location, try next one.
                         if result.is_none() {
@@ -123,8 +121,7 @@ impl super::Pass for RemoveDeadStoresPass {
         }
 
         // If there are pointers which are only written to once and never accessed and they come
-        // from safely used stackallocks, single write can be removed. This, combined
-        // with RemoveKnownLoadsPass, will have the same effect as StackallocToRegPass.
+        // from safely used stackallocks, single write can be removed.
 
         let usage_counts = function.usage_counts();
 

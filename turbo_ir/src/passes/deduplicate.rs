@@ -70,61 +70,45 @@ impl super::Pass for DeduplicatePass {
                     'skip: for &candidate in candidates {
                         let location = Location::new(label, inst_id);
 
-                        // Deduplicating loads is a special case. Get information about the load.
-                        let load_info = match instruction {
-                            Instruction::Load { ptr, .. } => {
-                                // TODO: Doesn't work.
+                        let result = if let Instruction::Load { ptr, .. } = instruction {
+                            let load_ptr = *ptr;
+
+                            // If both locations are in different blocks and value
+                            // is used in PHI then `validate_path_memory` cannot reason about
+                            // it.  TODO: Fix this.
+                            if candidate.label() != location.label() &&
+                                phi_used.contains(&load_ptr) {
                                 continue 'skip;
-
-                                /*
-                                // If both locations are in different blocks and value
-                                // is used in PHI then `validate_path_ex` cannot reason about
-                                // it.
-                                // TODO: Fix this.
-                                if candidate.label() != location.label() &&
-                                        phi_used.contains(ptr) {
-                                }
-
-                                Some(*ptr)
-                                */
                             }
-                            _ => None,
-                        };
 
-                        // Check if the path from candidate location to current location is
-                        // valid. This will also count all hit instructions.
-                        let result = function.validate_path_ex(&dominators, candidate, location,
-                            |instruction| {
-                                if let Some(loaded_ptr) = load_info {
-                                    // Special care needs to be taken if we want to deduplicate
-                                    // load. Something inbetween two instructions may have
-                                    // modified loaded ptr and output value will be different.
+                            function.validate_path_memory(&dominators, candidate, location, 
+                                                          |instruction| {
+                                // Special care needs to be taken if we want to deduplicate
+                                // load. Something inbetween two instructions may have
+                                // modified loaded ptr and output value will be different.
 
-                                    match instruction {
-                                        Instruction::Call  { .. } => {
-                                            // If call can affect this pointer we cannot
-                                            // continue further.
+                                match instruction {
+                                    Instruction::Call  { .. } => {
+                                        // If call can affect this pointer we cannot
+                                        // continue further.
 
-                                            !function.can_call_access_pointer(&pointer_analysis,
-                                                                              instruction,
-                                                                              loaded_ptr)
-                                        }
-                                        Instruction::Store { ptr, .. } => {
-                                            // Make sure that stored pointer can't
-                                            // alias a pointer loaded by candidate to
-                                            // deduplicate.
-
-                                            !pointer_analysis.can_alias(loaded_ptr, *ptr)
-                                        }
-                                        _ => true,
+                                        !function.can_call_access_pointer(&pointer_analysis,
+                                                                          instruction,
+                                                                          load_ptr)
                                     }
-                                } else {
-                                    // Instruction is always valid if deduplicated instruction
-                                    // isn't a load.
-                                    true
+                                    Instruction::Store { ptr, .. } => {
+                                        // Make sure that stored pointer can't
+                                        // alias a pointer loaded by candidate to
+                                        // deduplicate.
+
+                                        !pointer_analysis.can_alias(load_ptr, *ptr)
+                                    }
+                                    _ => true,
                                 }
-                            }
-                        );
+                            })
+                        } else {
+                            function.validate_path_count(&dominators, candidate, location)
+                        };
 
                         if let Some(instruction_count) = result {
                             // If it's a valid candidate, check if it's closer then the

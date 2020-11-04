@@ -59,16 +59,16 @@ impl super::Pass for RemoveKnownLoadsPass {
                     let end   = load_location;
 
                     // If both locations are in different blocks and value
-                    // is used in PHI then `validate_path_ex` cannot reason about
-                    // it.
-                    // TODO: Fix this.
+                    // is used in PHI then `validate_path_memory` cannot reason about
+                    // it.  TODO: Fix this.
                     if load_location.label() != store_location.label() &&
-                            phi_used.contains(&load_ptr) {
+                        phi_used.contains(&load_ptr) {
                         continue;
                     }
 
                     // Check if we actually can source load from this store.
-                    let result = function.validate_path_ex(&dominators, start, end, |instruction| {
+                    let result = function.validate_path_memory(&dominators, start, end,
+                                                               |instruction| {
                         match instruction {
                             Instruction::Call { .. } => {
                                 // If call can affect this pointer we cannot continue further.
@@ -80,12 +80,11 @@ impl super::Pass for RemoveKnownLoadsPass {
                                 // If pointers alias then something can possibly affect loaded
                                 // pointer. We can't source load from this store.
 
-                                dbg!(!pointer_analysis.can_alias(load_ptr, *ptr))
+                                !pointer_analysis.can_alias(load_ptr, *ptr)
                             }
                             _ => true,
                         }
                     });
-                    println!("{:?} {:?}: {:?}", start, end, result);
 
                     if let Some(instruction_count) = result {
                         // If it's a valid candidate, check if it's closer then the

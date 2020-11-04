@@ -65,7 +65,7 @@ impl super::Pass for ReorderPass {
                     break;
                 }
 
-                // Ignore uses by PHI. `validate_path_ex` will always return false for them.
+                // Ignore uses by PHI. `validate_path_count` will always return false for them.
                 if function.instruction(location).is_phi() {
                     best_location = None;
                     break;
@@ -86,8 +86,8 @@ impl super::Pass for ReorderPass {
                     // Also count number of instructions.
                     // Because we sum them up, it's not a perfect measure.
                     // TODO: Find better way of determining the best reorder.
-                    let result = function.validate_path_ex(&dominators, location,
-                                                           other_location, |_| true);
+                    let result = function.validate_path_count(&dominators, location,
+                                                              other_location);
 
                     if let Some(count) = result {
                         instruction_count += count;
