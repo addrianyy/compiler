@@ -480,8 +480,8 @@ impl FunctionData {
             }
 
             for input in instruction.read_values() {
-                // Ignore all function arguments.
-                if self.is_value_argument(input) {
+                // Ignore all special values.
+                if self.is_value_special(input) {
                     continue;
                 }
 
@@ -854,8 +854,8 @@ impl FunctionData {
             self.for_each_instruction(|location, instruction| {
                 if let Some(output) = instruction.created_value() {
                     if let Some(&input) = instruction.read_values().get(0) {
-                        // We cannot coalesce arguments or constants.
-                        if self.is_value_argument(input)    ||
+                        // We cannot coalesce special values or constants.
+                        if self.is_value_special(input)     ||
                             constants.get(&input).is_some() ||
                             constants.get(&output).is_some() {
                             return;
@@ -951,12 +951,8 @@ impl FunctionData {
 
                 // Allocate alias value.
                 let value_type = self.value_type(value);
-                let alias      = self.allocate_value();
+                let alias      = self.allocate_typed_value(value_type);
                 
-                self.type_info.as_mut()
-                    .unwrap()
-                    .insert(alias, value_type);
-
                 let body = self.blocks.get_mut(&label).unwrap();
 
                 // Calculate where to insert new alias instruction.
@@ -1104,11 +1100,11 @@ impl FunctionData {
                                          &virtual_registers.registers);
         }
 
+        let usage_counts = self.usage_counts();
+
         let colors = if required_registers > hardware_registers {
             // We can't fit all VRs in hardware registers. We need to move some VRs to
             // the memory. Get usage counts to figure out best candidates.
-
-            let usage_counts = self.usage_counts();
 
             let mut usages: Map<Color, usize> = Map::default();
 
@@ -1136,7 +1132,7 @@ impl FunctionData {
 
         // Get numer of stack slots required. This basically calculates how many
         // VRs don't fit in hardware registers.
-        let stack_slots = colors.len().saturating_sub(hardware_registers);
+        let mut stack_slots = colors.len().saturating_sub(hardware_registers);
 
         let mut color_to_place = Map::default();
         let mut used_registers = Set::default();
@@ -1188,6 +1184,33 @@ impl FunctionData {
         // Fill in places of function arguments.
         for (index, argument) in self.argument_values.iter().enumerate() {
             arguments.insert(*argument, Place::Argument(index));
+        }
+        
+        let usage_counts = self.usage_counts();
+
+        // Fill in places of undefined values to whatever place is available.
+        for &value in self.undefined_set.iter() {
+            if usage_counts[value.index()] == 0 {
+                continue;
+            }
+
+            // Skip values which place was assigned due to coalescing.
+            if value_to_place.get(&value).is_some() {
+                continue;
+            }
+
+            // Pick first place available.
+            let place = if hardware_registers > 0 {
+                Place::Register(0)
+            } else {
+                if stack_slots == 0 {
+                    stack_slots += 1;
+                }
+
+                Place::StackSlot(0)
+            };
+
+            value_to_place.insert(value, place);
         }
 
         RegisterAllocation {

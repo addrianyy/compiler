@@ -132,7 +132,13 @@ impl FunctionData {
         }
 
         macro_rules! fmt_value {
-            ($value: expr) => { formatter.fmt_value($value) }
+            ($value: expr) => {
+                if self.undefined_set.contains(&$value) {
+                    String::from("undefined")
+                } else {
+                    formatter.fmt_value($value) 
+                }
+            }
         }
 
         macro_rules! fmt_inst {
@@ -260,18 +266,22 @@ impl FunctionData {
                        fmt_value!(*on_true), fmt_value!(*on_false))?;
             }
             Instruction::Phi { dst, incoming } => {
-                write!(w, "{} = {} {} [", fmt_value!(*dst), fmt_inst!("phi"),
-                       fmt_type!(incoming[0].1))?;
+                if incoming.is_empty() {
+                    write!(w, "{} = {} [invalid]", fmt_value!(*dst), fmt_inst!("phi"))?;
+                } else {
+                    write!(w, "{} = {} {} [", fmt_value!(*dst), fmt_inst!("phi"),
+                        fmt_type!(incoming[0].1))?;
 
-                for (index, (label, value)) in incoming.iter().enumerate() {
-                    write!(w, "{}: {}", fmt_label!(*label), fmt_value!(*value))?;
+                    for (index, (label, value)) in incoming.iter().enumerate() {
+                        write!(w, "{}: {}", fmt_label!(*label), fmt_value!(*value))?;
 
-                    if index + 1 != incoming.len() {
-                        write!(w, ", ")?;
+                        if index + 1 != incoming.len() {
+                            write!(w, ", ")?;
+                        }
                     }
-                }
 
-                write!(w, "]")?;
+                    write!(w, "]")?;
+                }
             }
             Instruction::Alias { dst, value } => {
                 write!(w, "{} = {} {} {}", fmt_value!(*dst), fmt_inst!("alias"), fmt_type!(*value),

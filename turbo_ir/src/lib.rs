@@ -91,6 +91,9 @@ struct FunctionData {
     function_info:   Option<Rc<CrossFunctionInfo>>,
     type_info:       Option<TypeInfo>,
     phi_locations:   Map<Value, Location>,
+    undefined:       Map<Type,  Value>,
+    undefined_set:   Set<Value>,
+    argument_set:    Set<Value>,
 }
 
 impl FunctionData {
@@ -106,12 +109,18 @@ impl FunctionData {
             function_info:   None,
             type_info:       None,
             phi_locations:   Map::default(),
+            undefined:       Map::default(),
+            undefined_set:   Set::default(),
+            argument_set:    Set::default(),
         };
 
         data.allocate_label();
 
         for index in 0..argument_count {
-            data.argument_values[index] = data.allocate_value();
+            let value = data.allocate_value();
+
+            data.argument_values[index] = value;
+            data.argument_set.insert(value);
         }
 
         data
@@ -134,6 +143,16 @@ impl FunctionData {
 
         self.next_value = Value(value.0.checked_add(1)
                                 .expect("Value IDs overflowed."));
+
+        value
+    }
+
+    fn allocate_typed_value(&mut self, ty: Type) -> Value {
+        let value = self.allocate_value();
+
+        self.type_info.as_mut()
+            .expect("Cannot allocate typed value without typeinfo.")
+            .insert(value, ty);
 
         value
     }
@@ -175,12 +194,26 @@ impl FunctionData {
         block[block.len() - 1].targets().is_some()
     }
 
+    fn undefined_value(&mut self, ty: Type) -> Value {
+        if let Some(&value) = self.undefined.get(&ty) {
+            return value;
+        }
+
+        let value = self.allocate_typed_value(ty);
+
+        self.undefined.insert(ty, value);
+        self.undefined_set.insert(value);
+
+        value
+    }
+
     fn value_type(&self, value: Value) -> Type {
         self.type_info.as_ref().unwrap()[&value]
     }
 
-    fn is_value_argument(&self, value: Value) -> bool {
-        self.argument_values.iter().any(|v| *v == value)
+    fn is_value_special(&self, value: Value) -> bool {
+        self.argument_set.contains(&value) ||
+        self.undefined_set.contains(&value)
     }
 
     fn function_prototype(&self, func: Function) -> &FunctionPrototype {
@@ -193,6 +226,8 @@ impl FunctionData {
     }
 
     fn finalize(&mut self) {
+        self.phi_locations.clear();
+
         self.validate_ssa();
         self.build_type_info();
     }

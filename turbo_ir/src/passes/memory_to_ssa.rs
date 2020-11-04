@@ -12,6 +12,7 @@ impl MemoryToSsaPass {
         pointer:          Value,
         stackalloc_label: Label,
         flow_incoming:    &FlowGraph,
+        undef:            Value,
     ) -> Option<(LoadAliases, DeadStores)> 
     {
         let mut load_aliases = Vec::new();
@@ -52,8 +53,8 @@ impl MemoryToSsaPass {
                                 used_phi = true;
                             }
 
-                            // This load will use currently known value.
-                            load_aliases.push((location, *dst, value.unwrap()));
+                            // This load will use currently known value or undef.
+                            load_aliases.push((location, *dst, value.unwrap_or(undef)));
                         }
                     }
                     Instruction::Store { ptr, value: stored_value } => {
@@ -98,7 +99,8 @@ impl MemoryToSsaPass {
 
             // Get incoming value for every predecessor.
             for &predecessor in &flow_incoming[&label] {
-                let value = block_values[&predecessor];
+                let value = block_values.get(&predecessor).copied()
+                    .unwrap_or(undef);
 
                 incoming.push((predecessor, value));
             }
@@ -182,6 +184,8 @@ impl super::Pass for MemoryToSsaPass {
                 }
             }
 
+            let ty = function.value_type(pointer).strip_ptr().unwrap();
+
             // Write empty PHI instruction at the beginning of every block except entry one.
             for &label in &labels {
                 // We cannot put PHI instructions in the entry block.
@@ -189,15 +193,8 @@ impl super::Pass for MemoryToSsaPass {
                     continue;
                 }
 
-                // Allocate PHI output value and get its type.
-                let output = function.allocate_value();
-                let ty     = function.value_type(pointer).strip_ptr().unwrap();
-
-                // Because we have allocated a new value we need to set its type.
-                if let Some(type_info) = function.type_info.as_mut() {
-                    assert!(type_info.insert(output, ty).is_none(),
-                            "Newly created value already had type info.");
-                }
+                // Allocate PHI output value with proper type.
+                let output = function.allocate_typed_value(ty);
 
                 // Insert new empty PHI instruction to the beginning of the block.
                 function.blocks.get_mut(&label).unwrap().insert(0, Instruction::Phi {
@@ -210,9 +207,11 @@ impl super::Pass for MemoryToSsaPass {
             // label will be still right.
             let stackalloc_label = location.label();
 
+            let undef = function.undefined_value(ty);
+
             // Try to rewrite `stackalloc`.
             let result = self.rewrite_memory_to_ssa(function, pointer, stackalloc_label,
-                                                    &flow_incoming);
+                                                    &flow_incoming, undef);
             let success = result.is_some();
 
             if let Some((load_aliases, dead_stores)) = result {

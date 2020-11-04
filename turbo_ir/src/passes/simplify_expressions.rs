@@ -147,7 +147,7 @@ impl super::Pass for SimplifyExpressionsPass {
 
             // Create instructions which will create RHS constant and calculate simplified
             // expression.
-            let temp_constant = function.allocate_value();
+            let temp_constant = function.allocate_typed_value(ir_type);
             let simplified    = vec![
                 Instruction::Const {
                     dst: temp_constant,
@@ -161,12 +161,6 @@ impl super::Pass for SimplifyExpressionsPass {
                     b:   temp_constant,
                 },
             ];
-
-            // Because we have allocated a new value we need to set its type.
-            if let Some(type_info) = function.type_info.as_mut() {
-                assert!(type_info.insert(temp_constant, ir_type).is_none(),
-                        "Newly created constant already had type info.");
-            }
 
             // Get the block which created expression which we are going to simplify.
             let creator = creators[&output_value];

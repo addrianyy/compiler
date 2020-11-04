@@ -626,6 +626,11 @@ impl FunctionData {
             let mut can_see_phi = true;
 
             for (inst_id, inst) in body.iter().enumerate() {
+                if let Some(value) = inst.created_value() {
+                    assert!(!self.undefined_set.contains(&value),
+                            "Cannot return to undefined value {}.", value);
+                }
+
                 if let Instruction::Phi { incoming, .. } = inst {
                     assert!(can_see_phi, "PHI nodes are not at the function beginning.");
                     assert!(label != Label(0), "Entry labels cannot have PHI nodes.");
@@ -642,7 +647,7 @@ impl FunctionData {
                             "PHI node has duplicate labels.");
 
                     for &(label, value) in incoming {
-                        if self.is_value_argument(value) {
+                        if self.is_value_special(value) {
                             continue;
                         }
 
@@ -663,7 +668,7 @@ impl FunctionData {
                 can_see_phi = false;
 
                 for value in inst.read_values() {
-                    if self.is_value_argument(value) {
+                    if self.is_value_special(value) {
                         continue;
                     }
 
