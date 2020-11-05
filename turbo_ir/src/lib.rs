@@ -28,7 +28,7 @@ use graph::Dominators;
 use graph::FlowGraph;
 use collections::{Map, Set, LargeKeyMap, CapacityExt};
 
-const OPTIMIZATION_STATS: bool = false;
+const OPTIMIZATION_STATS: bool = true;
 
 #[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct Value(u32);

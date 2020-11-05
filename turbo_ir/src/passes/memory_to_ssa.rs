@@ -157,76 +157,93 @@ impl super::Pass for MemoryToSsaPass {
         let labels        = function.reachable_labels();
         let flow_incoming = function.flow_graph_incoming();
 
-        // Go through every `stackalloc` and try to rewrite it to use SSA values.
-        'skip: for (pointer, location) in function.find_stackallocs(Some(1)) {
-            // We can only rewrite `stackallocs` which are just loaded and stored to.
-            let uses = function.find_uses(pointer);
-            if  uses.is_empty() {
-                continue;
-            }
+        'main_loop: loop {
+            // Go through every `stackalloc` and try to find best candidate to rewrite
+            // it to use SSA values.
+            'skip: for (pointer, location) in function.find_stackallocs(Some(1)) {
+                // Make sure that this is actually stackallocs (locations may have shifted).
+                assert!(matches!(function.instruction(location),
+                                 Instruction::StackAlloc { .. }));
 
-            for location in uses {
-                match function.instruction(location) {
-                    Instruction::Store { ptr, value } => {
-                        // Make sure that we are actually storing TO `value`, not
-                        // storing `value`.
-                        if *ptr != pointer || *value == pointer {
-                            continue 'skip;
+                // We can only rewrite `stackallocs` which are just loaded and stored to.
+                let uses = function.find_uses(pointer);
+                if  uses.is_empty() {
+                    continue;
+                }
+
+                for location in uses {
+                    match function.instruction(location) {
+                        Instruction::Store { ptr, value } => {
+                            // Make sure that we are actually storing TO `value`, not
+                            // storing `value`.
+                            if *ptr != pointer || *value == pointer {
+                                continue 'skip;
+                            }
                         }
+                        Instruction::Load { .. } => {}
+                        _                        => continue 'skip,
                     }
-                    Instruction::Load { .. } => {}
-                    _                        => continue 'skip,
-                }
-            }
-
-            let ty = function.value_type(pointer).strip_ptr().unwrap();
-
-            // Write empty PHI instruction at the beginning of every block except entry one.
-            for &label in &labels {
-                // We cannot put PHI instructions in the entry block.
-                if label == Label(0) {
-                    continue;
                 }
 
-                // Allocate PHI output value with proper type.
-                let output = function.allocate_typed_value(ty);
+                // Remove stackalloc.
+                *function.instruction_mut(location) = Instruction::Nop;
 
-                // Insert new empty PHI instruction to the beginning of the block.
-                function.blocks.get_mut(&label).unwrap().insert(0, Instruction::Phi {
-                    dst:      output,
-                    incoming: Vec::new(),
-                });
-            }
+                // Get type of value we are rewriting.
+                let ty = function.value_type(pointer).strip_ptr().unwrap();
 
-            // Because we have inserted PHIs location.index() won't be correct anymore. But
-            // label will be still right.
-            let stackalloc_label = location.label();
-            let undef            = function.undefined_value(ty);
-
-            // Perform the rewrite.
-            rewrite_memory_to_ssa(function, pointer, stackalloc_label, &flow_incoming, undef);
-
-            // We are done, clean up all the mess that we have done.
-            for &label in &labels {
-                // We cannot put PHI instructions in entry block.
-                if label == Label(0) {
-                    continue;
-                }
-
-                let body = function.blocks.get_mut(&label).unwrap();
-
-                // Get the first instruction which must be our inserted PHI.
-                if let Instruction::Phi { incoming, .. } = &body[0] {
-                    // If this PHI isn't used then just remove it.
-                    if incoming.is_empty() {
-                        body.remove(0);
+                // Write empty PHI instruction at the beginning of every block except entry one.
+                for &label in &labels {
+                    // We cannot put PHI instructions in the entry block.
+                    if label == Label(0) {
+                        continue;
                     }
-                } else {
-                    panic!("First instruction must be our inserted PHI.");
+
+                    // Allocate PHI output value with proper type.
+                    let output = function.allocate_typed_value(ty);
+
+                    // Insert new empty PHI instruction to the beginning of the block.
+                    function.blocks.get_mut(&label).unwrap().insert(0, Instruction::Phi {
+                        dst:      output,
+                        incoming: Vec::new(),
+                    });
                 }
+
+                // Because we have inserted PHIs location.index() won't be correct anymore. But
+                // label will be still right.
+                let stackalloc_label = location.label();
+                let undef            = function.undefined_value(ty);
+
+                // Perform the rewrite.
+                rewrite_memory_to_ssa(function, pointer, stackalloc_label, &flow_incoming, undef);
+
+                // We are done, clean up all the mess that we have done.
+                for &label in &labels {
+                    // We cannot put PHI instructions in entry block.
+                    if label == Label(0) {
+                        continue;
+                    }
+
+                    let body = function.blocks.get_mut(&label).unwrap();
+
+                    // Get the first instruction which must be our inserted PHI.
+                    if let Instruction::Phi { incoming, .. } = &body[0] {
+                        // If this PHI isn't used then just remove it.
+                        if incoming.is_empty() {
+                            body.remove(0);
+                        }
+                    } else {
+                        panic!("First instruction must be our inserted PHI.");
+                    }
+                }
+
+                did_something = true;
+
+                // Reenter loop because we have modified stackalloc locations.
+                continue 'main_loop;
             }
 
-            did_something = true;
+            // Nothing is left to be done.
+            break 'main_loop;
         }
 
         did_something
