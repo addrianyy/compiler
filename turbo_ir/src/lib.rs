@@ -28,7 +28,7 @@ use graph::Dominators;
 use graph::FlowGraph;
 use collections::{Map, Set, LargeKeyMap, CapacityExt};
 
-const OPTIMIZATION_STATS: bool = true;
+const OPTIMIZATION_STATS: bool = false;
 
 #[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct Value(u32);
@@ -239,6 +239,7 @@ impl FunctionData {
         struct PassStatistics {
             time:      f64,
             successes: u32,
+            index:     usize,
         }
 
         let passes: &[&dyn passes::Pass]  = &[
@@ -279,6 +280,7 @@ impl FunctionData {
 
                 statistics.successes += success as u32;
                 statistics.time      += elapsed;
+                statistics.index      = index;
             }
 
             iterations += 1;
@@ -299,9 +301,8 @@ impl FunctionData {
             let mut longest_pass_name = None;
             let mut total_passes_time = 0.0;
 
-            for (index, pass) in passes.iter().enumerate() {
-                let name       = pass.name();
-                let statistics = &statistics[index];
+            for statistics in &statistics {
+                let name = passes[statistics.index].name();
 
                 let is_longer = match longest_pass_name {
                     Some(other) => name.len() > other,
@@ -317,9 +318,8 @@ impl FunctionData {
 
             let longest_pass_name = longest_pass_name.expect("Failed to get longest pass name.");
 
-            for (index, pass) in passes.iter().enumerate() {
-                let name       = pass.name();
-                let statistics = &statistics[index];
+            for statistics in &statistics {
+                let name = passes[statistics.index].name();
 
                 print!("{} ", name);
 
