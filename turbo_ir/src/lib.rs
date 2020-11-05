@@ -28,6 +28,8 @@ use graph::Dominators;
 use graph::FlowGraph;
 use collections::{Map, Set, LargeKeyMap, CapacityExt};
 
+const OPTIMIZATION_STATS: bool = false;
+
 #[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct Value(u32);
 
@@ -288,7 +290,7 @@ impl FunctionData {
 
         let elapsed = start.elapsed().as_secs_f64();
 
-        if false && !passes.is_empty() {
+        if OPTIMIZATION_STATS && !passes.is_empty() {
             println!("Optimized {} in {} iterations and {}s.", self.prototype.name, 
                      iterations, elapsed);
 

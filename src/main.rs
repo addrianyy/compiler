@@ -66,12 +66,40 @@ fn main() {
         }
     }
 
+    /*
     use turbo_ir as ir;
     let mut ir = ir::Module::new();
 
     let func = ir.create_function("test", Some(ir::Type::U32), vec![ir::Type::U32]);
         
     ir.switch_function(func);
+    */
+
+
+        /*
+    use turbo_ir as ir;
+    let mut ir = ir::Module::new();
+
+    let func = ir.create_function("test", None, vec![ir::Type::U1]);
+    ir.switch_function(func);
+
+    let x = ir.create_label();
+    let y = ir.create_label();
+
+    let cond = ir.argument(0);
+
+    ir.branch(x);
+    ir.switch_label(x);
+    ir.branch(y);
+
+    ir.switch_label(y);
+    ir.branch_cond(cond, x, y);
+
+
+    ir.finalize();
+    ir.optimize();
+    ir.dump_function_text(func, &mut std::io::stdout()).unwrap();
+    */
 
     /*
     let entry     = ir.entry_label();

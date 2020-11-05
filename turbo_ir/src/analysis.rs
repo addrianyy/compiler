@@ -469,6 +469,103 @@ impl FunctionData {
         self.dominates(dominators, start_label, end_label)
     }
 
+    fn can_reach(&self, from: Label, to: Label, without: Label) -> bool {
+        // Make sure that start and end points are not blacklisted.
+        assert!(from != without && to != without);
+
+        // We can always reach ourselves.
+        if from == to {
+            return true;
+        }
+
+        let mut visited = Set::default();
+        let mut queue   = VecDeque::new();
+
+        queue.push_back(from);
+        visited.insert(without);
+
+        // Check if we can reach `to` starting from `from` ignoring `without` using
+        // BFS traversal.
+        while let Some(label) = queue.pop_front() {
+            if label == to {
+                return true;
+            }
+
+            if !visited.insert(label) {
+                continue;
+            }
+
+            for target in self.targets(label) {
+                queue.push_back(target);
+            }
+        }
+
+        false
+    }
+
+    fn escaping_cycle_blocks_internal(&self, start: Label, end: Label) -> Option<Set<Label>> {
+        let mut cycle_blocks = Set::default();
+        let mut visited      = Set::default();
+        let mut queue        = VecDeque::new();
+
+        // Start from end.
+        queue.push_back(end);
+
+        // Always ignore start.
+        visited.insert(start);
+
+        let mut is_first = true;
+        let mut escaped  = false;
+
+        while let Some(label) = queue.pop_front() {
+            // If we hit `end` and it's not the first iteration then some block escaped
+            // the cycle.
+            if label == end && !is_first {
+                escaped = true;
+            }
+
+            is_first = false;
+
+            if !visited.insert(label) {
+                continue;
+            }
+
+            cycle_blocks.insert(label);
+
+            for target in self.targets(label) {
+                queue.push_back(target);
+            }
+        }
+
+        // If some blocks escaped then return all blocks that take part in the cycle.
+        match escaped {
+            true  => Some(cycle_blocks),
+            false => None,
+        }
+    }
+
+    fn escaping_cycle_blocks(&self, start: Label, end: Label) -> Option<Set<Label>> {
+        self.escaping_cycle_blocks_internal(start, end).map(|blocks| {
+            // `blocks` is a list of all blocks that take part in the cycle.
+
+            let mut escaped = Set::default();
+
+            for block in blocks {
+                // If it is possible to reach `end` from `block` without `start` then
+                // this block escapes cycle and needs to be additionaly checked.
+                if self.can_reach(block, end, start) {
+                    escaped.insert(block);
+                }
+            }
+
+            assert!(!escaped.is_empty(), "There must be at least one escaped block.");
+            assert!(!escaped.insert(end), "End block must have been inserted.");
+            assert!(escaped.get(&start).is_none(), "Start block shouldn't have been inserted.");
+
+            escaped
+        })
+    }
+
     fn validate_path_internal(
         &self,
         dominators:   &Dominators,
@@ -502,30 +599,33 @@ impl FunctionData {
         }
 
         if cycle_check {
-            let contains = |labels: &[Label], label: Label| -> bool {
-                labels.iter().any(|&x| x == label)
-            };
+            // If `end_label` is part of cycle it is possible that `end_label` may be entered
+            // skipping `start_label`. In this case we need to get a list of all labels
+            // which allow reaching `end_label` without `start_label` and check them too.
+            if let Some(blocks) = self.escaping_cycle_blocks(start_label, end_label) {
+                for block in blocks {
+                    for (inst_id, instruction) in self.blocks[&block].iter().enumerate() {
+                        // Ignore start instruction and end instruction.
+                        let location = Location::new(block, inst_id);
+                        if  location == start || location == end {
+                            continue;
+                        }
 
-            let start_reachable = self.traverse_bfs(start_label, false);
+                        if !verifier(instruction) {
+                            return None;
+                        }
 
-            // If `start_label` is part of cycle then `end_label` must be part of it too.
-            if contains(&start_reachable, start_label) && !contains(&start_reachable, end_label) {
-                return None;
-            }
-
-            let end_reachable = self.traverse_bfs(end_label,   false);
-
-            // If `end_label` is part of cycle then `start_label` must be part of it too.
-            if contains(&end_reachable, end_label) && !contains(&end_reachable, start_label) {
-                return None;
+                        // Don't increase instruction count.
+                    }
+                }
             }
         }
 
         // When path points are in different blocks then start block must dominate end block.
         if self.dominates(dominators, start_label, end_label) {
             // Make sure there is no invalid instruction in the remaining part of start block.
-            for inst in &self.blocks[&start_label][start.index() + 1..] {
-                if !verifier(inst) {
+            for instruction in &self.blocks[&start_label][start.index() + 1..] {
+                if !verifier(instruction) {
                     return None;
                 }
 
@@ -533,8 +633,8 @@ impl FunctionData {
             }
 
             // Make sure there is no invalid instruction in the initial part of end block.
-            for inst in &self.blocks[&end_label][..end.index()] {
-                if !verifier(inst) {
+            for instruction in &self.blocks[&end_label][..end.index()] {
+                if !verifier(instruction) {
                     return None;
                 }
 
@@ -575,8 +675,8 @@ impl FunctionData {
 
                     // Make sure that there is no invalid instruction in every block
                     // that we can hit.
-                    for inst in &self.blocks[&label] {
-                        if !verifier(inst) {
+                    for instruction in &self.blocks[&label] {
+                        if !verifier(instruction) {
                             return None;
                         }
 
@@ -674,7 +774,7 @@ impl FunctionData {
                     assert!(label != Label(0), "Entry labels cannot have PHI nodes.");
                     assert!(!incoming.is_empty(), "PHI nodes cannot be empty.");
 
-                    let incoming_labels: Set<Label> = incoming.into_iter()
+                    let incoming_labels: Set<Label> = incoming.iter()
                         .map(|(label, _value)| *label)
                         .collect();
 
