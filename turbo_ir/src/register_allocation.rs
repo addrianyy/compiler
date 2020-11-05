@@ -339,7 +339,7 @@ impl InterferenceGraph {
         result
     }
 
-    fn interfere(&self, e1: Entity, e2: Entity) -> bool {
+    fn interfere_and_nonequal(&self, e1: Entity, e2: Entity) -> bool {
         // We return false if e1 == e2.
         self.edges[&e1].contains(&e2)
     }
@@ -813,7 +813,7 @@ impl FunctionData {
                         let other_register = interference_registers.value_register(other);
 
                         // Make sure that nothing in `map_register` interferes with value.
-                        if interference.interfere(value_register, other_register) {
+                        if interference.interfere_and_nonequal(value_register, other_register) {
                             valid = false;
                             break;
                         }
@@ -833,7 +833,7 @@ impl FunctionData {
                     let v2_old = interference_registers.value_register(v2);
 
                     // Make sure that values can be merged.
-                    assert!(!interference.interfere(v1_old, v2_old),
+                    assert!(!interference.interfere_and_nonequal(v1_old, v2_old),
                             "Tried to coalesce overlapping values.");
 
                     let register = virtual_registers.allocate();

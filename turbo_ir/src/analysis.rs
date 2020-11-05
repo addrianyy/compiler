@@ -479,7 +479,7 @@ impl FunctionData {
         let mut visited = Set::default();
         let mut stack   = Vec::new();
 
-        // Start from `end`.
+        // Start from `from`.
         stack.push(from);
 
         // Always ignore `without`.
