@@ -1,4 +1,4 @@
-use crate::{FunctionData, Instruction, Location, LargeKeyMap};
+use crate::{FunctionData, Instruction, Location, LargeKeyMap, analysis::KillTarget};
 
 pub struct DeduplicatePass;
 
@@ -67,7 +67,7 @@ impl super::Pass for DeduplicatePass {
                 // cannot be deduplicated it will always return None.
                 if let Some(candidates) = dedup_list.get(&key) {
                     // Find the best candidate for deduplication.
-                    'skip: for &candidate in candidates {
+                    for &candidate in candidates {
                         let location = Location::new(label, inst_id);
 
                         let result = if let Instruction::Load { ptr, .. } = instruction {
@@ -78,11 +78,11 @@ impl super::Pass for DeduplicatePass {
                             // it.  TODO: Fix this.
                             if candidate.label() != location.label() &&
                                 phi_used.contains(&load_ptr) {
-                                continue 'skip;
+                                continue;
                             }
 
-                            function.validate_path_memory(&dominators, candidate, location, 
-                                                          |instruction| {
+                            function.validate_path_memory(&dominators, candidate, location,
+                                                          KillTarget::End, |instruction| {
                                 // Special care needs to be taken if we want to deduplicate
                                 // load. Something inbetween two instructions may have
                                 // modified loaded ptr and output value will be different.

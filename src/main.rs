@@ -66,7 +66,52 @@ fn main() {
         }
     }
 
-    /*
+        /*
+    use turbo_ir as ir;
+    let mut ir = ir::Module::new();
+
+    let func = ir.create_function("test", None, vec![ir::Type::U32.ptr()]);
+        
+    ir.switch_function(func);
+    let arg = ir.argument(0);
+
+    let x = ir.create_label();
+    let y = ir.create_label();
+    let z = ir.create_label();
+    let w = ir.create_label();
+    ir.branch(x);
+
+    ir.switch_label(x);
+
+    let loaded = ir.load(arg);
+
+    let val    = ir.iconst(123u32, ir::Type::U32);
+    let cond =  ir.compare_ne(loaded, val);
+    ir.store(arg, val);
+    ir.branch_cond(cond, z, y);
+
+
+    ir.switch_label(z);
+    let one    = ir.iconst(1u32, ir::Type::U32);
+    let added  = ir.add(loaded, one);
+    ir.store(arg, added);
+    ir.branch(w);
+    ir.switch_label(w);
+    ir.branch(x);
+
+
+    ir.switch_label(y);
+    let val    = ir.iconst(888u32, ir::Type::U32);
+    ir.store(arg, val);
+    ir.ret(None);
+
+
+    ir.finalize();
+    ir.optimize();
+    ir.dump_function_text(func, &mut std::io::stdout()).unwrap();
+    */
+
+        /*
     use turbo_ir as ir;
     let mut ir = ir::Module::new();
 

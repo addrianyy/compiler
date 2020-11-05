@@ -36,6 +36,12 @@ pub(super) struct PointerAnalysis {
     stackallocs: Map<Value, bool>,
 }
 
+#[derive(PartialEq, Eq)]
+pub(super) enum KillTarget {
+    Start,
+    End,
+}
+
 impl PointerAnalysis {
     pub fn get_stackalloc(&self, pointer: Value) -> Option<bool> {
         // Get origin of the pointer.
@@ -467,6 +473,8 @@ impl FunctionData {
         self.dominates(dominators, start_label, end_label)
     }
 
+    /// Check if there is any path that goes from `from` to `to` without going through
+    /// `without`.
     fn can_reach(&self, from: Label, to: Label, without: Label) -> bool {
         // Make sure that start and end points are not blacklisted.
         assert!(from != without && to != without);
@@ -504,24 +512,26 @@ impl FunctionData {
         false
     }
 
-    fn escaping_cycle_blocks_internal(&self, start: Label, end: Label) -> Option<Set<Label>> {
+    /// Check if `killee` can reach itself without hitting `killer`. If it can, this function
+    /// will return all labels that take part in the cycle.
+    fn escaping_cycle_blocks_internal(&self, killer: Label, killee: Label) -> Option<Set<Label>> {
         let mut cycle_blocks = Set::default();
         let mut visited      = Set::default();
         let mut stack        = Vec::new();
 
-        // Start from `end`.
-        stack.push(end);
+        // Start from `killee`.
+        stack.push(killee);
 
-        // Always ignore `start`.
-        visited.insert(start);
+        // Always ignore `killer`.
+        visited.insert(killer);
 
         let mut is_first = true;
         let mut escaped  = false;
 
         while let Some(label) = stack.pop() {
-            // If we hit `end` and it's not the first iteration then some block escaped
+            // If we hit `killee` and it's not the first iteration then some block escaped
             // the cycle.
-            if label == end && !is_first {
+            if label == killee && !is_first {
                 escaped = true;
             }
 
@@ -545,23 +555,40 @@ impl FunctionData {
         }
     }
 
-    fn escaping_cycle_blocks(&self, start: Label, end: Label) -> Option<Set<Label>> {
-        self.escaping_cycle_blocks_internal(start, end).map(|blocks| {
+    fn escaping_cycle_blocks(&self, start_label: Label, end_label: Label, 
+                             memory_kill: KillTarget) -> Option<Set<Label>> {
+        let (killer, killee) = match memory_kill {
+            KillTarget::Start => (end_label, start_label),
+            KillTarget::End   => (start_label, end_label),
+        };
+
+        self.escaping_cycle_blocks_internal(killer, killee).map(|blocks| {
             // `blocks` is a list of all blocks that take part in the cycle.
 
             let mut escaped = Set::default();
 
             for block in blocks {
-                // If it is possible to reach `end` from `block` without `start` then
-                // this block escapes cycle and needs to be additionaly checked.
-                if self.can_reach(block, end, start) {
+                let insert = match memory_kill {
+                    KillTarget::Start => {
+                        // If it is possible to reach `block` from `start` without `end` then
+                        // this block escapes cycle and needs to be additionaly checked.
+                        self.can_reach(start_label, block, end_label)
+                    }
+                    KillTarget::End => {
+                        // If it is possible to reach `end` from `block` without `start` then
+                        // this block escapes cycle and needs to be additionaly checked.
+                        self.can_reach(block, end_label, start_label)
+                    }
+                };
+
+                if insert {
                     escaped.insert(block);
                 }
             }
 
             assert!(!escaped.is_empty(), "There must be at least one escaped block.");
-            assert!(!escaped.insert(end), "End block must have been inserted.");
-            assert!(escaped.get(&start).is_none(), "Start block shouldn't have been inserted.");
+            assert!(!escaped.insert(killee), "killee block must have been inserted.");
+            assert!(escaped.get(&killer).is_none(), "killer block shouldn't have been inserted.");
 
             escaped
         })
@@ -572,7 +599,7 @@ impl FunctionData {
         dominators:   &Dominators,
         start:        Location,
         end:          Location,
-        cycle_check:  bool,
+        memory_kill:  Option<KillTarget>,
         mut verifier: impl FnMut(&Instruction) -> bool,
     ) -> Option<usize> {
         let start_label = start.label();
@@ -585,8 +612,8 @@ impl FunctionData {
             // Start must be before end to make valid path.
             if start.index() < end.index() {
                 // Verify all instructions between `start` and `end`.
-                for inst in &self.blocks[&start_label][start.index() + 1..end.index()] {
-                    if !verifier(inst) {
+                for instruction in &self.blocks[&start_label][start.index() + 1..end.index()] {
+                    if !verifier(instruction) {
                         return None;
                     }
 
@@ -599,11 +626,13 @@ impl FunctionData {
             return None;
         }
 
-        if cycle_check {
-            // If `end_label` is part of cycle it is possible that `end_label` may be entered
-            // skipping `start_label`. In this case we need to get a list of all labels
-            // which allow reaching `end_label` without `start_label` and check them too.
-            if let Some(blocks) = self.escaping_cycle_blocks(start_label, end_label) {
+        // When path points are in different blocks then start block must dominate end block.
+        if self.dominates(dominators, start_label, end_label) {
+            let blocks = memory_kill.and_then(|memory_kill| {
+                self.escaping_cycle_blocks(start_label, end_label, memory_kill)
+            });
+
+            if let Some(blocks) = blocks {
                 for block in blocks {
                     for (inst_id, instruction) in self.blocks[&block].iter().enumerate() {
                         // Ignore start instruction and end instruction.
@@ -616,14 +645,11 @@ impl FunctionData {
                             return None;
                         }
 
-                        // Don't increase instruction count.
+                        // Don't increase the instruction count.
                     }
                 }
             }
-        }
 
-        // When path points are in different blocks then start block must dominate end block.
-        if self.dominates(dominators, start_label, end_label) {
             // Make sure there is no invalid instruction in the remaining part of start block.
             for instruction in &self.blocks[&start_label][start.index() + 1..] {
                 if !verifier(instruction) {
@@ -697,9 +723,10 @@ impl FunctionData {
         dominators: &Dominators,
         start:      Location,
         end:        Location,
+        target:     KillTarget,
         verifier:   impl FnMut(&Instruction) -> bool,
     ) -> Option<usize> {
-        self.validate_path_internal(dominators, start, end, true, verifier)
+        self.validate_path_internal(dominators, start, end, Some(target), verifier)
     }
 
     pub(super) fn validate_path_count(
@@ -708,7 +735,7 @@ impl FunctionData {
         start:      Location,
         end:        Location,
     ) -> Option<usize> {
-        self.validate_path_internal(dominators, start, end, false, |_| true)
+        self.validate_path_internal(dominators, start, end, None, |_| true)
     }
 
     pub(super) fn instruction(&self, location: Location) -> &Instruction {
@@ -804,7 +831,9 @@ impl FunctionData {
                     continue;
                 } 
 
-                can_see_phi = false;
+                if !matches!(inst, Instruction::Nop) {
+                    can_see_phi = false;
+                }
 
                 for value in inst.read_values() {
                     if self.is_value_special(value) {

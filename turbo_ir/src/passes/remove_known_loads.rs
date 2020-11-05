@@ -1,4 +1,4 @@
-use crate::{FunctionData, Instruction, Map};
+use crate::{FunctionData, Instruction, Map, analysis::KillTarget};
 
 pub struct RemoveKnownLoadsPass;
 
@@ -68,7 +68,7 @@ impl super::Pass for RemoveKnownLoadsPass {
 
                     // Check if we actually can source load from this store.
                     let result = function.validate_path_memory(&dominators, start, end,
-                                                               |instruction| {
+                                                               KillTarget::End, |instruction| {
                         match instruction {
                             Instruction::Call { .. } => {
                                 // If call can affect this pointer we cannot continue further.

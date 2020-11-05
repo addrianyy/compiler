@@ -1,4 +1,4 @@
-use crate::{FunctionData, Instruction, Map};
+use crate::{FunctionData, Instruction, Map, analysis::KillTarget};
 
 pub struct RemoveDeadStoresPass;
 
@@ -36,9 +36,7 @@ impl super::Pass for RemoveDeadStoresPass {
 
         for (&pointer, stores) in &mut stores {
             // Keep removing until there is nothing more to remove.
-            loop {
-                let mut to_remove = None;
-
+            'next: loop {
                 // If there is only one store we need to stop removing. If we won't code
                 // below will delete a single store to the pointer.
                 if stores.len() <= 1 {
@@ -46,30 +44,30 @@ impl super::Pass for RemoveDeadStoresPass {
                 }
 
                 // Go through all stores and find which one can be removed.
-                'next_location: for &removed_location in stores.iter() {
-                    // Check all combinations of paths between `removed_location` and other
-                    // stores to make sure that we can actually remove this store.
+                for &to_remove in stores.iter() {
+                    // Find complementary store.
                     for &other_location in stores.iter() {
                         // We don't care about ourselves.
-                        if removed_location == other_location {
+                        if to_remove == other_location {
                             continue;
                         }
 
                         // If both locations are in different blocks and value
                         // is used in PHI then `validate_path_memory` cannot reason about
                         // it.  TODO: Fix this.
-                        if removed_location.label() != other_location.label() &&
+                        if to_remove.label() != other_location.label() &&
                             phi_used.contains(&pointer) {
-                            continue 'next_location;
+                            continue;
                         }
 
-                        let start = removed_location;
+                        let start = to_remove;
                         let end   = other_location;
 
                         // Path will go from `removed_location` to `other_location`. Make
                         // sure that there is nothing inbetween that can load our pointer.
                         // If there is something, we can't eliminate the store.
                         let result = function.validate_path_memory(&dominators, start, end,
+                                                                   KillTarget::Start,
                                                                    |instruction| {
                             match instruction {
                                 Instruction::Load { ptr, .. } => {
@@ -90,33 +88,24 @@ impl super::Pass for RemoveDeadStoresPass {
                             }
                         });
 
-                        // We can't remove this location, try next one.
-                        if result.is_none() {
-                            continue 'next_location;
+                        if result.is_some() {
+                            // We have found a store to remove. Replace it with a nop.
+                            *function.instruction_mut(to_remove) = Instruction::Nop;
+
+                            // Delete removed store from a list of stores to check.
+                            let index = stores.iter().position(|x| *x == to_remove).unwrap();
+                            stores.remove(index);
+
+                            did_something = true;
+
+                            // Maybe there is another store to remove. Continue looping.
+                            continue 'next;
                         }
                     }
-
-                    // It's actually safe to remove this store.
-                    to_remove = Some(removed_location);
-
-                    break;
                 }
 
-                if let Some(to_remove) = to_remove {
-                    // We have found a store to remove. Replace it with a nop.
-                    *function.instruction_mut(to_remove) = Instruction::Nop;
-
-                    // Delete removed store from a list of stores to check.
-                    let index = stores.iter().position(|x| *x == to_remove).unwrap();
-                    stores.remove(index);
-
-                    did_something = true;
-
-                    // Maybe there is another store to remove. Continue looping.
-                } else {
-                    // We haven't found any store to remove. Exit the loop.
-                    break;
-                }
+                // We haven't found any store to remove. Exit the loop.
+                break;
             }
         }
 
