@@ -336,6 +336,10 @@ impl FunctionData {
             println!();
         }
 
+        // Cleanup unreachable blocks.
+        let reachable = self.reachable_labels();
+        self.blocks.retain(|label, _| reachable.iter().any(|x| x == label));
+
         self.validate_ssa();
     }
 

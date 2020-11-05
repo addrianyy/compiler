@@ -1,5 +1,3 @@
-use std::collections::VecDeque;
-
 use super::{FunctionData, Value, Location, Label, Dominators, Map, Set,
             Instruction, Type, FlowGraph};
 
@@ -479,14 +477,17 @@ impl FunctionData {
         }
 
         let mut visited = Set::default();
-        let mut queue   = VecDeque::new();
+        let mut stack   = Vec::new();
 
-        queue.push_back(from);
+        // Start from `end`.
+        stack.push(from);
+
+        // Always ignore `without`.
         visited.insert(without);
 
         // Check if we can reach `to` starting from `from` ignoring `without` using
-        // BFS traversal.
-        while let Some(label) = queue.pop_front() {
+        // DFS traversal.
+        while let Some(label) = stack.pop() {
             if label == to {
                 return true;
             }
@@ -496,7 +497,7 @@ impl FunctionData {
             }
 
             for target in self.targets(label) {
-                queue.push_back(target);
+                stack.push(target);
             }
         }
 
@@ -506,18 +507,18 @@ impl FunctionData {
     fn escaping_cycle_blocks_internal(&self, start: Label, end: Label) -> Option<Set<Label>> {
         let mut cycle_blocks = Set::default();
         let mut visited      = Set::default();
-        let mut queue        = VecDeque::new();
+        let mut stack        = Vec::new();
 
-        // Start from end.
-        queue.push_back(end);
+        // Start from `end`.
+        stack.push(end);
 
-        // Always ignore start.
+        // Always ignore `start`.
         visited.insert(start);
 
         let mut is_first = true;
         let mut escaped  = false;
 
-        while let Some(label) = queue.pop_front() {
+        while let Some(label) = stack.pop() {
             // If we hit `end` and it's not the first iteration then some block escaped
             // the cycle.
             if label == end && !is_first {
@@ -533,7 +534,7 @@ impl FunctionData {
             cycle_blocks.insert(label);
 
             for target in self.targets(label) {
-                queue.push_back(target);
+                stack.push(target);
             }
         }
 
@@ -646,12 +647,12 @@ impl FunctionData {
             let incoming = self.flow_graph_incoming();
 
             let mut visited = Set::default();
-            let mut queue   = VecDeque::new();
+            let mut stack   = Vec::new();
 
             // Start traversing from end of path and go upwards.
-            queue.push_back(end_label);
+            stack.push(end_label);
             
-            while let Some(label) = queue.pop_front() {
+            while let Some(label) = stack.pop() {
                 if !visited.insert(label) {
                     continue;
                 }
@@ -661,7 +662,7 @@ impl FunctionData {
                     // Because start block dominates end block we must eventually hit start block
                     // during traversal. In this case we shouldn't go up.
                     if predecessor != start_label {
-                        queue.push_back(predecessor);
+                        stack.push(predecessor);
                     }
                 }
             }
