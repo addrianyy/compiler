@@ -223,13 +223,14 @@ impl super::Pass for MemoryToSsaPass {
                         continue;
                     }
 
-                    let body = function.blocks.get_mut(&label).unwrap();
+                    let body  = function.blocks.get_mut(&label).unwrap();
+                    let first = &mut body[0];
 
                     // Get the first instruction which must be our inserted PHI.
-                    if let Instruction::Phi { incoming, .. } = &body[0] {
+                    if let Instruction::Phi { incoming, .. } = first {
                         // If this PHI isn't used then just remove it.
                         if incoming.is_empty() {
-                            body.remove(0);
+                            *first = Instruction::Nop;
                         }
                     } else {
                         panic!("First instruction must be our inserted PHI.");

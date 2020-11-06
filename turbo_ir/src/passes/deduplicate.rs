@@ -68,6 +68,12 @@ impl super::Pass for DeduplicatePass {
                     // Find the best source for deduplication.
                     for &source in sources {
                         let location = Location::new(label, inst_id);
+                        if  location == source {
+                            continue;
+                        }
+
+                        // It's possible that we may source this instruction from
+                        // already deduplicated instruction. This is fine.
 
                         let result = if let Instruction::Load { ptr, .. } = instruction {
                             let load_ptr = *ptr;

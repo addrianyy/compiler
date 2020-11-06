@@ -17,35 +17,46 @@ impl super::Pass for X86ReorderPass {
         // instructions.
 
         for label in function.reachable_labels() {
-            let mut compares = Map::default();
+            let mut compares  = Map::default();
+            let mut skip_next = false;
 
             let body = function.blocks.get_mut(&label).unwrap();
 
-            'next_instruction: for inst_id in 0..body.len() {
-                let instruction = &body[inst_id];
+            'next_instruction: for inst_id in 0.. {
+                // Because size changes dynamically we need to check it manually.
+                if inst_id >= body.len() {
+                    break;
+                }
 
-                match instruction {
+                // If previous iteration inserted instruction this iteration is at position
+                // of already visited instruction. Skip it.
+                if skip_next {
+                    skip_next = false;
+                    continue;
+                }
+
+                match &body[inst_id] {
                     Instruction::IntCompare { dst, .. } => {
-                        // Record information about instruction which can be a 
+                        // Record information about instruction which can be a
                         // candidate for reordering.
                         assert!(compares.insert(*dst, inst_id).is_none(),
                                 "Compares create multiple same values.");
                     }
                     Instruction::Select     { cond, .. } |
                     Instruction::BranchCond { cond, .. } => {
-                        // We found select/bcond and we want to move corresponding icmp
+                        // We found `select`/`bcond` and we want to move corresponding `icmp`
                         // just above it.
                         if let Some(&cmp_id) = compares.get(cond) {
-                            // Check if icmp is actually just above us. In this case
+                            // Check if `icmp` is actually just above us. In this case
                             // we have nothing to do.
                             let inbetween = inst_id - cmp_id - 1;
                             if  inbetween == 0 {
-                                continue;
+                                continue 'next_instruction;
                             }
 
-                            // We want to move icmp down. We need to make sure that
+                            // We want to move `icmp` down. We need to make sure that
                             // no instruction so far read its output value. If that's the
-                            // case, moving icmp would violate SSA properites.
+                            // case, moving `icmp` would violate SSA properites.
                             for instruction in &body[cmp_id + 1..inst_id] {
                                 for value in instruction.read_values() {
                                     if value == *cond {
@@ -54,18 +65,19 @@ impl super::Pass for X86ReorderPass {
                                 }
                             }
 
-                            // We are able to move icmp instruction.
+                            // We are able to move `icmp` instruction.
 
-                            // This icmp instruction is non-movable from now.
+                            // This `icmp` instruction is non-movable from now.
                             compares.remove(cond);
 
-                            // Move icmp instruction down so it's just above us.
+                            // Move `icmp` instruction down so it's just above us.
+                            // We are only updating indices under us.
                             let compare = std::mem::replace(&mut body[cmp_id],
                                                             Instruction::Nop);
-
                             body.insert(inst_id, compare);
-                            body.remove(cmp_id);
 
+                            // Next index will be this instruction so we need to skip it.
+                            skip_next     = true;
                             did_something = true;
                         }
                     }
