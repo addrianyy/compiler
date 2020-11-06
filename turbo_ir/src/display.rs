@@ -134,7 +134,7 @@ impl FunctionData {
         macro_rules! fmt_value {
             ($value: expr) => {
                 if self.undefined_set.contains(&$value) {
-                    String::from("undefined")
+                    formatter.fmt_literal(String::from("undefined"))
                 } else {
                     formatter.fmt_value($value) 
                 }

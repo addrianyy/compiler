@@ -153,6 +153,11 @@ impl FunctionData {
         while let Some(label) = queue.pop_front() {
             let mut no_callback = false;
 
+            if is_first {
+                assert!(label == start, "Current label must be start if this \
+                        is first iteration.");
+            }
+
             if !is_first && !include_start && label == start && !included_start {
                 callback(start);
                 included_start = true;
@@ -185,7 +190,6 @@ impl FunctionData {
         result
     }
 
-    #[allow(unused)]
     pub(super) fn flow_graph_outgoing(&self) -> FlowGraph {
         let mut flow_graph = Map::new_with_capacity(self.blocks.len());
 

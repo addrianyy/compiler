@@ -1,17 +1,17 @@
-mod display;
-mod graph;
-mod dump;
-mod instruction;
 mod instruction_builders;
-mod codegen;
-mod ty;
-mod analysis;
-mod type_inference;
 mod register_allocation;
-mod passes;
+mod type_inference;
+mod instruction;
 mod collections;
 mod phi_updater;
+mod analysis;
+mod codegen;
+mod display;
+mod passes;
+mod graph;
+mod dump;
 mod dot;
+mod ty;
 
 use std::time::Instant;
 use std::io::{self, Write};
@@ -183,6 +183,8 @@ impl FunctionData {
     fn last_instruction(&self, label: Label) -> &Instruction {
         let block = &self.blocks[&label];
 
+        assert!(!block.is_empty(), "Block {} is empty.", label);
+
         &block[block.len() - 1]
     }
 
@@ -214,16 +216,15 @@ impl FunctionData {
     }
 
     fn is_value_special(&self, value: Value) -> bool {
-        self.argument_set.contains(&value) ||
-        self.undefined_set.contains(&value)
+        self.argument_set.contains(&value) || self.undefined_set.contains(&value)
     }
 
-    fn function_prototype(&self, func: Function) -> &FunctionPrototype {
+    fn function_prototype(&self, function: Function) -> &FunctionPrototype {
         self.function_info
             .as_ref()
             .expect("Cannot propagate types without CFI.")
             .info
-            .get(&func)
+            .get(&function)
             .expect("Unknown function is being called.")
     }
 
@@ -294,7 +295,7 @@ impl FunctionData {
         let elapsed = start.elapsed().as_secs_f64();
 
         if OPTIMIZATION_STATS && !passes.is_empty() {
-            println!("Optimized {} in {} iterations and {}s.", self.prototype.name, 
+            println!("Optimized {} in {} iterations and {}s.", self.prototype.name,
                      iterations, elapsed);
 
             statistics.sort_by(|a, b| b.time.partial_cmp(&a.time).unwrap());
@@ -381,34 +382,22 @@ enum FunctionInternal {
 impl FunctionInternal {
     fn unwrap_local(&self) -> &FunctionData {
         match self {
-            FunctionInternal::Local(data) => {
-                data
-            }
-            _ => {
-                panic!("Tried to use extern function.");
-            }
+            FunctionInternal::Local(data) => data,
+            _ => panic!("Tried to use extern function."),
         }
     }
 
     fn unwrap_local_mut(&mut self) -> &mut FunctionData {
         match self {
-            FunctionInternal::Local(data) => {
-                data
-            }
-            _ => {
-                panic!("Tried to use extern function.");
-            }
+            FunctionInternal::Local(data) => data,
+            _ => panic!("Tried to use extern function."),
         }
     }
 
     fn prototype(&self) -> &Rc<FunctionPrototype> {
         match self {
-            FunctionInternal::Local(data) => {
-                &data.prototype
-            }
-            FunctionInternal::Extern { prototype, .. } => {
-                prototype
-            }
+            FunctionInternal::Local(data)              => &data.prototype,
+            FunctionInternal::Extern { prototype, .. } => prototype,
         }
     }
 }

@@ -389,8 +389,8 @@ impl Instruction {
 
     pub fn is_volatile(&self) -> bool {
         match self {
-            Instruction::Return { .. } | Instruction::Call { .. } | 
-            Instruction::Store { .. }  | Instruction::Branch { .. } |
+            Instruction::Return { .. } | Instruction::Call   { .. } | 
+            Instruction::Store  { .. } | Instruction::Branch { .. } |
             Instruction::BranchCond { .. }  => {
                 true
             }

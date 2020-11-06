@@ -148,6 +148,6 @@ impl Module {
     }
 
     pub fn phi(&mut self) -> Value {
-        self.with_output(|dst| Instruction::Phi { dst, incoming: Vec::new() })
+        self.with_output(|dst| Instruction::Phi { dst, incoming: Vec::with_capacity(2) })
     }
 }
