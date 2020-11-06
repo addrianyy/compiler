@@ -12,28 +12,30 @@ impl super::Pass for RemoveAliasesPass {
         let     labels        = function.reachable_labels();
 
         // Some optimization passess will create alias instruction.
-        // If %1 is aliased to %0 that means that %1 has always exact value as %0.
+        // If v1 is aliased to v0 that means that v1 has always exact value as v0.
         // This optimization pass will actually remove alias instruction and change
         // all uses of its return value to its operand.
         //
-        // %2 = alias %1
-        // %3 = add u32 %2, %0
+        // v2 = alias v1
+        // v3 = add u32 v2, v0
         //
         // This will get optimized to:
-        // %3 = add u32 %1, %0
+        // v3 = add u32 v1, v0
 
         loop {
             let mut alias = None;
 
             // Go through every instruction in every block to find alias instruction.
             'alias_search: for &label in &labels {
-                for inst in function.blocks.get_mut(&label).unwrap().iter_mut() {
-                    if let Instruction::Alias { dst, value } = inst {
-                        // Record replacement information for alias.
+                let body = function.blocks.get_mut(&label).unwrap().iter_mut();
+
+                for instruction in body {
+                    if let Instruction::Alias { dst, value } = instruction {
+                        // Record replacement information for this alias.
                         alias = Some((*dst, *value));
 
                         // Remove alias instruction.
-                        *inst = Instruction::Nop;
+                        *instruction = Instruction::Nop;
 
                         // Break out to perform the replacement.
                         break 'alias_search;
@@ -41,19 +43,21 @@ impl super::Pass for RemoveAliasesPass {
                 }
             }
 
-            if let Some(alias) = alias {
-                did_something = true;
-
+            if let Some((old, new)) = alias {
                 for &label in &labels {
-                    for inst in function.blocks.get_mut(&label).unwrap().iter_mut() {
+                    let body = function.blocks.get_mut(&label).unwrap().iter_mut();
+
+                    for instruction in body {
                         // Replace all uses of alias output value to alias operand.
-                        inst.transform_inputs(|reg| {
-                            if *reg == alias.0 {
-                                *reg = alias.1;
+                        instruction.transform_inputs(|value| {
+                            if *value == old {
+                                *value = new;
                             }
                         });
                     }
                 }
+
+                did_something = true;
 
                 // Maybe there are more aliases to handle. Continue to the next iteration.
                 continue;

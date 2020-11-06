@@ -26,7 +26,7 @@ fn rewrite_memory_to_ssa(function: &mut FunctionData, pointer: Value, start_labe
         let mut value = None;
 
         // Go through every instruction to rewrite all load and stores related
-        // to `stackallocs`.
+        // to `stackalloc`.
         for (inst_id, instruction) in body.iter().enumerate() {
             let location = Location::new(label, inst_id);
 
@@ -158,7 +158,7 @@ impl super::Pass for MemoryToSsaPass {
         let flow_incoming = function.flow_graph_incoming();
 
         'main_loop: loop {
-            // Go through every `stackalloc` and try to find best candidate to rewrite
+            // Go through every `stackalloc` and try to find candidate to rewrite
             // it to use SSA values.
             'skip: for (pointer, location) in function.find_stackallocs(Some(1)) {
                 // Make sure that this is actually stackallocs (locations may have shifted).
@@ -174,8 +174,8 @@ impl super::Pass for MemoryToSsaPass {
                 for location in uses {
                     match function.instruction(location) {
                         Instruction::Store { ptr, value } => {
-                            // Make sure that we are actually storing TO `value`, not
-                            // storing `value`.
+                            // Make sure that we are actually storing TO `pointer`, not
+                            // storing `pointer`.
                             if *ptr != pointer || *value == pointer {
                                 continue 'skip;
                             }
@@ -185,10 +185,10 @@ impl super::Pass for MemoryToSsaPass {
                     }
                 }
 
-                // Remove stackalloc.
+                // Remove `stackalloc` instruction.
                 *function.instruction_mut(location) = Instruction::Nop;
 
-                // Get type of value we are rewriting.
+                // Get type of value which we are rewriting.
                 let ty = function.value_type(pointer).strip_ptr().unwrap();
 
                 // Write empty PHI instruction at the beginning of every block except entry one.
@@ -201,15 +201,15 @@ impl super::Pass for MemoryToSsaPass {
                     // Allocate PHI output value with proper type.
                     let output = function.allocate_typed_value(ty);
 
-                    // Insert new empty PHI instruction to the beginning of the block.
+                    // Insert new empty PHI instruction at the beginning of the block.
                     function.blocks.get_mut(&label).unwrap().insert(0, Instruction::Phi {
                         dst:      output,
                         incoming: Vec::new(),
                     });
                 }
 
-                // Because we have inserted PHIs location.index() won't be correct anymore. But
-                // label will be still right.
+                // Because we have inserted PHIs, `location.index()`, won't be correct anymore.
+                // But label will be still right.
                 let stackalloc_label = location.label();
                 let undef            = function.undefined_value(ty);
 

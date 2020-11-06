@@ -14,9 +14,9 @@ impl super::Pass for RemoveDeadCodePass {
 
         // Remove instructions without side effects which results aren't used.
         //
-        // %3 = add u32 %1, %2
+        // v3 = add u32 v1, v2
         //
-        // If %3 isn't used anywhere it will be removed.
+        // If v3 isn't used anywhere it will be removed.
 
         // Go through every instruction every input value to determine which values are used
         // and which are not.
