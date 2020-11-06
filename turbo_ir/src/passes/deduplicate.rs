@@ -11,16 +11,16 @@ impl super::Pass for DeduplicatePass {
         let mut did_something = false;
         let pointer_analysis  = function.analyse_pointers();
 
-        // Find two or more non-volatile instructions with the same operands and try to 
+        // Find two or more non-volatile instructions with the same operands and try to
         // reuse their output values.
         //
-        // %5 = add u32 %1, %2
-        // %6 = add u32 %1, %2
-        // %7 = neg u32 %6
+        // v5 = add u32 v1, v2
+        // v6 = add u32 v1, v2
+        // v7 = neg u32 v6
         //
         // Will get optimized to:
-        // %5 = add u32 %1, %2
-        // %7 = neg %5
+        // v5 = add u32 v1, v2
+        // v7 = neg v5
 
         let mut dedup_list: LargeKeyMap<_, Vec<Location>> = LargeKeyMap::default();
 
@@ -39,12 +39,11 @@ impl super::Pass for DeduplicatePass {
             // Create a unique key that will describe instruction type and its input operands.
             let key = (std::mem::discriminant(instruction), instruction.input_parameters());
 
-            // Get deduplication candidates for this instruction key.
-            let candidates = dedup_list.entry(key)
-                .or_insert_with(Vec::new);
-
-            // Add current instruction as a candidate.
-            candidates.push(location);
+            // Get deduplication candidates for this instruction key and add current instruction
+            // as a candiate.
+            dedup_list.entry(key)
+                .or_insert_with(Vec::new)
+                .push(location);
         });
 
         let dominators = function.dominators();
@@ -63,11 +62,11 @@ impl super::Pass for DeduplicatePass {
                 let mut deduplication = None;
                 let mut best_icount   = None;
 
-                // Get candidates for deduplication. If this instruction
+                // Get sources for deduplication. If this instruction
                 // cannot be deduplicated it will always return None.
-                if let Some(candidates) = dedup_list.get(&key) {
-                    // Find the best candidate for deduplication.
-                    for &candidate in candidates {
+                if let Some(sources) = dedup_list.get(&key) {
+                    // Find the best source for deduplication.
+                    for &source in sources {
                         let location = Location::new(label, inst_id);
 
                         let result = if let Instruction::Load { ptr, .. } = instruction {
@@ -75,18 +74,16 @@ impl super::Pass for DeduplicatePass {
 
                             // If both locations are in different blocks and value
                             // is used in PHI then `validate_path_memory` cannot reason about
-                            // it.  TODO: Fix this.
-                            if candidate.label() != location.label() &&
-                                phi_used.contains(&load_ptr) {
+                            // it. TODO: Fix this.
+                            if source.label() != location.label() && phi_used.contains(&load_ptr) {
                                 continue;
                             }
 
-                            function.validate_path_memory(&dominators, candidate, location,
+                            // Special care needs to be taken if we want to deduplicate
+                            // load. Something inbetween two instructions may have
+                            // modified loaded ptr and output value will be different.
+                            function.validate_path_memory(&dominators, source, location,
                                                           KillTarget::End, |instruction| {
-                                // Special care needs to be taken if we want to deduplicate
-                                // load. Something inbetween two instructions may have
-                                // modified loaded ptr and output value will be different.
-
                                 match instruction {
                                     Instruction::Call  { .. } => {
                                         // If call can affect this pointer we cannot
@@ -98,7 +95,7 @@ impl super::Pass for DeduplicatePass {
                                     }
                                     Instruction::Store { ptr, .. } => {
                                         // Make sure that stored pointer can't
-                                        // alias a pointer loaded by candidate to
+                                        // alias a pointer loaded by source to
                                         // deduplicate.
 
                                         !pointer_analysis.can_alias(load_ptr, *ptr)
@@ -107,11 +104,11 @@ impl super::Pass for DeduplicatePass {
                                 }
                             })
                         } else {
-                            function.validate_path_count(&dominators, candidate, location)
+                            function.validate_path_count(&dominators, source, location)
                         };
 
                         if let Some(instruction_count) = result {
-                            // If it's a valid candidate, check if it's closer then the
+                            // If it's a valid source, check if it's closer then the
                             // best one. If it is then set it as current best.
                             let better = match best_icount {
                                 Some(icount) => instruction_count < icount,
@@ -119,7 +116,7 @@ impl super::Pass for DeduplicatePass {
                             };
 
                             if better {
-                                deduplication = Some(candidate);
+                                deduplication = Some(source);
                                 best_icount   = Some(instruction_count);
                             }
                         }
@@ -127,21 +124,21 @@ impl super::Pass for DeduplicatePass {
                 }
 
                 if let Some(deduplication) = deduplication {
-                    // We have found a valid candidate for deduplication.
+                    // We have found a valid source for deduplication.
 
                     // All values which can be deduplicated must create values.
                     let output = body[inst_id].created_value().unwrap();
-                    let alias  = function.blocks[&deduplication.label()][deduplication.index()]
+                    let source = function.blocks[&deduplication.label()][deduplication.index()]
                         .created_value().unwrap();
 
-                    // Get mutable reference to function body.
+                    // Get mutable reference to block body.
                     let mut_body = function.blocks.get_mut(&label).unwrap();
 
                     // Alias output value of current instruction to output value
                     // of deduplication candidate.
                     mut_body[inst_id] = Instruction::Alias {
                         dst:   output,
-                        value: alias,
+                        value: source,
                     };
 
                     body          = &function.blocks[&label];

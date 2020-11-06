@@ -14,14 +14,14 @@ impl super::Pass for ConstPropagatePass {
 
         // Optimize instructions with constant operands.
         //
-        // %1 = u32 0
-        // %2 = u32 4
-        // %3 = add u32 %1, %2
+        // v1 = u32 0
+        // v2 = u32 4
+        // v3 = add u32 v1, v2
         //
-        // %3 will be optimized to:
-        // %3 = u32 4
+        // v3 will be optimized to:
+        // v3 = u32 4
         //
-        // Dead code elimination then can remove %1 and %2 if they are not used anythere else.
+        // Dead code elimination then can remove v1 and v2 if they are not used anythere else.
         // Conditional branches with constant conditions will be optimized to normal branches.
         // Selects will be optimized to alias selected values.
         //

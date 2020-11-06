@@ -77,7 +77,7 @@ impl super::Pass for BranchToSelectPass {
                     };
 
                     // We cannot optimize this branch if `exit` can be reached from
-                    // somewhere else then `on_true` and `on_false`.
+                    // somewhere else then `on_true` or `on_false`.
                     if flow_incoming[&exit].len() != 2 {
                         continue 'next_label;
                     }
@@ -95,7 +95,7 @@ impl super::Pass for BranchToSelectPass {
                     //  \ /
                     //   D
                     //
-                    // Where A is `label`, B is `on_true`, C is `on_false` and D is `exit.
+                    // Where A is `label`, B is `on_true`, C is `on_false` and D is `exit`.
                     // If B and C don't contain non-reorderable instructions we can optimize
                     // the branch out.
 
@@ -124,22 +124,22 @@ impl super::Pass for BranchToSelectPass {
 
                     // We can change branch to select. We will make A jump directly to D,
                     // copy everything except branches from B and C to D and change
-                    // all phis to selects.
+                    // all PHIs to `select`s.
 
                     {
                         let parent_body = function.blocks.get_mut(&label).unwrap();
                         let body_size   = parent_body.len();
 
                         // Make `label` enter `exit` directly. This will unlink `on_true` and
-                        // `on_false` from CFG.
+                        // `on_false` from the CFG.
                         parent_body[body_size - 1] = Instruction::Branch {
                             target: exit,
                         };
                     }
 
-                    // Move everything (except last branch)  from `on_true` and `on_false` 
+                    // Move everything (except last branch)  from `on_true` and `on_false`
                     // to the beginning of `exit`. We may put things before PHIs but that
-                    // doesn't matter as we will change PHIs to `selects`.
+                    // doesn't matter as we will change PHIs to `select`s.
                     for &move_label in &[on_true, on_false] {
                         // Remove all body of this label as it's unlinked from CFG anyway.
                         let mut body = function.blocks.remove(&move_label).unwrap();

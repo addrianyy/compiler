@@ -775,10 +775,10 @@ impl FunctionData {
         );
 
         // Given a sequence:
-        // %5 = add %4, %1
-        // If it's the last usage of %4 then %5 and %4 should be allocated in the same
+        // v5 = add v4, v1
+        // If it's the last usage of v4 then v5 and v4 should be allocated in the same
         // register. To make this possible we an make abstraction over Values - VirtualRegisters.
-        // In this case %4 and %5 will get assigned the same VirtualRegister.
+        // In this case v4 and v5 will get assigned the same VirtualRegister.
 
         let     interference_registers = virtual_registers;
         let mut virtual_registers      = phi_registers;
@@ -881,49 +881,44 @@ impl FunctionData {
     }
 
     fn rewrite_phis(&mut self) {
-        // Before rewrite.
-        // u32 test(u32 %0) {
         // label_0:
-        //   %1 = u32 0
+        //   v1 = u32 0
         //   branch label_1
         //  
         // label_1:
-        //   %2 = phi u32 [label_0: %1, label_1: %6]
-        //   %3 = phi u32 [label_0: %1, label_1: %4]
-        //   %4 = add u32 %3, %2
-        //   %5 = u32 1
-        //   %6 = add u32 %2, %5
-        //   %7 = u32 6
-        //   %8 = icmp ne u32 %6, %7
-        //   bcond u1 %8, label_1, label_2
+        //   v2 = phi u32 [label_0: v1, label_1: v6]
+        //   v3 = phi u32 [label_0: v1, label_1: v4]
+        //   v4 = add u32 v3, v2
+        //   v5 = u32 1
+        //   v6 = add u32 v2, v5
+        //   v7 = u32 6
+        //   v8 = icmp ne u32 v6, v7
+        //   bcond u1 v8, label_1, label_2
         //  
         // label_2:
-        //   ret u32 %3
-        // }
+        //   ret u32 v3
         //
-        // After rewrite:
-        // u32 test(u32 %0) {
+        // Will get rewritten to:
         // label_0:
-        //   %1 = u32 0
-        //   %9 = alias u32 %1
-        //   %11 = alias u32 %1
+        //   v1 = u32 0
+        //   v9 = alias u32 v1
+        //   v11 = alias u32 v1
         //   branch label_1
         //  
         // label_1:
-        //   %2 = phi u32 [label_0: %9, label_1: %10]
-        //   %3 = phi u32 [label_0: %11, label_1: %12]
-        //   %4 = add u32 %3, %2
-        //   %5 = u32 1
-        //   %6 = add u32 %2, %5
-        //   %7 = u32 6
-        //   %10 = alias u32 %6
-        //   %12 = alias u32 %4
-        //   %8 = icmp ne u32 %6, %7
-        //   bcond u1 %8, label_1, label_2
+        //   v2 = phi u32 [label_0: v9, label_1: v10]
+        //   v3 = phi u32 [label_0: v11, label_1: v12]
+        //   v4 = add u32 v3, v2
+        //   v5 = u32 1
+        //   v6 = add u32 v2, v5
+        //   v7 = u32 6
+        //   v10 = alias u32 v6
+        //   v12 = alias u32 v4
+        //   v8 = icmp ne u32 v6, v7
+        //   bcond u1 v8, label_1, label_2
         //  
         // label_2:
-        //   ret u32 %3
-        // }
+        //   ret u32 v3
 
         let mut phis = Vec::new();
 
