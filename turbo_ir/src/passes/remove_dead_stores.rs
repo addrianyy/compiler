@@ -18,11 +18,11 @@ impl super::Pass for RemoveDeadStoresPass {
         // If there are two stores to the same pointer and nothing inbetween them
         // can observe pointer value then the first store can be removed.
         //
-        // store %4, %5
-        // store %4, %6
+        // store v4, v5
+        // store v4, v6
         //
         // Will get optimized to:
-        // store %4, %6
+        // store v4, v6
 
         // Create a database of all stores in the function.
         function.for_each_instruction(|location, instruction| {
@@ -52,18 +52,17 @@ impl super::Pass for RemoveDeadStoresPass {
                             continue;
                         }
 
-                        // If both locations are in different blocks and value
-                        // is used in PHI then `validate_path_memory` cannot reason about
-                        // it.  TODO: Fix this.
-                        if to_remove.label() != other_location.label() &&
-                            phi_used.contains(&pointer) {
-                            continue;
-                        }
-
                         let start = to_remove;
                         let end   = other_location;
 
-                        // Path will go from `removed_location` to `other_location`. Make
+                        // If both locations are in different blocks and value
+                        // is used in PHI then `validate_path_memory` cannot reason about
+                        // it. TODO: Fix this.
+                        if start.label() != end.label() && phi_used.contains(&pointer) {
+                            continue;
+                        }
+
+                        // Path will go from `to_remove` to `other_location`. Make
                         // sure that there is nothing inbetween that can load our pointer.
                         // If there is something, we can't eliminate the store.
                         let result = function.validate_path_memory(&dominators, start, end,
@@ -110,7 +109,7 @@ impl super::Pass for RemoveDeadStoresPass {
         }
 
         // If there are pointers which are only written to once and never accessed and they come
-        // from safely used stackallocks, single write can be removed.
+        // from safely used `stackallock`s, single write can be removed.
 
         let usage_counts = function.usage_counts();
 
@@ -118,10 +117,12 @@ impl super::Pass for RemoveDeadStoresPass {
             // Check if the only instruction that touches pointer is a store.
             let single_store = stores.len() == 1 && usage_counts[pointer.index()] == 1;
 
-            // Check if single-store pointer comes from safely used safalloc.
+            // Check if single-store pointer comes from safely used `stackalloc`.
             if single_store && pointer_analysis.get_stackalloc(pointer) == Some(true) {
                 // Remove unneeded store.
                 *function.instruction_mut(stores[0]) = Instruction::Nop;
+
+                did_something = true;
             }
         }
 

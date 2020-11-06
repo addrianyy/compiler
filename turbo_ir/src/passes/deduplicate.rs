@@ -47,7 +47,6 @@ impl super::Pass for DeduplicatePass {
         });
 
         let dominators = function.dominators();
-        let phi_used   = function.phi_used_values();
 
         for label in function.reachable_labels() {
             let mut body = &function.blocks[&label];
@@ -65,6 +64,9 @@ impl super::Pass for DeduplicatePass {
                 // Get sources for deduplication. If this instruction
                 // cannot be deduplicated it will always return None.
                 if let Some(sources) = dedup_list.get(&key) {
+                    // Recalculate `phi_used` here because added aliases may have changed it.
+                    let phi_used = function.phi_used_values();
+
                     // Find the best source for deduplication.
                     for &source in sources {
                         let location = Location::new(label, inst_id);
