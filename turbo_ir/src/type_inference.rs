@@ -60,7 +60,17 @@ impl FunctionData {
 
                 on_true
             }
-            Instruction::Phi           { incoming, .. } => get_type!(incoming[0].1),
+            Instruction::Phi { incoming, .. } => {
+                for &(_, incoming_value) in incoming {
+                    // Try to avoid cycle. It is still possible that later cycle may happen.
+                    // TODO: Fix this potential cycle.
+                    if value != incoming_value {
+                        return get_type!(incoming_value);
+                    }
+                }
+
+                panic!("Failed to get type of PHI output value.");
+            }
             Instruction::StackAlloc    { ty, ..       } => ty.ptr(),
             Instruction::Const         { ty, ..       } => *ty,
             Instruction::GetElementPtr { source, ..   } => get_type!(*source),
