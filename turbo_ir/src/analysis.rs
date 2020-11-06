@@ -1,5 +1,5 @@
 use super::{FunctionData, Value, Location, Label, Dominators, Map, Set,
-            Instruction, Type, FlowGraph};
+            Instruction, Type};
 
 pub(super) type Const = u64;
 
@@ -83,7 +83,7 @@ impl PointerAnalysis {
                 !safe
             }
             // We don't have any information about pointers. They may alias.
-            _ => true
+            _ => true,
         }
     }
 }
@@ -153,7 +153,8 @@ impl FunctionData {
                 Instruction::GetElementPtr { source, .. } => self.get_pointer_origin(*source, cx),
 
                 Instruction::Phi { .. } => {
-                    // TODO: Handle self-referential PHIs.
+                    // TODO: Check all incoming values.  But to do that we need to handle
+                    // self-referential PHIs.
                     pointer
                 }
 
@@ -284,6 +285,9 @@ impl FunctionData {
                 // Check if there is any value which strictly depends on control flow.
                 let mut checks = vec![None; predecessors.len()];
 
+                assert!(incoming.len() >= predecessors.len(), "Incoming and \
+                        predecessors don't match.");
+
                 // Get value for every `predecessor` if it exists.
                 for (label, value) in incoming.iter() {
                     if let Some(index) = predecessors.iter().position(|x| x == label) {
@@ -297,6 +301,8 @@ impl FunctionData {
                 for value in checks.into_iter().filter_map(|x| x) {
                     if let Some(lv) = last_value {
                         if lv != value {
+                            // Two different values for different predecessors, this label
+                            // depends on predecessors.
                             return true;
                         }
                     }
@@ -307,56 +313,6 @@ impl FunctionData {
         }
 
         false
-    }
-
-    pub(super) fn can_remove_block(&self, outgoing: &FlowGraph, b1: Label, b2: Label) -> bool {
-        assert!(b1 != b2, "Cannot check two the same blocks.");
-
-        let check_successor = |label: Label| {
-            // Go through every PHI instruction in the block.
-            for instruction in &self.blocks[&label] {
-                if let Instruction::Phi { incoming, .. } = instruction {
-                    // Check if there is any value which strictly depends on control flow.
-
-                    let mut b1_incoming = None;
-                    let mut b2_incoming = None;
-
-                    for (label, value) in incoming {
-                        if *label == b1 {
-                            b1_incoming = Some(*value);
-                        }
-
-                        if *label == b2 {
-                            b2_incoming = Some(*value);
-                        }
-                    }
-
-                    if let (Some(b1), Some(b2)) = (b1_incoming, b2_incoming) {
-                        // If both blocks are in incoming values then they need to
-                        // have the same values to not depend on control flow.
-                        return b1 == b2;
-                    }
-                }
-            }
-
-            true
-        };
-
-        // Check successors of `b1`.
-        for &successor in &outgoing[&b1] {
-            if !check_successor(successor) {
-                return false;
-            }
-        }
-
-        // Check successors of `b2`.
-        for &successor in &outgoing[&b2] {
-            if !check_successor(successor) {
-                return false;
-            }
-        }
-
-        true
     }
 
     pub(super) fn replace_phi_incoming(&mut self, label: Label, old_incoming: Label,
@@ -404,7 +360,7 @@ impl FunctionData {
 
     pub(super) fn block_contains_phi(&self, label: Label) -> bool {
         for instruction in &self.blocks[&label] {
-            if let Instruction::Phi { .. } = instruction {
+            if instruction.is_phi() {
                 return true;
             }
         }
@@ -446,32 +402,6 @@ impl FunctionData {
         consts
     }
 
-    pub(super) fn dominates(&self, dominators: &Dominators,
-                            dominator: Label, target: Label) -> bool {
-        let mut current = Some(target);
-
-        while let Some(idom) = current {
-            if idom == dominator {
-                return true;
-            }
-
-            current = dominators.get(&idom).copied();
-        }
-
-        false
-    }
-
-    pub(super) fn validate_path(&self, dominators: &Dominators,
-                                start: Location, end: Location) -> bool {
-        let start_label = start.label();
-        let end_label   = end.label();
-
-        if start_label == end_label {
-            return start.index() < end.index();
-        }
-
-        self.dominates(dominators, start_label, end_label)
-    }
 
     /// Check if there is any path that goes from `from` to `to` without going through
     /// `without`.
@@ -628,6 +558,7 @@ impl FunctionData {
 
         // When path points are in different blocks then start block must dominate end block.
         if self.dominates(dominators, start_label, end_label) {
+            // If there is a cycle then other blocks may need to be checked.
             let blocks = memory_kill.and_then(|memory_kill| {
                 self.escaping_cycle_blocks(start_label, end_label, memory_kill)
             });
@@ -738,41 +669,31 @@ impl FunctionData {
         self.validate_path_internal(dominators, start, end, None, |_| true)
     }
 
-    pub(super) fn instruction(&self, location: Location) -> &Instruction {
-        &self.blocks[&location.label()][location.index()]
-    }
+    pub(super) fn dominates(&self, dominators: &Dominators,
+                            dominator: Label, target: Label) -> bool {
+        let mut current = Some(target);
 
-    pub(super) fn instruction_mut(&mut self, location: Location) -> &mut Instruction {
-        &mut self.blocks.get_mut(&location.label()).unwrap()[location.index()]
-    }
-
-    pub(super) fn for_each_instruction(&self, mut callback: impl FnMut(Location, &Instruction)) {
-        for label in self.reachable_labels() {
-            for (inst_id, inst) in self.blocks[&label].iter().enumerate() {
-                callback(Location::new(label, inst_id), inst)
+        while let Some(idom) = current {
+            if idom == dominator {
+                return true;
             }
+
+            current = dominators.get(&idom).copied();
         }
+
+        false
     }
 
-    pub(super) fn for_each_instruction_mut(&mut self, 
-                                           mut callback: impl FnMut(Location, &mut Instruction)) {
-        for label in self.reachable_labels() {
-            for (inst_id, inst) in self.blocks.get_mut(&label).unwrap().iter_mut().enumerate() {
-                callback(Location::new(label, inst_id), inst)
-            }
+    pub(super) fn validate_path(&self, dominators: &Dominators,
+                                start: Location, end: Location) -> bool {
+        let start_label = start.label();
+        let end_label   = end.label();
+
+        if start_label == end_label {
+            return start.index() < end.index();
         }
-    }
 
-    pub(super) fn usage_counts(&self) -> Vec<u32> {
-        let mut usage_counts = vec![0; self.value_count()];
-
-        self.for_each_instruction(|_location, instruction| {
-            for value in instruction.read_values() {
-                usage_counts[value.index()] += 1;
-            }
-        });
-
-        usage_counts
+        self.dominates(dominators, start_label, end_label)
     }
 
     pub(super) fn validate_ssa(&self) {
@@ -848,6 +769,43 @@ impl FunctionData {
                 }
             }
         }
+    }
+
+    pub(super) fn instruction(&self, location: Location) -> &Instruction {
+        &self.blocks[&location.label()][location.index()]
+    }
+
+    pub(super) fn instruction_mut(&mut self, location: Location) -> &mut Instruction {
+        &mut self.blocks.get_mut(&location.label()).unwrap()[location.index()]
+    }
+
+    pub(super) fn for_each_instruction(&self, mut callback: impl FnMut(Location, &Instruction)) {
+        for label in self.reachable_labels() {
+            for (inst_id, inst) in self.blocks[&label].iter().enumerate() {
+                callback(Location::new(label, inst_id), inst)
+            }
+        }
+    }
+
+    pub(super) fn for_each_instruction_mut(&mut self,
+                                           mut callback: impl FnMut(Location, &mut Instruction)) {
+        for label in self.reachable_labels() {
+            for (inst_id, inst) in self.blocks.get_mut(&label).unwrap().iter_mut().enumerate() {
+                callback(Location::new(label, inst_id), inst)
+            }
+        }
+    }
+
+    pub(super) fn usage_counts(&self) -> Vec<u32> {
+        let mut usage_counts = vec![0; self.value_count()];
+
+        self.for_each_instruction(|_location, instruction| {
+            for value in instruction.read_values() {
+                usage_counts[value.index()] += 1;
+            }
+        });
+
+        usage_counts
     }
 
     pub(super) fn value_creators(&self) -> Map<Value, Location> {
