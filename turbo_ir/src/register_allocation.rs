@@ -21,12 +21,14 @@ pub struct RegisterAllocation {
 
 impl RegisterAllocation {
     pub fn get(&self, location: Location, value: Value) -> Place {
+        // Arguments place is stored in special map, not in normal allocation map.
         if let Some(place) = self.arguments.get(&value) {
             return *place;
         }
 
-        self.allocation.get(&value).copied()
-            .unwrap_or_else(|| panic!("Cannot resolve {} at location {:?}", value, location))
+        self.allocation.get(&value).copied().unwrap_or_else(|| {
+            panic!("Cannot resolve {} at location {:?}", value, location)
+        })
     }
 }
 
@@ -101,8 +103,8 @@ impl ValueLiveness {
         }
     }
 
-    fn add_usage_internal(&mut self, location: Location,
-                          cx: &LivenessContext, skip_checks: bool) -> bool {
+    fn add_usage_internal(&mut self, location: Location, cx: &LivenessContext,
+                          skip_checks: bool) -> bool {
         // Mark value as used at `location`. This will not make predecessors aware of
         // value liveness.
 
@@ -182,7 +184,7 @@ impl ValueLiveness {
         // equal to block size.
 
         if location.label() == self.creation_block {
-            // Check if `location` is part of hole in creator block.
+            // Check if `location` is part of hole in the creator block.
             if self.holes.contains(&location.index()) {
                 return true;
             }
@@ -204,6 +206,9 @@ impl ValueLiveness {
         true
     }
 }
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+struct VirtualRegister(u32);
 
 #[derive(Clone, Default)]
 struct VirtualRegisters {
@@ -254,9 +259,6 @@ impl VirtualRegisters {
 }
 
 type Entity = VirtualRegister;
-
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-struct VirtualRegister(u32);
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct Color(u32);
@@ -442,7 +444,7 @@ impl InterferenceGraph {
 
     fn color(&self) -> Coloring {
         // Reversed PEO should give better results but I am not sure. Let's try both
-        // to make sure that that's actually the case.\
+        // to make sure that that's actually the case.
         // TODO: Remove this when we are sure about the results.
         let normal   = self.color_internal(false);
         let reversed = self.color_internal(true);
@@ -539,7 +541,7 @@ impl FunctionData {
             value_liveness.add_usage_internal(location, &cx, true);
 
             // If PHI input value is defined in the same block it's used its lifetime
-            // will be normally whole block. This is not true. This value will live
+            // will be set to whole block. This is not good. This value will live
             // from block start to PHI instruction and then from definition to end of block.
             // Make holes in creator block to represent this.
             let creator = creators[&value];
@@ -657,8 +659,6 @@ impl FunctionData {
 
         let mut interference = InterferenceGraph::default();
 
-        // Because of how `liveness` and `coalesce` work there is no special case for PHI here.
-
         for &label in bfs_labels {
             // If there is no register usage state for this block then take one
             // from immediate dominator (as we can only use values originating from it).
@@ -695,7 +695,6 @@ impl FunctionData {
                 // Get a list of all values which aren't used anymore and can be freed.
                 for &value in block_allocs.iter() {
                     if liveness.value_dies(location, value) {
-                        //println!("{} dies at {:?}", value, location);
                         to_free.push(value);
                     }
                 }
@@ -747,7 +746,7 @@ impl FunctionData {
         let mut virtual_registers = VirtualRegisters::default();
 
         // Given a PHI instruction, every input must be mapped to the same
-        // register. This won't create problems because  `rewrite_phis` should make
+        // register. This won't create problems because `rewrite_phis` should make
         // copies of all incoming values for PHIs.
         self.for_each_instruction(|_location, instruction| {
             if let Instruction::Phi { incoming, .. } = instruction {
@@ -778,7 +777,7 @@ impl FunctionData {
         // Given a sequence:
         // %5 = add %4, %1
         // If it's the last usage of %4 then %5 and %4 should be allocated in the same
-        // register. To make this possible we an make abstracion over Values - VirtualRegisters.
+        // register. To make this possible we an make abstraction over Values - VirtualRegisters.
         // In this case %4 and %5 will get assigned the same VirtualRegister.
 
         let     interference_registers = virtual_registers;
@@ -940,14 +939,13 @@ impl FunctionData {
         for (phi_location, phi_dst, incoming) in phis {
             let mut new_incoming = Vec::new();
 
-            // Rewrite all incoming values. Even though we are inserting new instruction
+            // Rewrite all incoming values. Even though we are inserting new instructions
             // it's fine to use the same locations. PHIs must be first instructions in the
             // block so insertions won't affect position of them.
             for (label, value) in incoming {
-                // All incoming values from PHI will be mapped to the same VirtualRegister
-                // (PHI destination included). To avoid interference problems we will copy
-                // every incoming value to another value with `alias` and use these new aliased
-                // values.
+                // All incoming values from PHI will be mapped to the same VirtualRegister.
+                // To avoid interference problems we will copy every incoming value to
+                // another value with `alias` and use these new aliased values.
 
                 // Allocate alias value.
                 let value_type = self.value_type(value);
@@ -1007,10 +1005,7 @@ impl FunctionData {
         }
     }
 
-    pub(super) fn allocate_registers(&mut self, hardware_registers: usize) -> RegisterAllocation {
-        // Rewrite PHIs using aliases.
-        self.rewrite_phis();
-
+    fn constants_and_skips(&self) -> (Map<Value, i64>, Set<Location>) {
         let mut constants = Map::default();
         let mut skips     = Set::default();
 
@@ -1039,6 +1034,8 @@ impl FunctionData {
                     Instruction::ArithmeticBinary { a, op, b, .. } => {
                         let op = *op;
 
+                        // We can easily use this constant if it's second operand of
+                        // most of arithmetic operations.
                         if *a == value || *b != value {
                             continue 'skip;
                         }
@@ -1047,10 +1044,18 @@ impl FunctionData {
                             continue 'skip;
                         }
                     }
-                    Instruction::IntCompare { a, b, .. } => {
+                    Instruction::IntCompare { .. } => {
+                        // x86 backend can change the order and therafore we cannot
+                        // easily determine if constant can be used as imm.
+                        // TODO: Handle this somehow.
+
+                        /*
                         if *a == value || *b != value {
                             continue 'skip;
                         }
+                        */
+
+                        continue 'skip;
                     }
                     _ => continue 'skip,
                 }
@@ -1060,6 +1065,17 @@ impl FunctionData {
             constants.insert(value, constant);
             skips.insert(creators[&value]);
         }
+
+        (constants, skips)
+    }
+
+    pub(super) fn allocate_registers(&mut self, hardware_registers: usize) -> RegisterAllocation {
+        // Rewrite PHIs to use copy (`alias`) instructions. This is done to avoid interference
+        // problems.
+        self.rewrite_phis();
+
+        // Get all constant values and all `iconst` instructions that we can skip.
+        let (constants, skips) = self.constants_and_skips();
 
         let labels     = self.reachable_labels();
         let dominators = self.dominators();
@@ -1073,19 +1089,21 @@ impl FunctionData {
             println!();
         }
 
+        // Map Values to VirtualRegisters.
         let virtual_registers = self.map_virtual_registers(
             &labels,
             &liveness,
             &dominators,
-            &constants
+            &constants,
         );
 
+        // Build interference graph for given Value->VR mapping.
         let interference = self.interference_graph(
             &labels,
             &virtual_registers,
             &liveness,
             &dominators,
-            &constants
+            &constants,
         );
 
         let coloring           = interference.color();
@@ -1095,7 +1113,7 @@ impl FunctionData {
             println!("{}: Colored interference graph with {} colors. HR: {}.",
                      self.prototype.name, coloring.color_list.len(), hardware_registers);
 
-            // Dump colored interference graph to file.
+            // Dump colored interference graph to the file.
             self.dump_interference_graph(&interference, &coloring,
                                          &virtual_registers.registers);
         }
@@ -1137,6 +1155,7 @@ impl FunctionData {
         let mut color_to_place = Map::default();
         let mut used_registers = Set::default();
 
+        // Map colors to places.
         for (index, color) in colors.into_iter().enumerate() {
             let place = if index < hardware_registers {
                 used_registers.insert(index);
@@ -1186,10 +1205,9 @@ impl FunctionData {
             arguments.insert(*argument, Place::Argument(index));
         }
         
-        let usage_counts = self.usage_counts();
-
         // Fill in places of undefined values to whatever place is available.
         for &value in self.undefined_set.iter() {
+            // Skip unused values.
             if usage_counts[value.index()] == 0 {
                 continue;
             }

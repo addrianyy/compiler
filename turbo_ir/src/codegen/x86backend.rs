@@ -275,7 +275,7 @@ impl X86Backend {
 
     fn generate_from_patterns(&mut self, cx: &X86CodegenContext, location: Location,
                               instructions: &[Instruction],
-                              next_label:   Option<super::super::Label>) -> usize {
+                              next_label:   Option<crate::Label>) -> usize {
         let func = cx.func;
         let asm  = &mut self.asm;
 
