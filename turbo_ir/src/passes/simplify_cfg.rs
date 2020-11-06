@@ -51,13 +51,6 @@ impl super::Pass for SimplifyCFGPass {
                     continue;
                 }
 
-                /*
-                // Check if PHI instruction depends on the control flow.
-                if !function.can_remove_block(&outgoing, target, dominator) {
-                    continue;
-                }
-                */
-
                 // All successors PHI nodes should now refer to `dominator` instead of `target`.
                 for successor in &outgoing[&target] {
                     function.replace_phi_incoming(*successor, target, dominator);
