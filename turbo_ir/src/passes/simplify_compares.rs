@@ -13,24 +13,24 @@ impl super::Pass for SimplifyComparesPass {
 
         let mut replacements = Vec::new();
 
-        // Code generators will often emit sequence of icmp, select, icmp.
-        // This pass will try to detect it and optimize it to a single icmp if possible.
+        // Code generators will often emit sequence of `icmp`, `select`, `icmp`.
+        // This pass will try to detect it and optimize it to a single `icmp` if possible.
         //
-        // %2 = u32 0
-        // %4 = icmp eq u32 %0, %2
-        // %5 = u8 0
-        // %6 = u8 1
-        // %7 = select u1 %4, u8 %6, %5
-        // %9 = icmp ne u8 %7, %5
-        // bcond u1 %9, label_2, label_3
+        // v2 = u32 0
+        // v4 = icmp eq u32 v0, v2
+        // v5 = u8 0
+        // v6 = u8 1
+        // v7 = select u1 v4, u8 v6, v5
+        // v9 = icmp ne u8 v7, v5
+        // bcond u1 v9, label_2, label_3
         //
         // Gets optimized to:
-        // %2 = u32 0
-        // %4 = icmp eq u32 %0, %2
-        // bcond u1 %4, label_2, label_3
+        // v2 = u32 0
+        // v4 = icmp eq u32 v0, v2
+        // bcond u1 v4, label_2, label_3
 
         function.for_each_instruction(|location, instruction| {
-            // Try to match on SECOND icmp of icmp, select, icmp sequence.
+            // Try to match on SECOND `icmp` of `icmp`, `select`, `icmp` sequence.
             if let Instruction::IntCompare { dst, a, pred, b } = instruction {
                 let mut a = a;
                 let mut b = b;
@@ -40,8 +40,8 @@ impl super::Pass for SimplifyComparesPass {
                 // order doesn't matter.
 
                 for _ in 0..2 {
-                    // Left side of icmp must be a value created by select instruction.
-                    // Right side of icmp must be a known constant.
+                    // Left side of `icmp` must be a value created by `select` instruction.
+                    // Right side of `icmp` must be a known constant.
                     let aa = creators.get(&a).map(|location| function.instruction(*location));
                     let bb = consts.get(&b);
 
@@ -51,7 +51,7 @@ impl super::Pass for SimplifyComparesPass {
                         let new_on_true;
                         let new_on_false;
 
-                        // Select operands must be known constants too.
+                        // `select` operands must be known constants too.
                         if let (Some((_, on_true)), Some((_, on_false))) = (consts.get(on_true),
                                                                             consts.get(on_false)) {
                             new_on_true  = on_true;
@@ -63,18 +63,19 @@ impl super::Pass for SimplifyComparesPass {
                         let on_true  = new_on_true;
                         let on_false = new_on_false;
 
-                        // If select true value is the same as false value then select instruction
-                        // can be optimized out. Other optimization pass will take care of it.
+                        // If select true value is the same as false value then `select`
+                        // instruction can be optimized out. Other optimization pass
+                        // will take care of it.
                         if on_true == on_false {
                             return;
                         }
 
-                        // Get the corelation betwen first icmp and second icmp.
-                        // There can be 3 cases.
-                        // 1. second icmp result ==  first icmp result.
-                        // 2. second icmp result == !first icmp result.
-                        // 3. icmps are not corelated (in this case we exit).
-                        // For simplicity we only handle EQ and NE predicates in the second icmp.
+                        // Get the corelation betwen first `icmp` and second `icmp`.
+                        // There can be 3 cases:
+                        // 1. second `icmp` result ==  first `icmp` result.
+                        // 2. second `icmp` result == !first `icmp` result.
+                        // 3. `icmps` are not corelated (in this case we exit).
+                        // For simplicity we only handle EQ and NE predicates in the second `icmp`.
 
                         let result = match *pred {
                             IntPredicate::Equal => {
@@ -98,22 +99,22 @@ impl super::Pass for SimplifyComparesPass {
                             _ => return,
                         };
 
-                        // We know that both icmps are corelated with each other.
+                        // We know that both `icmps` are corelated with each other.
 
                         let mut new_instruction = None;
 
                         if let Some(inverted) = result {
                             if !inverted {
-                                // If second icmp result == first icmp result than
-                                // we will just alias second icmp result to first one's result.
+                                // If second `icmp` result == first `icmp` result than
+                                // we will just alias second `icmp` result to first one's result.
 
                                 new_instruction = Some(Instruction::Alias { 
                                     dst:   *dst,
                                     value: *cond,
                                 });
                             } else {
-                                // If icmp results are inverted than we want to replace second 
-                                // icmp with inverted copy of the first one.
+                                // If `icmp` results are inverted than we want to replace second
+                                // `icmp` with inverted copy of the first one.
                                 let parent_compare = creators.get(&cond).map(|location| {
                                     function.instruction(*location)
                                 });
@@ -124,7 +125,7 @@ impl super::Pass for SimplifyComparesPass {
                                     let mut a = a;
                                     let mut b = b;
 
-                                    // Invert icmp instruction.
+                                    // Invert `icmp` instruction.
                                     let (new_pred, needs_swap) = match pred {
                                         IntPredicate::Equal    => (IntPredicate::NotEqual, false),
                                         IntPredicate::NotEqual => (IntPredicate::Equal,    false),
@@ -145,7 +146,8 @@ impl super::Pass for SimplifyComparesPass {
                                         std::mem::swap(&mut a, &mut b);
                                     }
 
-                                    // Change this instruction to inverted version of first icmp.
+                                    // Change this instruction to inverted version of the
+                                    // first `icmp`.
                                     new_instruction = Some(Instruction::IntCompare {
                                         dst: *dst,
                                         a,
