@@ -1,34 +1,27 @@
-mod remove_ineffective_operations;
-mod simplify_expressions;
-mod remove_known_loads;
-mod remove_dead_stores;
-mod simplify_compares;
-mod remove_dead_code;
-mod const_propagate;
-mod remove_aliases;
-mod memory_to_ssa;
-mod simplify_cfg;
-mod deduplicate;
-mod remove_nops;
-mod x86reorder;
-mod reorder;
-
 pub(super) trait Pass {
     fn run_on_function(&self, function: &mut crate::FunctionData) -> bool;
     fn name(&self) -> &str;
 }
 
-pub(super) use remove_ineffective_operations::RemoveIneffectiveOperationsPass;
-pub(super) use simplify_expressions::SimplifyExpressionsPass;
-pub(super) use remove_dead_stores::RemoveDeadStoresPass;
-pub(super) use remove_known_loads::RemoveKnownLoadsPass;
-pub(super) use simplify_compares::SimplifyComparesPass;
-pub(super) use remove_dead_code::RemoveDeadCodePass;
-pub(super) use const_propagate::ConstPropagatePass;
-pub(super) use remove_aliases::RemoveAliasesPass;
-pub(super) use memory_to_ssa::MemoryToSsaPass;
-pub(super) use simplify_cfg::SimplifyCFGPass;
-pub(super) use deduplicate::DeduplicatePass;
-pub(super) use remove_nops::RemoveNopsPass;
-pub(super) use x86reorder::X86ReorderPass;
-pub(super) use reorder::ReorderPass;
+macro_rules! pass {
+    ($module: ident, $pass: ident) => {
+        mod $module;
+        pub(super) use $module::$pass;
+    }
+}
+
+pass!(remove_ineffective_operations, RemoveIneffectiveOperationsPass);
+pass!(simplify_expressions, SimplifyExpressionsPass);
+pass!(remove_dead_stores, RemoveDeadStoresPass);
+pass!(remove_known_loads, RemoveKnownLoadsPass);
+pass!(simplify_compares, SimplifyComparesPass);
+pass!(branch_to_select, BranchToSelectPass);
+pass!(remove_dead_code, RemoveDeadCodePass);
+pass!(const_propagate, ConstPropagatePass);
+pass!(remove_aliases, RemoveAliasesPass);
+pass!(memory_to_ssa, MemoryToSsaPass);
+pass!(simplify_cfg, SimplifyCFGPass);
+pass!(deduplicate, DeduplicatePass);
+pass!(remove_nops, RemoveNopsPass);
+pass!(x86reorder, X86ReorderPass);
+pass!(reorder, ReorderPass);

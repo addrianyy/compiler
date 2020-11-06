@@ -41,18 +41,19 @@ i32 abc(i32 a) {
     return 1;
 }
 
-i32 xd(i32 a) {
-    return (~(~a & 0xffffffff)) * (1 + (a ^ a));
-}
 
 i32 turbo(i32 a) {
     if (a == 4) {
         a = 555;
     } else {
-        a = 555;
+        a = 823;
     }
 
     return a;
+}
+
+i32 xd(i32 a) {
+    return (~(~a & 0xffffffff)) * (1 + (a ^ a));
 }
 
 i32 sum(i32 count) {

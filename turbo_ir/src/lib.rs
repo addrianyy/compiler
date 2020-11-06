@@ -253,6 +253,7 @@ impl FunctionData {
             &passes::DeduplicatePass,
             &passes::RemoveKnownLoadsPass,
             &passes::RemoveDeadStoresPass,
+            &passes::BranchToSelectPass,
             &passes::RemoveAliasesPass,
             &passes::RemoveNopsPass,
 
