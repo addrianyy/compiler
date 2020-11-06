@@ -24,7 +24,7 @@ impl super::Pass for SimplifyExpressionsPass {
 
         // Chain commulative operations with at least two constant operands.
         // (a + 1) + 1
-        // 
+        //
         // Gets optimized to:
         // a + 2
         //
@@ -35,7 +35,7 @@ impl super::Pass for SimplifyExpressionsPass {
             ($chain: expr, $type: ty) => {{
                 let chain: &Chain = $chain;
 
-                // Current partial value of right hand side expression. There must be 
+                // Current partial value of right hand side expression. There must be
                 // at least one constant there.
                 let mut current = chain.consts[0] as $type;
 

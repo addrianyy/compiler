@@ -18,15 +18,15 @@ impl super::Pass for BranchToSelectPass {
         //   v2 = u32 4
         //   v4 = icmp eq u32 v0, v2
         //   bcond u1 v4, block_2, block_3
-        // 
+        //
         // block_2:
         //   v10 = u32 555
         //   branch block_1
-        // 
+        //
         // block_3:
         //   v11 = u32 823
         //   branch block_1
-        // 
+        //
         // block_1:
         //   v15 = phi u32 [block_3: v11, block_2: v10]
         //   ret u32 v15

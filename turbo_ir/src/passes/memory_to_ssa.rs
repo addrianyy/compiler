@@ -123,7 +123,7 @@ impl super::Pass for MemoryToSsaPass {
         // entry:
         //   v1 = stackalloc u32 1
         //   bcond u1 v0, block_0, block_1
-        // 
+        //
         // block_0:
         //   v2 = u32 1
         //   store u32* v1, u32 v2

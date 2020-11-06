@@ -99,7 +99,7 @@ impl Variables {
             .unwrap_or_else(|| panic!("Unknown variable {} referenced.", name))
             .clone()
     }
-    
+
     fn clear(&mut self) {
         self.map.clear()
     }
@@ -109,7 +109,7 @@ impl Variables {
 
         self.scope[last].push(name.to_owned());
 
-        assert!(self.map.insert(name.to_owned(), value).is_none(), 
+        assert!(self.map.insert(name.to_owned(), value).is_none(),
                 "Mutliple variables with the same name.");
     }
 
@@ -374,7 +374,7 @@ impl Compiler {
                 let orig_ty   = value.ty;
                 let target_ty = *ty;
                 let extracted = value.extract(&mut self.ir);
-                
+
                 let integer   = !orig_ty.is_pointer() && !target_ty.is_pointer();
                 let same_size = orig_ty.size() == target_ty.size();
 
@@ -505,7 +505,7 @@ impl Compiler {
                 });
 
                 self.codegen_body(body, return_ty, depth + 1);
-                
+
                 self.loops.pop();
 
                 if !self.ir.is_terminated(None) {
@@ -526,7 +526,7 @@ impl Compiler {
                     self.ir.branch_cond(condition, on_true, on_false);
 
                     self.ir.switch_label(on_true);
-                    
+
                     self.codegen_body(body, return_ty, depth + 1);
 
                     if !self.ir.is_terminated(None) {
@@ -739,7 +739,7 @@ impl Compiler {
 
                     compiler.variables.insert(arg_name, variable);
                 }
-                
+
                 compiler.codegen_body(&body, return_ty, 0);
 
                 compiler.variables.exit_scope();

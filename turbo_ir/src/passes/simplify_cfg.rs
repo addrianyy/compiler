@@ -9,7 +9,7 @@ impl super::Pass for SimplifyCFGPass {
 
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let mut did_something = false;
-        
+
         // Find blocks which are reachable only from one block by non-conditional branch
         // instruction and merge them with their parent.
         //
@@ -86,14 +86,14 @@ impl super::Pass for SimplifyCFGPass {
         //
         // label_2:
         //  ...
-        // 
+        //
         // label_3:
         //  ...
         //
         // Will get optimized to:
         // label_0:
         //  bcond v0, label_3, label_2
-        // 
+        //
         // ......
 
         let mut branch_labels = Map::default();

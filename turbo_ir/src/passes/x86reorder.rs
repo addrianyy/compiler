@@ -12,7 +12,7 @@ impl super::Pass for X86ReorderPass {
 
         // Try to reorder instructions to create patterns which are matched by x86 backend
         // to create more efficient machine code.
-        // 
+        //
         // For now this optimization pass will only try to move icmps just above select/bcond
         // instructions.
 

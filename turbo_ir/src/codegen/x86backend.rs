@@ -167,7 +167,7 @@ impl X86Backend {
             // Account for pushed RBP and return address.
             let offset = 16 + index * 8;
 
-            place_to_operand.insert(Place::Argument(index), 
+            place_to_operand.insert(Place::Argument(index),
                                     Mem(Some(Rbp), None, offset as i64));
         }
 
@@ -304,7 +304,7 @@ impl X86Backend {
 
                 let ty   = func.value_type(*a);
                 let size = type_to_operand_size(ty, true);
-                
+
                 let mut pred = *pred;
                 let mut a    = resolver.resolve(*a);
                 let mut b    = resolver.resolve(*b);
@@ -349,7 +349,7 @@ impl X86Backend {
                 });
 
                 // Get jcc destination - it's the label we don't fallthrough to.
-                // If there is no fallthrough then jcc will point to true label and 
+                // If there is no fallthrough then jcc will point to true label and
                 // we will have to additonally jump to the other (false) label.
                 let (target_label, other_label) = fallthrough.map(|fallthrough| {
                     match fallthrough {
@@ -398,8 +398,8 @@ impl X86Backend {
                 let on_false = next_resolver.resolve(*on_false);
                 let dst      = next_resolver.resolve(*sel_dst);
 
-                // RCX will contain false value by default. cmovcc will change it 
-                // to true value if condition is true. Do not use `dst` here, you 
+                // RCX will contain false value by default. cmovcc will change it
+                // to true value if condition is true. Do not use `dst` here, you
                 // may overwrite one of inputs.
                 asm.with_size(sel_size, |asm| asm.mov(&[Reg(Rcx), on_false]));
 
@@ -490,7 +490,7 @@ impl X86Backend {
                     Instruction::Phi { dst, incoming } => {
                         // All input values are mapped to the same register. Output
                         // can be in different register, we need to check that.
-                        
+
                         let ty    = func.value_type(*dst);
                         let size  = type_to_operand_size(ty, true);
                         let dst   = r.resolve(*dst);
@@ -550,7 +550,7 @@ impl X86Backend {
 
                         asm.with_size(size, |asm| {
                             let operands = if one_operand {
-                                // If destination is the same as operand then we can 
+                                // If destination is the same as operand then we can
                                 // modify value in place.
                                 [value]
                             } else {
@@ -597,7 +597,7 @@ impl X86Backend {
                                 BinaryOp::Shr | BinaryOp::Shl | BinaryOp::Sar => {
                                     OpType::Shift
                                 }
-                                BinaryOp::ModU | BinaryOp::ModS | BinaryOp::DivU | 
+                                BinaryOp::ModU | BinaryOp::ModS | BinaryOp::DivU |
                                 BinaryOp::DivS => {
                                     OpType::Divmod
                                 }
@@ -630,7 +630,7 @@ impl X86Backend {
                                     }
                                 }
                                 OpType::Divmod => {
-                                    // First operand needs to be in the RAX, 
+                                    // First operand needs to be in the RAX,
                                     // second can be anywhere. Result register
                                     // is RAX or RDX depending on operation. It will be set later.
                                     asm.mov(&[Reg(Rax), a]);
@@ -859,7 +859,7 @@ impl X86Backend {
                         } else {
                             dst
                         };
-                        
+
                         // Get stackalloc buffer address on the stack.
                         asm.lea(&[operand, Mem(Some(Rbp), None, offset)]);
 
@@ -1008,7 +1008,7 @@ impl X86Backend {
                                 IntPredicate::GteU     => asm.setae(operands),
                             }
 
-                            // Move condtion result from intermediate register 
+                            // Move condtion result from intermediate register
                             // to destination place.
                             asm.mov(&[dst, Reg(Rcx)]);
                         });
@@ -1022,8 +1022,8 @@ impl X86Backend {
                         let on_true  = r.resolve(*on_true);
                         let cond     = r.resolve(*cond);
 
-                        // RAX will contain false value by default. cmovcc will change it 
-                        // to true value if condition is true. Do not use `dst` here, you 
+                        // RAX will contain false value by default. cmovcc will change it
+                        // to true value if condition is true. Do not use `dst` here, you
                         // may overwrite one of inputs.
                         asm.with_size(size, |asm| {
                             asm.mov(&[Reg(Rax), on_false]);
@@ -1075,7 +1075,7 @@ impl X86Backend {
 
                         // Allocate space for arguments.
                         asm.sub(&[Reg(Rsp), Imm(arguments_stack_size as i64)]);
-                        
+
                         // Copy arguments to correct place.
                         for (index, arg) in args.iter().enumerate() {
                             let arg = r.resolve(*arg);
@@ -1132,7 +1132,7 @@ impl X86Backend {
                     Instruction::Alias { dst, value } => {
                         // Copy value from one register to another. This will be
                         // created by register allocator to help handling PHIs.
-  
+
                         let ty   = func.value_type(*dst);
                         let size = type_to_operand_size(ty, true);
 

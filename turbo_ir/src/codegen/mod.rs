@@ -37,7 +37,7 @@ impl MachineCode {
 
     #[allow(clippy::missing_safety_doc)]
     pub unsafe fn function_ptr<T: Copy>(&self, function: Function) -> T {
-        assert_eq!(std::mem::size_of::<T>(), std::mem::size_of::<usize>(), 
+        assert_eq!(std::mem::size_of::<T>(), std::mem::size_of::<usize>(),
                    "Function pointer must have pointer size.");
 
         let ptr = self.function_buffer(function).as_ptr();

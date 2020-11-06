@@ -231,7 +231,7 @@ impl VirtualRegisters {
         self.value_to_register.insert(value, register);
         self.registers.get_mut(&register).unwrap().insert(value);
     }
-    
+
     fn value_register(&self, value: Value) -> VirtualRegister {
         self.value_to_register[&value]
     }
@@ -279,7 +279,7 @@ impl Coloring {
                 return color;
             }
         }
-        
+
         // Out of colors. Create a new one.
         let color = self.next_color;
 
@@ -585,7 +585,7 @@ impl FunctionData {
 
         // If there are too many VRs we need to fall back to numbering instead of coloring.
         let can_use_colors = coloring.color_list.len() <= COLOR_LIST.len();
-        
+
         for &vertex in &interference.vertices {
             let color  = coloring.vertex_color[&vertex];
             let values = &register_to_values[&vertex];
@@ -618,7 +618,7 @@ impl FunctionData {
             };
 
             // Output dot vertex.
-            let def = format!("{} [style = filled; fillcolor = \"{}\"; label = \"{}\"];\n", 
+            let def = format!("{} [style = filled; fillcolor = \"{}\"; label = \"{}\"];\n",
                               vertex.0, color, label);
 
             dotgraph.push_str(&def);
@@ -884,7 +884,7 @@ impl FunctionData {
         // label_0:
         //   v1 = u32 0
         //   branch label_1
-        //  
+        //
         // label_1:
         //   v2 = phi u32 [label_0: v1, label_1: v6]
         //   v3 = phi u32 [label_0: v1, label_1: v4]
@@ -894,7 +894,7 @@ impl FunctionData {
         //   v7 = u32 6
         //   v8 = icmp ne u32 v6, v7
         //   bcond u1 v8, label_1, label_2
-        //  
+        //
         // label_2:
         //   ret u32 v3
         //
@@ -904,7 +904,7 @@ impl FunctionData {
         //   v9 = alias u32 v1
         //   v11 = alias u32 v1
         //   branch label_1
-        //  
+        //
         // label_1:
         //   v2 = phi u32 [label_0: v9, label_1: v10]
         //   v3 = phi u32 [label_0: v11, label_1: v12]
@@ -916,7 +916,7 @@ impl FunctionData {
         //   v12 = alias u32 v4
         //   v8 = icmp ne u32 v6, v7
         //   bcond u1 v8, label_1, label_2
-        //  
+        //
         // label_2:
         //   ret u32 v3
 
@@ -945,7 +945,7 @@ impl FunctionData {
                 // Allocate alias value.
                 let value_type = self.value_type(value);
                 let alias      = self.allocate_typed_value(value_type);
-                
+
                 let body = self.blocks.get_mut(&label).unwrap();
 
                 // Calculate where to insert new alias instruction.
@@ -1199,7 +1199,7 @@ impl FunctionData {
         for (index, argument) in self.argument_values.iter().enumerate() {
             arguments.insert(*argument, Place::Argument(index));
         }
-        
+
         // Fill in places of undefined values to whatever place is available.
         for &value in self.undefined_set.iter() {
             // Skip unused values.

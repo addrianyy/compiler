@@ -35,7 +35,7 @@ impl super::Pass for SimplifyComparesPass {
                 let mut a = a;
                 let mut b = b;
 
-                // Try this optimization two times. First time with operands (A, B), 
+                // Try this optimization two times. First time with operands (A, B),
                 // second time with operands (B, A). Because we only do this on EQ and NE,
                 // order doesn't matter.
 
@@ -108,7 +108,7 @@ impl super::Pass for SimplifyComparesPass {
                                 // If second `icmp` result == first `icmp` result than
                                 // we will just alias second `icmp` result to first one's result.
 
-                                new_instruction = Some(Instruction::Alias { 
+                                new_instruction = Some(Instruction::Alias {
                                     dst:   *dst,
                                     value: *cond,
                                 });

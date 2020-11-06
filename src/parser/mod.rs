@@ -128,7 +128,7 @@ impl Parser {
                 })
             }
             Token::Literal(..) => {
-                panic!("Literal {:?} is not supported. Only number literals are supported.", 
+                panic!("Literal {:?} is not supported. Only number literals are supported.",
                        current);
             }
             Token::Identifier(ident) => {
@@ -225,7 +225,7 @@ impl Parser {
         let expr = self.parse_primary_expression();
 
         TypedExpr::new(Expr::Unary {
-            op, 
+            op,
             value: Box::new(expr),
         })
     }

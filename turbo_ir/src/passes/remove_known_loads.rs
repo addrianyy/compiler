@@ -14,7 +14,7 @@ impl super::Pass for RemoveKnownLoadsPass {
         // If a pointer is stored to and loaded afterwards, we will try to avoid
         // load and just return value recently stored. We need to make sure that
         // inbetween store and load there are no instructions that could affect loaded value.
-        // 
+        //
         // store v1, v0
         // v2 = load v1
         // v3 = neg v2

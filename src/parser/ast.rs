@@ -110,7 +110,7 @@ pub enum Expr {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Stmt {
     Assign {
-        variable: TypedExpr, 
+        variable: TypedExpr,
         value:    TypedExpr,
     },
     Declare {

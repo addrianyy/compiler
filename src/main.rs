@@ -30,16 +30,16 @@ fn main() {
     }
 
     let mcode = compiled.ir.generate_machine_code();
-    
+
     for (prototype, function) in &compiled.functions {
         let buffer = mcode.function_buffer(*function);
         let name   = &prototype.name;
 
         std::fs::write(format!("mcode/{}.bin", name), buffer).unwrap();
-        
+
         if name == "main" {
             let mut buffer = [1u8, 2u8, 3u8, 0u8];
-            
+
             type Func = extern "win64" fn(*mut u8) -> i32;
 
             let result = unsafe {
@@ -69,7 +69,7 @@ fn main() {
     let mut ir = ir::Module::new();
 
     let func = ir.create_function("test", None, vec![ir::Type::U32.ptr()]);
-        
+
     ir.switch_function(func);
     let arg = ir.argument(0);
 
@@ -114,7 +114,7 @@ fn main() {
     let mut ir = ir::Module::new();
 
     let func = ir.create_function("test", Some(ir::Type::U32), vec![ir::Type::U32]);
-        
+
     ir.switch_function(func);
     */
 
@@ -243,7 +243,7 @@ fn main() {
     use turbo_ir as ir;
     let mut ir = ir::Module::new();
     let func = ir.create_function("test", Some(ir::Type::U32), vec![ir::Type::U32]);
-        
+
     ir.switch_function(func);
 
     let entry  = ir.entry_label();
@@ -326,7 +326,7 @@ fn main() {
 
     let mut ir = ir::Module::new();
 
-    let func = ir.create_function("test", Some(ir::Type::U32), vec![ir::Type::U32, 
+    let func = ir.create_function("test", Some(ir::Type::U32), vec![ir::Type::U32,
                                                                     ir::Type::U32.ptr()]);
 
     ir.switch_function(func);
@@ -364,7 +364,7 @@ fn main() {
 
     //let cond = it.compare_ne(arg0, x);
 
-    
+
 
     /*
     use turbo_ir as ir;

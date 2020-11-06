@@ -11,7 +11,7 @@ fn allocate_rwx(size: usize) -> *mut u8  {
 
     let prot = PAGE_EXECUTE_READWRITE;
 
-    let result  = unsafe { 
+    let result  = unsafe {
         VirtualAlloc(std::ptr::null_mut(), size, MEM_COMMIT_RESERVE, prot)
     };
 
@@ -92,7 +92,7 @@ impl ExecutableMemory {
 
     pub fn from_buffer(buffer: &[u8]) -> Self {
         let mut memory = Self::new(buffer.len());
-        
+
         memory.copy_from_slice(buffer);
 
         memory

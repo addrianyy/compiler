@@ -134,7 +134,7 @@ impl FunctionData {
         self.next_label = Label(label.0.checked_add(1)
                                 .expect("Label IDs overflowed."));
 
-        assert!(self.blocks.insert(label, Vec::new()).is_none(), 
+        assert!(self.blocks.insert(label, Vec::new()).is_none(),
                 "Multiple labels with the same ID ({}).", label.0);
 
         label
@@ -448,7 +448,7 @@ impl Module {
     }
 
     #[track_caller]
-    unsafe fn create_function_internal(&mut self, name: &str, return_type: Option<Type>, 
+    unsafe fn create_function_internal(&mut self, name: &str, return_type: Option<Type>,
                                        arguments: Vec<Type>, address: Option<usize>) -> Function {
         assert!(!self.finalized, "Cannot create functions after finalization.");
 
@@ -475,13 +475,13 @@ impl Module {
         self.next_function = Function(function.0.checked_add(1)
                                       .expect("Function IDs overflowed."));
 
-        assert!(self.functions.insert(function, internal).is_none(), 
+        assert!(self.functions.insert(function, internal).is_none(),
                 "Multiple functions with the same ID ({}).", function.0);
 
         function
     }
 
-    pub fn create_function(&mut self, name: &str, return_type: Option<Type>, 
+    pub fn create_function(&mut self, name: &str, return_type: Option<Type>,
                            arguments: Vec<Type>) -> Function {
         unsafe {
             self.create_function_internal(name, return_type, arguments, None)
@@ -537,7 +537,7 @@ impl Module {
         let mut externs       = Map::default();
 
         for (function, internal) in &self.functions {
-            assert!(function_info.insert(*function, internal.prototype().clone()).is_none(), 
+            assert!(function_info.insert(*function, internal.prototype().clone()).is_none(),
                     "Multiple functions with the same ID.");
 
             if let FunctionInternal::Extern { address, .. } = internal {

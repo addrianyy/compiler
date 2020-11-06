@@ -44,12 +44,12 @@ pub enum Cast {
 #[derive(Debug)]
 pub enum Instruction {
     ArithmeticUnary {
-        dst:   Value, 
+        dst:   Value,
         op:    UnaryOp,
         value: Value,
     },
     ArithmeticBinary {
-        dst: Value, 
+        dst: Value,
         a:   Value,
         op:  BinaryOp,
         b:   Value
@@ -389,7 +389,7 @@ impl Instruction {
 
     pub fn is_volatile(&self) -> bool {
         match self {
-            Instruction::Return { .. } | Instruction::Call   { .. } | 
+            Instruction::Return { .. } | Instruction::Call   { .. } |
             Instruction::Store  { .. } | Instruction::Branch { .. } |
             Instruction::BranchCond { .. }  => {
                 true

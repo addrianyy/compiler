@@ -125,7 +125,7 @@ impl FunctionData {
         // Make sure that `pointer` is actually a pointer.
         assert!(self.value_type(pointer).is_pointer(),
                 "Tried to get origin of non-pointer value.");
-        
+
         // Check if we already know about origin of this pointer.
         if let Some(&origin) = cx.analysis.origins.get(&pointer) {
             return origin;
@@ -485,7 +485,7 @@ impl FunctionData {
         }
     }
 
-    fn escaping_cycle_blocks(&self, start_label: Label, end_label: Label, 
+    fn escaping_cycle_blocks(&self, start_label: Label, end_label: Label,
                              memory_kill: KillTarget) -> Option<Set<Label>> {
         let (killer, killee) = match memory_kill {
             KillTarget::Start => (end_label, start_label),
@@ -608,7 +608,7 @@ impl FunctionData {
 
             // Start traversing from end of path and go upwards.
             stack.push(end_label);
-            
+
             while let Some(label) = stack.pop() {
                 if !visited.insert(label) {
                     continue;
@@ -645,7 +645,7 @@ impl FunctionData {
 
             return Some(instruction_count);
         }
-        
+
         None
     }
 
@@ -750,7 +750,7 @@ impl FunctionData {
                     }
 
                     continue;
-                } 
+                }
 
                 if !matches!(inst, Instruction::Nop) {
                     can_see_phi = false;

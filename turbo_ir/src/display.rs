@@ -1,7 +1,7 @@
 use std::io::{self, Write};
 use std::fmt;
 
-use super::{FunctionData, Instruction, Value, Label, BinaryOp, UnaryOp, IntPredicate, 
+use super::{FunctionData, Instruction, Value, Label, BinaryOp, UnaryOp, IntPredicate,
             Type, Cast, ty::TypeKind};
 
 impl fmt::Display for Value {
@@ -55,12 +55,12 @@ impl fmt::Display for BinaryOp {
 impl fmt::Display for IntPredicate {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let name = match self {
-            IntPredicate::Equal    => "eq", 
-            IntPredicate::NotEqual => "ne", 
-            IntPredicate::GtU      => "ugt", 
-            IntPredicate::GteU     => "ugte", 
-            IntPredicate::GtS      => "sgt", 
-            IntPredicate::GteS     => "sgte", 
+            IntPredicate::Equal    => "eq",
+            IntPredicate::NotEqual => "ne",
+            IntPredicate::GtU      => "ugt",
+            IntPredicate::GteU     => "ugte",
+            IntPredicate::GtS      => "sgt",
+            IntPredicate::GteS     => "sgte",
         };
 
         write!(f, "{}", name)
@@ -136,7 +136,7 @@ impl FunctionData {
                 if self.undefined_set.contains(&$value) {
                     formatter.fmt_literal(String::from("undefined"))
                 } else {
-                    formatter.fmt_value($value) 
+                    formatter.fmt_value($value)
                 }
             }
         }
@@ -167,7 +167,7 @@ impl FunctionData {
                        fmt_type!(*a), fmt_value!(*a), fmt_value!(*b))?;
             }
             Instruction::IntCompare { dst, a, pred, b } => {
-                write!(w, "{} = {} {} {} {}, {}", fmt_value!(*dst), fmt_inst!("icmp"), 
+                write!(w, "{} = {} {} {} {}, {}", fmt_value!(*dst), fmt_inst!("icmp"),
                        fmt_inst!(*pred), fmt_type!(*a), fmt_value!(*a), fmt_value!(*b))?;
             }
             Instruction::Load { dst, ptr } => {
