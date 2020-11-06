@@ -16,11 +16,11 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
 
         // Simplify operations with known outputs.
         //
-        // %2 = u32 0
-        // %3 = add u32 %1, %2
+        // v2 = u32 0
+        // v3 = add u32 v1, v2
         //
         // Will be optimized to:
-        // %3 = alias u32 %1
+        // v3 = alias u32 v1
         //
         // RemoveAliasesPass will take care of that and further transform the code.
 
@@ -50,13 +50,13 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
             let mut replacement = None;
 
             // Go through every instruction, match patterns with known results
-            // and simplify the instruction.
+            // to simplify the instruction.
             match *instruction {
                 Instruction::GetElementPtr { dst, source, index } => {
                     if let Some(&index) = sign_extensions.get(&index) {
                         // GEP sign extends index internally so source the index
                         // from non-sign-extended value. This gives DCE an opportunity
-                        // to eliminate unneeded sext instruction.
+                        // to eliminate unneeded `sext` instruction.
                         replacement = Some(Instruction::GetElementPtr {
                             dst,
                             source,
@@ -71,7 +71,7 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
                     }
                 }
                 Instruction::BranchCond { on_true, on_false, .. } => {
-                    // If both targets of the bcond instruction are the same we can
+                    // If both targets of the `bcond` instruction are the same, we can
                     // convert it to non-conditional branch. As we don't really modify
                     // control flow we don't need to update PHIs.
                     if on_true == on_false {
@@ -82,7 +82,7 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
                 }
                 Instruction::Select { dst, on_true, on_false, .. } => {
                     // If both values of the select instruction are the same we can
-                    // alias output value to one of values.
+                    // alias output value to one of the values.
                     if values_equal(on_true, on_false) {
                         replacement = Some(Instruction::Alias {
                             dst,
@@ -140,8 +140,8 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
                     // instruction.
                     if let Some(Instruction::Cast { cast: p_cast, value: p_value, .. }) = creator {
                         // Two casts of the same type can be optimized out to only one.
-                        // For example zext from u16 to u32 and zext from u32 to u64
-                        // can be converted to zext from u16 to u64.
+                        // For example `zext` from u16 to u32 and `zext` from u32 to u64
+                        // can be converted to `zext` from u16 to u64.
                         if *p_cast == cast {
                             replacement = Some(Instruction::Cast {
                                 dst,
@@ -199,7 +199,7 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
                         }
                     }
 
-                    // Match various binary operation patterns to simplify a instruction.
+                    // Match various binary operation patterns to simplify an instruction.
                     match op {
                         BinaryOp::Add => {
                             if ca == Some(0) {
@@ -332,8 +332,8 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
 
                     let mut valid = true;
 
-                    // If all incoming values are the same we can replace phi with alias.
-                    // This will also handle phi with one incoming value.
+                    // If all incoming values are the same we can replace `phi` with `alias`.
+                    // This will also handle PHIs with one incoming value.
                     for (_label, value) in &incoming[1..] {
                         let other_const = consts.get(&value).copied().map(|x| x.1);
                         let const_match = incoming_const.is_some() &&
@@ -358,7 +358,7 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
                         }
                     }
 
-                    // Replace single incoming value with just alias.
+                    // Replace single incoming value with just `alias`.
                     if valid {
                         replacement = Some(match incoming_const {
                             Some(constant) => {

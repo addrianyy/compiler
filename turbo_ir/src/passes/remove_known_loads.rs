@@ -10,19 +10,18 @@ impl super::Pass for RemoveKnownLoadsPass {
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let pointer_analysis = function.analyse_pointers();
         let dominators       = function.dominators();
-        let phi_used         = function.phi_used_values();
 
         // If a pointer is stored to and loaded afterwards, we will try to avoid
         // load and just return value recently stored. We need to make sure that
         // inbetween store and load there are no instructions that could affect loaded value.
         // 
-        // store %1, %0
-        // %2 = load %1
-        // %3 = neg %2
+        // store v1, v0
+        // v2 = load v1
+        // v3 = neg v2
         //
         // Will get optimized to:
-        // store %1, %0
-        // %3 = neg %0
+        // store v1, v0
+        // v3 = neg v0
 
         let mut loads  = Vec::new();
         let mut stores = Map::default();
@@ -50,6 +49,10 @@ impl super::Pass for RemoveKnownLoadsPass {
         for (load_location, load_dst, load_ptr) in loads {
             // Get all stores to a given pointer.
             if let Some(stores) = stores.get(&load_ptr) {
+                // Recalculate `phi_used` here because added aliases may have changed it.
+                // We may have sourced loaded pointer from store.
+                let phi_used = function.phi_used_values();
+
                 let mut best_replacement = None;
                 let mut best_icount      = None;
 
@@ -60,9 +63,8 @@ impl super::Pass for RemoveKnownLoadsPass {
 
                     // If both locations are in different blocks and value
                     // is used in PHI then `validate_path_memory` cannot reason about
-                    // it.  TODO: Fix this.
-                    if load_location.label() != store_location.label() &&
-                        phi_used.contains(&load_ptr) {
+                    // it. TODO: Fix this.
+                    if start.label() != end.label() && phi_used.contains(&load_ptr) {
                         continue;
                     }
 

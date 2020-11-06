@@ -17,7 +17,6 @@ impl super::Pass for SimplifyExpressionsPass {
 
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let consts       = function.constant_values();
-        let creators     = function.value_creators();
         let usage_counts = function.usage_counts();
 
         let mut chains: Map<Value, Chain> = Map::default();
@@ -68,7 +67,7 @@ impl super::Pass for SimplifyExpressionsPass {
             if let Instruction::ArithmeticBinary { dst, a, op, b } = instruction {
                 // If operator is commulative then (a op b) op c == a op (a b).
                 let commulative = match op {
-                    BinaryOp::Add | BinaryOp::Mul | BinaryOp::And | 
+                    BinaryOp::Add | BinaryOp::Mul | BinaryOp::And |
                     BinaryOp::Or  | BinaryOp::Xor => {
                         true
                     }
@@ -162,6 +161,9 @@ impl super::Pass for SimplifyExpressionsPass {
                 },
             ];
 
+            // Because we are inserting instructions we need to recalculate value creators.
+            let creators = function.value_creators();
+
             // Get the block which created expression which we are going to simplify.
             let creator = creators[&output_value];
             let body    = function.blocks.get_mut(&creator.label()).unwrap();
@@ -176,7 +178,7 @@ impl super::Pass for SimplifyExpressionsPass {
 
             did_something = true;
         }
-        
+
         did_something
     }
 }
