@@ -3,6 +3,7 @@ use super::{Module, Instruction, Value, Label, Function, Type, UnaryOp, BinaryOp
 
 macro_rules! implement_arithmetic_unary {
     ($name: ident, $op: expr) => {
+        #[inline]
         pub fn $name(&mut self, value: Value) -> Value {
             self.arithmetic_unary($op, value)
         }
@@ -11,6 +12,7 @@ macro_rules! implement_arithmetic_unary {
 
 macro_rules! implement_arithmetic_binary {
     ($name: ident, $op: expr) => {
+        #[inline]
         pub fn $name(&mut self, a: Value, b: Value) -> Value {
             self.arithmetic_binary(a, $op, b)
         }
@@ -19,6 +21,7 @@ macro_rules! implement_arithmetic_binary {
 
 macro_rules! implement_compare {
     ($name: ident, $predicate: expr) => {
+        #[inline]
         pub fn $name(&mut self, a: Value, b: Value) -> Value {
             self.int_compare(a, $predicate, b)
         }
@@ -27,6 +30,7 @@ macro_rules! implement_compare {
 
 macro_rules! implement_cast {
     ($name: ident, $cast: expr) => {
+        #[inline]
         pub fn $name(&mut self, value: Value, ty: Type) -> Value {
             self.cast(value, ty, $cast)
         }
@@ -34,14 +38,20 @@ macro_rules! implement_cast {
 }
 
 impl Module {
+    #[track_caller]
     fn insert(&mut self, instruction: Instruction) {
+        assert!(!self.finalized, "Cannot add instructions after finalization.");
+
         let active_point = self.active_point();
 
         self.function_mut(active_point.function)
             .insert(active_point.label, instruction);
     }
 
+    #[track_caller]
     fn with_output(&mut self, f: impl FnOnce(Value) -> Instruction) -> Value {
+        assert!(!self.finalized, "Cannot add instructions after finalization.");
+
         let active_point = self.active_point();
         let function     = self.function_mut(active_point.function);
         let value        = function.allocate_value();

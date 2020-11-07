@@ -440,6 +440,136 @@ impl Module {
         }
     }
 
+    pub fn create_function(&mut self, name: &str, return_type: Option<Type>,
+                           arguments: Vec<Type>) -> Function {
+        unsafe {
+            self.create_function_internal(name, return_type, arguments, None)
+        }
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    pub unsafe fn create_external_function(&mut self, name: &str, return_type: Option<Type>,
+                                           arguments: Vec<Type>, address: usize) -> Function {
+        self.create_function_internal(name, return_type, arguments, Some(address))
+    }
+
+    pub fn create_label(&mut self) -> Label {
+        assert!(!self.finalized, "Cannot create labels after finalization.");
+
+        self.function_mut(self.active_point().function).allocate_label()
+    }
+
+    pub fn add_phi_incoming(&mut self, phi: Value, label: Label, value: Value) {
+        assert!(!self.finalized, "Cannot modify PHI incoming values after finalization.");
+
+        self.function_mut(self.active_point().function)
+            .add_phi_incoming(phi, label, value);
+    }
+
+    pub fn switch_function(&mut self, function: Function) {
+        self.active_point = Some(ActivePoint {
+            function,
+            label: Label(0),
+        });
+    }
+
+    pub fn switch_label(&mut self, label: Label) {
+        let point = self.active_point.as_mut()
+            .expect("Tried to switch labels without active point.");
+
+        point.label = label;
+    }
+
+    pub fn entry_label(&self) -> Label {
+        Label(0)
+    }
+
+    pub fn argument(&self, index: usize) -> Value {
+        self.function(self.active_point().function).argument_values[index]
+    }
+
+    pub fn is_terminated(&self, label: Option<Label>) -> bool {
+        let point = self.active_point();
+        let label = label.unwrap_or(point.label);
+
+        self.function(point.function).is_terminated(label)
+    }
+
+    pub fn dump_function_graph(&self, function: Function, path: &str) {
+        self.function(function).dump_graph(path)
+    }
+
+    pub fn dump_function_text<W: Write>(&self, function: Function, w: &mut W) -> io::Result<()> {
+        self.function(function).dump_text(w)
+    }
+
+    pub fn finalize(&mut self) {
+        assert!(!self.finalized, "Cannot finalize module multiple times.");
+
+        let mut function_info = Map::default();
+        let mut externs       = Map::default();
+
+        for (function, internal) in &self.functions {
+            assert!(function_info.insert(*function, internal.prototype().clone()).is_none(),
+                    "Multiple functions with the same ID.");
+
+            if let FunctionInternal::Extern { address, .. } = internal {
+                assert!(externs.insert(*function, *address).is_none(),
+                        "Multiple functions with the same ID.");
+            }
+        }
+
+        let cfi = Rc::new(CrossFunctionInfo {
+            info: function_info,
+            externs,
+        });
+
+        for internal in self.functions.values_mut() {
+            if let FunctionInternal::Local(data) = internal {
+                data.function_info = Some(cfi.clone());
+                data.finalize();
+            }
+        }
+
+        self.finalized = true;
+    }
+
+    pub fn optimize(&mut self) {
+        assert!(self.finalized, "Cannot optimize before finalization.");
+
+        for internal in self.functions.values_mut() {
+            if let FunctionInternal::Local(data) = internal {
+                data.optimize();
+            }
+        }
+    }
+
+    pub fn generate_machine_code(&mut self) -> MachineCode {
+        assert!(self.finalized, "Cannot generate machine code before finalization.");
+
+        let mut backend = codegen::x86backend::X86Backend::new(self);
+
+        // Generate machine code for each function. This will call register allocator which
+        // will add additional `alias` instruction to handle PHIs.
+        for (function, internal) in &mut self.functions {
+            if let FunctionInternal::Local(data) = internal {
+                backend.generate_function(*function, data);
+            }
+        }
+
+        let (buffer, functions) = backend.finalize();
+
+        // Run passes that will remove `alias` instructions created by register allocator.
+        for internal in self.functions.values_mut() {
+            if let FunctionInternal::Local(data) = internal {
+                passes::RemoveAliasesPass.run_on_function(data);
+                passes::RemoveNopsPass.run_on_function(data);
+            }
+        }
+
+        MachineCode::new(&buffer, functions)
+    }
+
     fn function_prototype(&self, function: Function) -> &FunctionPrototype {
         self.functions.get(&function)
             .expect("Invalid function.")
@@ -494,123 +624,5 @@ impl Module {
                 "Multiple functions with the same ID ({}).", function.0);
 
         function
-    }
-
-    pub fn create_function(&mut self, name: &str, return_type: Option<Type>,
-                           arguments: Vec<Type>) -> Function {
-        unsafe {
-            self.create_function_internal(name, return_type, arguments, None)
-        }
-    }
-
-    #[allow(clippy::missing_safety_doc)]
-    pub unsafe fn create_external_function(&mut self, name: &str, return_type: Option<Type>,
-                                           arguments: Vec<Type>, address: usize) -> Function {
-        self.create_function_internal(name, return_type, arguments, Some(address))
-    }
-
-    pub fn create_label(&mut self) -> Label {
-        assert!(!self.finalized, "Cannot create labels after finalization.");
-
-        self.function_mut(self.active_point().function).allocate_label()
-    }
-
-    pub fn add_phi_incoming(&mut self, phi: Value, label: Label, value: Value) {
-        self.function_mut(self.active_point().function)
-            .add_phi_incoming(phi, label, value);
-    }
-
-    pub fn is_terminated(&self, label: Option<Label>) -> bool {
-        let point = self.active_point();
-        let label = label.unwrap_or(point.label);
-
-        self.function(point.function).is_terminated(label)
-    }
-
-    pub fn argument(&self, index: usize) -> Value {
-        self.function(self.active_point().function).argument_values[index]
-    }
-
-    pub fn switch_function(&mut self, function: Function) {
-        self.active_point = Some(ActivePoint {
-            function,
-            label: Label(0),
-        });
-    }
-
-    pub fn switch_label(&mut self, label: Label) {
-        let point = self.active_point.as_mut()
-            .expect("Tried to switch labels without active point.");
-
-        point.label = label;
-    }
-
-    pub fn finalize(&mut self) {
-        assert!(!self.finalized, "Cannot finalize module multiple times.");
-
-        let mut function_info = Map::default();
-        let mut externs       = Map::default();
-
-        for (function, internal) in &self.functions {
-            assert!(function_info.insert(*function, internal.prototype().clone()).is_none(),
-                    "Multiple functions with the same ID.");
-
-            if let FunctionInternal::Extern { address, .. } = internal {
-                assert!(externs.insert(*function, *address).is_none(),
-                        "Multiple functions with the same ID.");
-            }
-        }
-
-        let cfi = Rc::new(CrossFunctionInfo {
-            info: function_info,
-            externs,
-        });
-
-        for internal in self.functions.values_mut() {
-            if let FunctionInternal::Local(data) = internal {
-                data.function_info = Some(cfi.clone());
-                data.finalize();
-            }
-        }
-
-        self.finalized = true;
-    }
-
-    pub fn entry_label(&self) -> Label {
-        Label(0)
-    }
-
-    pub fn dump_function_graph(&self, function: Function, path: &str) {
-        self.function(function).dump_graph(path)
-    }
-
-    pub fn dump_function_text<W: Write>(&self, function: Function, w: &mut W) -> io::Result<()> {
-        self.function(function).dump_text(w)
-    }
-
-    pub fn optimize(&mut self) {
-        assert!(self.finalized, "Cannot optimize before finalization.");
-
-        for internal in self.functions.values_mut() {
-            if let FunctionInternal::Local(data) = internal {
-                data.optimize();
-            }
-        }
-    }
-
-    pub fn generate_machine_code(&mut self) -> MachineCode {
-        assert!(self.finalized, "Cannot generate machine code before finalization.");
-
-        let mut backend = codegen::x86backend::X86Backend::new(self);
-
-        for (function, internal) in &mut self.functions {
-            if let FunctionInternal::Local(data) = internal {
-                backend.generate_function(*function, data);
-            }
-        }
-
-        let (buffer, functions) = backend.finalize();
-
-        MachineCode::new(&buffer, functions)
     }
 }
