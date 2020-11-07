@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use crate::{FunctionData, Instruction, Cast, Value, ConstType, IntPredicate, Type,
             BinaryOp, UnaryOp, Map};
 
@@ -149,6 +150,41 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
                                 value: *p_value,
                                 ty,
                             });
+                        } else if cast == Cast::Truncate && (*p_cast == Cast::ZeroExtend ||
+                                                             *p_cast == Cast::SignExtend) {
+                            // v1 = zext u16 v0 to u64
+                            // v2 = trunc u64 v1 to u32
+                            //
+                            // to:
+                            // v1 = zext u16 v0 to u32
+
+                            let start_ty = function.value_type(*p_value);
+
+                            // Pick correct replacement.
+                            match ty.size().cmp(&start_ty.size()) {
+                                Ordering::Greater => {
+                                    replacement = Some(Instruction::Cast {
+                                        dst,
+                                        cast:  *p_cast,
+                                        value: *p_value,
+                                        ty,
+                                    });
+                                }
+                                Ordering::Less => {
+                                    replacement = Some(Instruction::Cast {
+                                        dst,
+                                        cast:  Cast::Truncate,
+                                        value: *p_value,
+                                        ty,
+                                    });
+                                }
+                                Ordering::Equal => {
+                                    replacement = Some(Instruction::Alias {
+                                        dst,
+                                        value: *p_value,
+                                    });
+                                }
+                            }
                         }
                     }
                 }

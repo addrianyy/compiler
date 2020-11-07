@@ -64,6 +64,26 @@ fn main() {
         }
     }
 
+    /*
+    use turbo_ir as ir;
+    let mut ir = ir::Module::new();
+
+    let func = ir.create_function("test", Some(ir::Type::U32), vec![ir::Type::U16]);
+
+    ir.switch_function(func);
+    let arg = ir.argument(0);
+
+    let x = ir.zero_extend(arg, ir::Type::U64);
+    let y = ir.truncate(x, ir::Type::U32);
+
+    ir.ret(Some(y));
+
+
+    ir.finalize();
+    ir.optimize();
+    ir.dump_function_text(func, &mut std::io::stdout()).unwrap();
+    */
+
         /*
     use turbo_ir as ir;
     let mut ir = ir::Module::new();
