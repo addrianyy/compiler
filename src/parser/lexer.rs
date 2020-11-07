@@ -45,6 +45,13 @@ impl Keyword {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Base {
+    Bin,
+    Dec,
+    Hex,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum IntegerSuffix {
     U8,
     U16,
@@ -63,6 +70,7 @@ pub enum Literal {
     Number {
         value:  u64,
         suffix: Option<IntegerSuffix>,
+        base:   Base,
     },
 }
 
@@ -264,13 +272,6 @@ impl Lexer {
                     continue 'lex_next;
                 }
                 x if x.is_numeric() => {
-                    #[derive(PartialEq, Eq)]
-                    enum Base {
-                        Dec,
-                        Bin,
-                        Hex,
-                    }
-
                     let mut base = Base::Dec;
 
                     if source.starts_with("0x") {
@@ -337,18 +338,19 @@ impl Lexer {
                             }
                         }
 
-                        let base = match base {
+                        let base_num = match base {
                             Base::Bin => 2,
                             Base::Dec => 10,
                             Base::Hex => 16,
                         };
 
-                        let value = u64::from_str_radix(&literal, base)
+                        let value = u64::from_str_radix(&literal, base_num)
                             .expect("Invalid number literal.");
 
                         tokens.push(Token::Literal(Literal::Number {
                             suffix: int_suffix,
                             value,
+                            base,
                         }));
                     } else {
                         panic!("Float literals are not yet supported.");

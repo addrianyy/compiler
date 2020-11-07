@@ -52,8 +52,8 @@ i32 turbo(i32 a) {
     return a;
 }
 
-i32 xd(i32 a) {
-    return (~(~a & 0xffffffff)) * (1 + (a ^ a));
+u32 xd(u32 a) {
+    return (~(~a & 0xffffffff)) * (1u32 + (a ^ a));
 }
 
 i32 sum(i32 count) {

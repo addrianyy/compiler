@@ -363,10 +363,9 @@ impl Compiler {
                 Some(CodegenValue::lvalue(new_ty, result))
             }
             Expr::Number { value, ty } => {
-                let ty    = ty.clone().unwrap_or(Ty::I32);
-                let value = self.ir.iconst(*value, to_ir_type(&ty));
+                let value = self.ir.iconst(*value, to_ir_type(ty));
 
-                Some(CodegenValue::rvalue(ty, value))
+                Some(CodegenValue::rvalue(*ty, value))
             }
             Expr::Cast { value, ty } => {
                 let value = self.codegen_nonvoid_expression(&value);

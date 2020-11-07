@@ -3,7 +3,7 @@ mod lexer;
 mod ast;
 mod ty;
 
-use lexer::{Keyword, Token, Literal, IntegerSuffix, Lexer};
+use lexer::{Keyword, Token, Literal, IntegerSuffix, Lexer, Base};
 pub use ast::{UnaryOp, BinaryOp, Expr, TypedExpr, Stmt, Body, BodyRef};
 pub use ty::{TyKind, Ty};
 
@@ -96,8 +96,8 @@ impl Parser {
         }
 
         let mut result = match current {
-            Token::Literal(Literal::Number { value, suffix }) => {
-                let ty = suffix.as_ref().map(|suffix| {
+            Token::Literal(Literal::Number { value, suffix, base }) => {
+                let ty = if let Some(suffix) = suffix {
                     match suffix {
                         IntegerSuffix::U8  => Ty::U8,
                         IntegerSuffix::U16 => Ty::U16,
@@ -108,7 +108,22 @@ impl Parser {
                         IntegerSuffix::I32 => Ty::I32,
                         IntegerSuffix::I64 => Ty::I64,
                     }
-                });
+                } else {
+                    let signed = *base == Base::Dec;
+                    let value  = *value;
+
+                    let bigger = match signed {
+                        true => !(value as i64 <= i32::MAX as i64 &&
+                                  value as i64 >= i32::MIN as i64),
+                        false => !(value as u64 <= u32::MAX as u64 &&
+                                   value as u64 >= u32::MIN as u64),
+                    };
+
+                    match signed {
+                        true  => if bigger { Ty::I64 } else { Ty::I32 },
+                        false => if bigger { Ty::U64 } else { Ty::U32 },
+                    }
+                };
 
                 let value = *value;
                 let _     = self.lexer.eat();
@@ -124,7 +139,7 @@ impl Parser {
 
                 TypedExpr::new(Expr::Number {
                     value,
-                    ty: Some(Ty::U8),
+                    ty: Ty::U8,
                 })
             }
             Token::Literal(..) => {

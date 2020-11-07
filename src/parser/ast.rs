@@ -91,7 +91,7 @@ pub enum Expr {
     },
     Number {
         value: u64,
-        ty:    Option<Ty>,
+        ty:    Ty,
     },
     Array {
         array: Box<TypedExpr>,
