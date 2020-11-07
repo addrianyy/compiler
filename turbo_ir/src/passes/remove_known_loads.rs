@@ -82,7 +82,7 @@ impl super::Pass for RemoveKnownLoadsPass {
                                 // If pointers alias then something can possibly affect loaded
                                 // pointer. We can't source load from this store.
 
-                                !pointer_analysis.can_alias(load_ptr, *ptr)
+                                !pointer_analysis.can_alias(function, load_ptr, *ptr)
                             }
                             _ => true,
                         }

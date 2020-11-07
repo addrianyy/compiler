@@ -52,7 +52,7 @@ impl PointerAnalysis {
         self.stackallocs.get(&pointer).copied()
     }
 
-    pub fn can_alias(&self, p1: Value, p2: Value) -> bool {
+    pub fn can_alias(&self, function: &FunctionData, p1: Value, p2: Value) -> bool {
         // If two pointers are the same they always alias.
         if p1 == p2 {
             return true;
@@ -65,6 +65,11 @@ impl PointerAnalysis {
         // If two pointers have the same origin they may alias.
         if p1 == p2 {
             return true;
+        }
+
+        // Undefined pointers don't alias anything.
+        if function.undefined_set.contains(&p1) || function.undefined_set.contains(&p2) {
+            return false;
         }
 
         // Get information about pointers stackalloc.

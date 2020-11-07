@@ -73,7 +73,7 @@ impl super::Pass for RemoveDeadStoresPass {
                                     // If pointers alias than this load can see ths pointer
                                     // value and we cannot eliminate the store.
 
-                                    !pointer_analysis.can_alias(pointer, *ptr)
+                                    !pointer_analysis.can_alias(function, pointer, *ptr)
                                 }
                                 Instruction::Call { .. } => {
                                     // If a function can access the pointer than it can

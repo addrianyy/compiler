@@ -106,7 +106,7 @@ impl super::Pass for DeduplicatePass {
                                         // alias a pointer loaded by source to
                                         // deduplicate.
 
-                                        !pointer_analysis.can_alias(load_ptr, *ptr)
+                                        !pointer_analysis.can_alias(function, load_ptr, *ptr)
                                     }
                                     _ => true,
                                 }
