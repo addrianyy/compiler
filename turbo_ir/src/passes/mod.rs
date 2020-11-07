@@ -19,6 +19,7 @@ pass!(branch_to_select, BranchToSelectPass);
 pass!(remove_dead_code, RemoveDeadCodePass);
 pass!(const_propagate, ConstPropagatePass);
 pass!(remove_aliases, RemoveAliasesPass);
+pass!(rewrite_values, RewriteValuesPass);
 pass!(memory_to_ssa, MemoryToSsaPass);
 pass!(simplify_cfg, SimplifyCFGPass);
 pass!(deduplicate, DeduplicatePass);
