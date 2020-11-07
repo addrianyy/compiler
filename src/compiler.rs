@@ -201,14 +201,75 @@ impl Compiler {
         extracted
     }
 
-    fn implicit_cast_binary(&mut self, left: CodegenValue, _op: BinaryOp, right: CodegenValue)
+    fn implicit_cast_binary(&mut self, mut left: CodegenValue, _op: BinaryOp,
+                            mut right: CodegenValue)
         -> (CodegenValue, CodegenValue)
     {
         if left.ty == right.ty {
             return (left, right);
         }
 
-        panic!()
+        assert!(!left.ty.is_pointer() && !right.ty.is_pointer(),
+                "Cannot implicit cast pointers.");
+
+        let mut left_ty  = left.ty;
+        let mut right_ty = right.ty;
+
+        // https://en.cppreference.com/w/c/language/conversion
+
+        if left_ty.is_signed() == right_ty.is_signed() {
+            // If the types have the same signedness (both signed or both unsigned),
+            // the operand whose type has the lesser conversion rank is
+            // implicitly converted to the other type.
+
+            match left_ty.conversion_rank().cmp(&right_ty.conversion_rank()) {
+                Ordering::Greater => right_ty = left_ty,
+                Ordering::Less    => left_ty = right_ty,
+                Ordering::Equal   => unreachable!(),
+            }
+        } else {
+            let (unsigned, signed) = match (left_ty.is_signed(), right_ty.is_signed()) {
+                (true, false) => (right_ty, left_ty),
+                (false, true) => (left_ty, right_ty),
+                _             => unreachable!(),
+            };
+
+            let common_ty;
+
+            if unsigned.conversion_rank() >= signed.conversion_rank() {
+                // If the unsigned type has conversion rank greater than or equal
+                // to the rank of the signed type, then the operand with the signed
+                // type is implicitly converted to the unsigned type.
+                common_ty = unsigned;
+            } else {
+                // The unsigned type has conversion rank less than the signed type.
+                // If the signed type can represent all values of the unsigned type,
+                // then the operand with the unsigned type is implicitly converted
+                // to the signed type.
+                common_ty = signed;
+            }
+
+            left_ty  = common_ty;
+            right_ty = common_ty;
+        }
+
+        assert!(left_ty == right_ty, "Implicit cast failed.");
+
+        if left.ty != left_ty {
+            let extracted = left.extract(&mut self.ir);
+
+            left = CodegenValue::rvalue(left_ty,
+                                        self.int_cast(extracted, &left.ty, &left_ty));
+        }
+
+        if right.ty != right_ty {
+            let extracted = right.extract(&mut self.ir);
+
+            right = CodegenValue::rvalue(right_ty,
+                                         self.int_cast(extracted, &right.ty, &right_ty));
+        }
+
+        (left, right)
     }
 
     fn codegen_nonvoid_expression(&mut self, expression: &Expr) -> CodegenValue {

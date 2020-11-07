@@ -49,6 +49,22 @@ impl Ty {
         })
     }
 
+    pub fn conversion_rank(&self) -> u32 {
+        assert!(!self.is_pointer(), "Cannot get conversion rank of pointer types.");
+
+        match self.kind {
+            TyKind::U8  => 1,
+            TyKind::U16 => 2,
+            TyKind::U32 => 3,
+            TyKind::U64 => 4,
+            TyKind::I8  => 1,
+            TyKind::I16 => 2,
+            TyKind::I32 => 3,
+            TyKind::I64 => 4,
+            _           => unreachable!(),
+        }
+    }
+
     pub fn ptr(&self) -> Ty {
         Ty {
             kind:        self.kind,
