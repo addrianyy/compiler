@@ -222,7 +222,7 @@ impl FunctionData {
         // after P.
         //
         // After reversing it, it is guaranteed that all output values of instructions that
-        // use V are already processed (which is what we want).
+        // use V are before P and were already processed (which is what we want).
         let processing_order: Vec<_> = processing_order
             .into_iter()
             .rev()

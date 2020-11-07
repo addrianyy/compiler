@@ -73,3 +73,11 @@ void unsafe() {
 
     *(i8*)&ptr = 13i8;
 }
+
+i32 implicit() {
+    i32 x = 100i8;
+
+    x = 33u64;
+
+    return 1000u64;
+}

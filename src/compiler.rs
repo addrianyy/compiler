@@ -426,17 +426,22 @@ impl Compiler {
 
     fn codegen_condition(&mut self, condition: &Expr) -> ir::Value {
         let condition = self.codegen_nonvoid_expression(condition);
-        let mut ty    = condition.ty;
-        let mut value = condition.extract(&mut self.ir);
-
-        if ty.is_pointer() {
-            value = self.ir.cast(value, ir::Type::U64, ir::Cast::Bitcast);
-            ty    = Ty::U64;
-        }
+        let ty        = condition.ty;
+        let value     = condition.extract(&mut self.ir);
 
         let zero = self.ir.iconst(0u32, to_ir_type(&ty));
 
         self.ir.int_compare(value, ir::IntPredicate::NotEqual, zero)
+    }
+
+    fn implicit_cast_value(&mut self, value: CodegenValue, desired: &Ty) -> ir::Value {
+        let extracted = value.extract(&mut self.ir);
+
+        if &value.ty != desired {
+            return self.int_cast(extracted, &value.ty, desired);
+        }
+
+        extracted
     }
 
     fn codegen_statement(&mut self, statement: &Stmt, return_ty: &Ty, depth: u32) -> bool {
@@ -447,12 +452,11 @@ impl Compiler {
                 let variable = self.codegen_nonvoid_expression(variable);
                 let value    = self.codegen_nonvoid_expression(value);
 
-                assert!(variable.ty == value.ty, "Cannot assign value of different type.");
                 assert!(variable.is_lvalue(), "Cannot assign to rvalue.");
 
-                let extracted = value.extract(&mut self.ir);
+                let casted = self.implicit_cast_value(value, &variable.ty);
 
-                self.ir.store(variable.value, extracted);
+                self.ir.store(variable.value, casted);
             }
             Stmt::Declare { ty, decl_ty, name, value, array } => {
                 let (size, array) = match array {
@@ -466,15 +470,12 @@ impl Compiler {
                 let variable = self.ir.stack_alloc(to_ir_type(decl_ty), size);
 
                 if let Some(value) = value {
-                    let value = self.codegen_nonvoid_expression(value);
-
                     assert!(!array, "Arrays cannot have initializers.");
-                    assert!(value.ty == *ty, "Initializer doesn't have the same \
-                            type as variable.");
 
-                    let extracted = value.extract(&mut self.ir);
+                    let value  = self.codegen_nonvoid_expression(value);
+                    let casted = self.implicit_cast_value(value, ty);
 
-                    self.ir.store(variable, extracted);
+                    self.ir.store(variable, casted);
                 }
 
                 let value = match array {
@@ -606,12 +607,10 @@ impl Compiler {
 
                 match value {
                     Some(value) => {
-                        let value     = self.codegen_nonvoid_expression(value);
-                        let extracted = value.extract(&mut self.ir);
+                        let value  = self.codegen_nonvoid_expression(value);
+                        let casted = self.implicit_cast_value(value, &return_ty);
 
-                        assert!(return_ty == &value.ty, "Function return type differs.");
-
-                        self.ir.ret(Some(extracted));
+                        self.ir.ret(Some(casted));
                     }
                     None => {
                         assert!(return_ty == &Ty::Void, "Cannot return void from \
