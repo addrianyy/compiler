@@ -5,28 +5,25 @@ struct TypeContext {
     type_info: TypeInfo,
 }
 
+impl TypeContext {
+    fn get_type(&self, value: Value) -> Type {
+        self.type_info.get(&value).copied().unwrap()
+    }
+}
+
 impl FunctionData {
-    fn infer_value_type(&self, value: Value, cx: &mut TypeContext) -> Type {
-        macro_rules! get_type {
-            ($value: expr) => {
-                self.infer_value_type($value, cx)
-            }
-        }
-
-        if let Some(&ty) = cx.type_info.get(&value) {
-            return ty;
-        }
-
-        let creator = cx.creators.get(&value).expect("Value is used without being created.");
-        let creator = &self.blocks[&creator.label()][creator.index()];
+    fn infer_value_type(&self, value: Value, cx: &mut TypeContext) {
+        let creator = cx.creators.get(&value).map(|location| {
+            self.instruction(*location)
+        }).expect("Value is used without being created.");
 
         let ty = match creator {
             Instruction::ArithmeticUnary { value, .. } => {
-                get_type!(*value)
+                cx.get_type(*value)
             }
             Instruction::ArithmeticBinary { a, b, .. } => {
-                let a = get_type!(*a);
-                let b = get_type!(*b);
+                let a = cx.get_type(*a);
+                let b = cx.get_type(*b);
 
                 assert!(a == b, "Binary arithmetic instruction must have operands \
                                  of the same type.");
@@ -34,15 +31,16 @@ impl FunctionData {
                 a
             }
             Instruction::IntCompare { a, b, .. } => {
-                let a = get_type!(*a);
-                let b = get_type!(*b);
+                let a = cx.get_type(*a);
+                let b = cx.get_type(*b);
 
                 assert!(a == b, "Int compare instruction must have operands \
                                  of the same type.");
+
                 Type::U1
             }
             Instruction::Load { ptr, .. } => {
-                get_type!(*ptr)
+                cx.get_type(*ptr)
                     .strip_ptr()
                     .expect("Cannot load non-pointer value.")
             }
@@ -52,8 +50,8 @@ impl FunctionData {
                     .expect("Void function return value is used.")
             }
             Instruction::Select { on_true, on_false, .. } => {
-                let on_true  = get_type!(*on_true);
-                let on_false = get_type!(*on_false);
+                let on_true  = cx.get_type(*on_true);
+                let on_false = cx.get_type(*on_false);
 
                 assert!(on_true == on_false, "Select instruction must have operands \
                                               of the same type.");
@@ -61,21 +59,24 @@ impl FunctionData {
                 on_true
             }
             Instruction::Phi { incoming, .. } => {
+                let mut result = None;
+
+                // It's possible that we don't know types of all incoming values.
+                // We always need to know the type of at least one.
                 for &(_, incoming_value) in incoming {
-                    // Try to avoid cycle. It is still possible that later cycle may happen.
-                    // TODO: Fix this potential cycle.
-                    if value != incoming_value {
-                        return get_type!(incoming_value);
+                    if let Some(ty) = cx.type_info.get(&incoming_value) {
+                        result = Some(*ty);
+                        break;
                     }
                 }
 
-                panic!("Failed to get type of PHI output value.");
+                result.expect("Failed to get PHI output value.")
             }
             Instruction::StackAlloc    { ty, ..       } => ty.ptr(),
             Instruction::Const         { ty, ..       } => *ty,
-            Instruction::GetElementPtr { source, ..   } => get_type!(*source),
+            Instruction::GetElementPtr { source, ..   } => cx.get_type(*source),
             Instruction::Cast          { ty, ..       } => *ty,
-            Instruction::Alias         { value, ..    } => get_type!(*value),
+            Instruction::Alias         { value, ..    } => cx.get_type(*value),
             _ => {
                 panic!("Unexpected value creator: {:?}.", creator);
             }
@@ -83,20 +84,13 @@ impl FunctionData {
 
         assert!(cx.type_info.insert(value, ty).is_none(),
                 "Value has type infered multiple times.");
-        ty
     }
 
-    fn typecheck(&self, inst: &Instruction, cx: &mut TypeContext) {
-        macro_rules! get_type {
-            ($value: expr) => {
-                self.infer_value_type($value, cx)
-            }
-        }
-
-        match inst {
+    fn typecheck(&self, instruction: &Instruction, cx: &mut TypeContext) {
+        match instruction {
             Instruction::ArithmeticUnary { dst, value, .. } => {
-                let dst   = get_type!(*dst);
-                let value = get_type!(*value);
+                let dst   = cx.get_type(*dst);
+                let value = cx.get_type(*value);
 
                 assert!(dst == value, "Unary arithmetic instruction requires all \
                         operands to be of the same type");
@@ -105,9 +99,9 @@ impl FunctionData {
                         only done on arithmetic types.");
             }
             Instruction::ArithmeticBinary { dst, a, b, .. } => {
-                let dst = get_type!(*dst);
-                let a   = get_type!(*a);
-                let b   = get_type!(*b);
+                let dst = cx.get_type(*dst);
+                let a   = cx.get_type(*a);
+                let b   = cx.get_type(*b);
 
                 assert!(dst == a && a == b, "Binary arithmetic instruction requires all \
                         operands to be of the same type");
@@ -116,9 +110,9 @@ impl FunctionData {
                         only done on arithmetic types.");
             }
             Instruction::IntCompare { dst, a, b, .. } => {
-                let dst = get_type!(*dst);
-                let a   = get_type!(*a);
-                let b   = get_type!(*b);
+                let dst = cx.get_type(*dst);
+                let a   = cx.get_type(*a);
+                let b   = cx.get_type(*b);
 
                 assert!(dst == Type::U1, "Int compare instruction requires \
                         destination type to be U1.");
@@ -127,8 +121,8 @@ impl FunctionData {
                         input operands to be of the same type");
             }
             Instruction::Load { dst, ptr } => {
-                let dst = get_type!(*dst);
-                let ptr = get_type!(*ptr);
+                let dst = cx.get_type(*dst);
+                let ptr = cx.get_type(*ptr);
 
                 let stripped = ptr.strip_ptr()
                     .expect("Load instruction can only load from pointers.");
@@ -137,8 +131,8 @@ impl FunctionData {
                         "Load instruction destination must have pointee type.");
             }
             Instruction::Store { ptr, value } => {
-                let ptr   = get_type!(*ptr);
-                let value = get_type!(*value);
+                let ptr   = cx.get_type(*ptr);
+                let value = cx.get_type(*value);
 
                 let stripped = ptr.strip_ptr()
                     .expect("Store instruction can only store to pointers.");
@@ -153,7 +147,7 @@ impl FunctionData {
                     let return_type = prototype.return_type
                         .expect("Cannot take the return value of void function.");
 
-                    assert!(get_type!(*dst) == return_type,
+                    assert!(cx.get_type(*dst) == return_type,
                             "Function call return value doesn't match.");
                 }
 
@@ -161,32 +155,32 @@ impl FunctionData {
                         argument count.");
 
                 for (index, arg) in args.iter().enumerate() {
-                    assert!(get_type!(*arg) == prototype.arguments[index],
+                    assert!(cx.get_type(*arg) == prototype.arguments[index],
                             "Function call with invalid arguments.");
                 }
             }
             Instruction::Branch { .. } => {
             }
             Instruction::BranchCond { cond, .. } => {
-                let cond = get_type!(*cond);
+                let cond = cx.get_type(*cond);
 
                 assert!(cond == Type::U1, "Conditional branch input must be U1.");
             }
             Instruction::StackAlloc { dst, ty, size } => {
-                let dst = get_type!(*dst);
+                let dst = cx.get_type(*dst);
 
                 assert!(*size > 0, "Stack alloc cannot allocate 0 sized array.");
                 assert!(dst.strip_ptr().expect("Stack alloc destination must be pointer.") == *ty,
                         "Stack alloc destination must be pointer to input type.");
             }
             Instruction::Return { value } => {
-                let value = value.map(|value| get_type!(value));
+                let value = value.map(|value| cx.get_type(value));
 
                 assert!(value == self.prototype.return_type, "Return instruction operand type \
                         must be the same function as function return type.");
             }
             Instruction::Const { dst, ty, imm, .. } => {
-                let dst = get_type!(*dst);
+                let dst = cx.get_type(*dst);
 
                 if *ty == Type::U1 {
                     assert!(*imm == 0 || *imm == 1, "Invalid U1 constant {}.", imm);
@@ -195,17 +189,17 @@ impl FunctionData {
                 assert!(dst == *ty, "Const value instruction operand types must be the same.");
             }
             Instruction::GetElementPtr { dst, source, index } => {
-                let dst    = get_type!(*dst);
-                let source = get_type!(*source);
-                let index  = get_type!(*index);
+                let dst    = cx.get_type(*dst);
+                let source = cx.get_type(*source);
+                let index  = cx.get_type(*index);
 
                 assert!(index.is_arithmetic(), "GEP index must be arithmetic.");
                 assert!(dst == source, "GEP destination and source must be the same type.");
                 assert!(dst.is_pointer(), "GEP input type is not valid pointer.");
             }
             Instruction::Cast { dst, cast, value, ty } => {
-                let dst   = get_type!(*dst);
-                let value = get_type!(*value);
+                let dst   = cx.get_type(*dst);
+                let value = cx.get_type(*value);
 
                 assert!(dst == *ty, "{} destination must be the same type as cast type.", cast);
                 assert!(value != Type::U1 && *ty != Type::U1, "Cannot cast U1s.");
@@ -230,26 +224,26 @@ impl FunctionData {
                 }
             }
             Instruction::Select { dst, cond, on_true, on_false } => {
-                let dst       = get_type!(*dst);
-                let cond      = get_type!(*cond);
-                let on_true   = get_type!(*on_true);
-                let on_false  = get_type!(*on_false);
+                let dst       = cx.get_type(*dst);
+                let cond      = cx.get_type(*cond);
+                let on_true   = cx.get_type(*on_true);
+                let on_false  = cx.get_type(*on_false);
 
                 assert!(cond == Type::U1, "Select condition input must be U1.");
                 assert!(on_true == on_false && dst == on_true, "Select values and destination \
                         must have the same type.");
             }
             Instruction::Phi { dst, incoming } => {
-                let dst = get_type!(*dst);
+                let dst = cx.get_type(*dst);
 
                 for (_label, value) in incoming {
-                    assert!(get_type!(*value) == dst, "PHI values must have the same types.");
+                    assert!(cx.get_type(*value) == dst, "PHI values must have the same types.");
                 }
             }
             Instruction::Nop => {
             }
             Instruction::Alias { dst, value } => {
-                assert!(get_type!(*dst) == get_type!(*value), "Alias can only alias values \
+                assert!(cx.get_type(*dst) == cx.get_type(*value), "Alias can only alias values \
                         of the same type.");
             }
         }
@@ -266,19 +260,15 @@ impl FunctionData {
                     "Function arguments defined multiple times.");
         }
 
+        for value in self.value_processing_order() {
+            if !self.is_value_special(value) {
+                self.infer_value_type(value, &mut cx);
+            }
+        }
+
         for label in self.reachable_labels() {
-            let body = &self.blocks[&label];
-
-            for inst in body {
-                if let Some(value) = inst.created_value() {
-                    let _ = self.infer_value_type(value, &mut cx);
-                }
-
-                for value in inst.read_values() {
-                    let _ = self.infer_value_type(value, &mut cx);
-                }
-
-                self.typecheck(inst, &mut cx);
+            for instruction in &self.blocks[&label] {
+                self.typecheck(instruction, &mut cx);
             }
         }
 

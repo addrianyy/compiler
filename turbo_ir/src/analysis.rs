@@ -1,5 +1,7 @@
+use std::collections::VecDeque;
+
 use super::{FunctionData, Value, Location, Label, Dominators, Map, Set,
-            Instruction, Type};
+            Instruction, Type, CapacityExt};
 
 pub(super) type Const = u64;
 
@@ -860,5 +862,140 @@ impl FunctionData {
         });
 
         results
+    }
+
+    pub(super) fn value_processing_order(&self) -> Vec<Value> {
+        let mut users: Map<Value, Set<(Location, Value)>> = Map::default();
+
+        let mut queue = VecDeque::new();
+        let mut phis  = Vec::new();
+
+        let mut expected_value_count = 0;
+
+        // Handle all function arguments.
+        for &value in &self.argument_values {
+            // Function arguments can be processed immediately.
+            queue.push_back(value);
+
+            expected_value_count += 1;
+        }
+
+        // Handle all other values which were created in the IR.
+        for label in self.reachable_labels() {
+            let body = &self.blocks[&label];
+
+            for (inst_id, instruction) in body.iter().enumerate() {
+                let location = Location::new(label, inst_id);
+
+                // We only care about instructions which create new values.
+                if let Some(created_value) = instruction.created_value() {
+                    let read_values = instruction.read_values();
+
+                    // If this instruction doesn't depend on any value then it can be
+                    // processed immediately.
+                    if read_values.is_empty() {
+                        queue.push_back(created_value);
+                    }
+
+                    // PHIs can have cycles and they need to be handled specially.
+                    if let Instruction::Phi { dst, incoming } = instruction {
+                        phis.push((dst, incoming));
+                    }
+
+                    for value in read_values {
+                        // Mark `value` as used by this instruction.
+                        users.entry(value)
+                            .or_insert_with(Set::default)
+                            .insert((location, created_value));
+                    }
+
+                    expected_value_count += 1;
+                }
+            }
+        }
+
+        let mut order  = Vec::with_capacity(expected_value_count);
+        let mut done   = Set::new_with_capacity(expected_value_count);
+        let mut ignore = Set::default();
+
+        // Try to iteratively solve dependencies.
+        'main_loop: loop {
+            while let Some(value) = queue.pop_front() {
+                // This value is now processed and its dependencies are solved.
+                order.push(value);
+                done.insert(value);
+
+                if let Some(users) = users.get_mut(&value) {
+                    // Processing this value may have solved dependencies for some users
+                    // of this value.
+                    for &(location, output) in users.iter() {
+                        // Skip if output is already processed or queued to be processed.
+                        if done.contains(&output) || ignore.contains(&output) {
+                            continue;
+                        }
+
+                        // If all input values of this instruction are now processed,
+                        // `output` is ready to be processed too.
+                        let ready = self.instruction(location).read_values().iter()
+                            .all(|&input| input == output || done.contains(&input));
+
+                        if ready {
+                            queue.push_back(output);
+                            ignore.insert(output);
+                        }
+                    }
+                }
+            }
+
+            // Remove all processed PHIs.
+            phis.retain(|(value, _)| !done.contains(value));
+
+            // No PHIs left to process, we are done.
+            if phis.is_empty() {
+                break;
+            }
+
+            // All values in `ignore` are now in `done` too.
+            ignore.clear();
+
+            let mut best_phi = None;
+
+            // Find PHI which has smallest number of known inputs (but at least one).
+            for &(phi_value, incoming) in &phis {
+                // Get amount of known inputs to PHI.
+                let known_inputs = incoming.iter()
+                    .filter(|(_, value)| value != phi_value && done.contains(value))
+                    .count();
+
+                // We can't do anything with PHIs that have no known inputs.
+                if known_inputs < 1 {
+                    continue;
+                }
+
+                // Pick PHI with smallest number of known inputs.
+                let better = match best_phi {
+                    Some((_, count)) => known_inputs < count,
+                    None             => true,
+                };
+
+                if better {
+                    best_phi = Some((*phi_value, known_inputs));
+                }
+            }
+
+            if let Some((phi_value, _)) = best_phi {
+                queue.push_back(phi_value);
+                continue 'main_loop;
+            }
+
+            // There are unsolved PHIs left but none of them have at least one processed input.
+            // If program is in valid SSA form this should never happen.
+            panic!("Couldn't solve value dpendencies because of PHI cycles.");
+        }
+
+        // Make sure that we have actually processed everything.
+        assert_eq!(order.len(), expected_value_count, "Not all values were processed.");
+
+        order
     }
 }
