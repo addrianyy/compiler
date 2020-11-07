@@ -260,6 +260,11 @@ impl FunctionData {
                     "Function arguments defined multiple times.");
         }
 
+        for (ty, value) in &self.undefined {
+            assert!(cx.type_info.insert(*value, *ty).is_none(),
+                    "Undefined values defined multiple times.");
+        }
+
         for value in self.value_processing_order() {
             if !self.is_value_special(value) {
                 self.infer_value_type(value, &mut cx);

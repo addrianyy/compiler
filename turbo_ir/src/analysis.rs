@@ -204,7 +204,7 @@ impl FunctionData {
             }
         } else {
             // This pointer doesn't have creator - it's coming from an argument or it is
-            // `undefined`. We don't know it's origin.
+            // `undefined`. We don't know its origin.
 
             pointer
         };
@@ -214,60 +214,76 @@ impl FunctionData {
                 "Someone already added origin of this pointer?");
     }
 
-    fn is_pointer_safely_used(&self, pointer: Value) -> bool {
-        // Make sure that `pointer` is actually a pointer.
-        assert!(self.value_type(pointer).is_pointer(),
-                "Tried to get origin of non-pointer value.");
+    fn pointer_safety(&self, processing_order: Vec<Value>) -> Map<Value, bool> {
+        // Reverse ordering so every value is used before being created.
+        //
+        // We are at point P in the processing order on which value V is created.
+        // It is guaranteed that all output values of instructions that use V will
+        // after P.
+        //
+        // After reversing it, it is guaranteed that all output values of instructions that
+        // use V are already processed (which is what we want).
+        let processing_order: Vec<_> = processing_order
+            .into_iter()
+            .rev()
+            .collect();
 
-        // Make sure that all uses are safe. If they are it means that we always know
-        // all values which point to the same memory as this pointer. Otherwise, pointer may
-        // escape and be accessed by unknown instruction.
-        for location in self.find_uses(pointer) {
-            match self.instruction(location) {
-                Instruction::Store { ptr, value } => {
-                    // Make sure that we are actually storing TO the pointer, not
-                    // storing the pointer.
-                    if *ptr != pointer || *value == pointer {
-                        return false;
-                    }
-                }
-                Instruction::Load          { .. } => {},
-                Instruction::Return        { .. } => {},
-                Instruction::IntCompare    { .. } => {},
-                Instruction::GetElementPtr { dst, source, .. } => {
-                    if *source != pointer {
-                        return false;
-                    }
+        let mut pointer_safety: Map<Value, bool> = Map::default();
 
-                    // GEP returns memory which belongs to the source pointer. Make sure
-                    // that GEP return value is safely used.
-                    if !self.is_pointer_safely_used(*dst) {
-                        return false;
-                    }
-                }
-                Instruction::Alias { dst, .. } => {
-                    // Make sure that aliased pointer is safely used.
-                    if !self.is_pointer_safely_used(*dst) {
-                        return false;
-                    }
-                }
-                Instruction::Phi { dst, .. } => {
-                    // Ignore self referential PHIs. TODO: Maybe we should return true here.
-                    if *dst == pointer {
-                        return false;
-                    }
-
-                    // Make sure that resulting pointer is safely used.
-                    if !self.is_pointer_safely_used(*dst) {
-                        return false;
-                    }
-                }
-                // All other uses (casts, etc..) are not safe and we can't reason about them.
-                _ => return false,
+        macro_rules! is_safe {
+            ($value: expr) => {
+                pointer_safety.get(&$value).copied().unwrap()
             }
         }
 
-        true
+        for pointer in processing_order {
+            // Ignore non-pointer values.
+            if !self.value_type(pointer).is_pointer() {
+                continue;
+            }
+
+            let mut safe = true;
+
+            // Make sure that all uses are safe. If they are it means that we always know
+            // all values which point to the same memory as this pointer. Otherwise, pointer may
+            // escape and be accessed by unknown instruction.
+            for location in self.find_uses(pointer) {
+                safe = match self.instruction(location) {
+                    Instruction::Store { ptr, value } => {
+                        // Make sure that we are actually storing TO the pointer, not
+                        // storing the pointer.
+                        *ptr == pointer && *value != pointer
+                    }
+                    Instruction::Load          { .. } => true,
+                    Instruction::Return        { .. } => true,
+                    Instruction::IntCompare    { .. } => true,
+                    Instruction::GetElementPtr { dst, source, .. } => {
+                        // GEP returns memory which belongs to the source pointer. Make sure
+                        // that GEP return value is safely used.
+                        *source == pointer && is_safe!(*dst)
+                    }
+                    Instruction::Alias { dst, .. } => {
+                        // Make sure that aliased pointer is safely used.
+                        is_safe!(*dst)
+                    }
+                    Instruction::Phi { dst, .. } => {
+                        // If PHI pointer safety wasn't computed then assume that it is unsafe.
+                        pointer_safety.get(&dst).copied().unwrap_or(false)
+                    }
+                    // All other uses (casts, etc..) are not safe and we can't reason about them.
+                    _ => false,
+                };
+
+                if !safe {
+                    break;
+                }
+            }
+
+            assert!(pointer_safety.insert(pointer, safe).is_none(), "Safety was already \
+                    computed for this pointer");
+        }
+
+        pointer_safety
     }
 
     pub(super) fn analyse_pointers(&self) -> PointerAnalysis {
@@ -279,18 +295,25 @@ impl FunctionData {
             creators: self.value_creators(),
         };
 
-        for value in self.value_processing_order() {
+        let processing_order = self.value_processing_order();
+
+        // Get origin of all pointers used in the function.
+        for &value in &processing_order {
             if self.value_type(value).is_pointer() {
                 self.get_pointer_origin(value, &mut cx);
             }
         }
 
+        // Get safety of every pointer in the function.
+        let pointer_safety = self.pointer_safety(processing_order);
+
+        // Process `stackalloc`s to determine which ones are safely used.
         self.for_each_instruction(|_location, instruction| {
             if let Instruction::StackAlloc { dst, .. } = instruction {
-                // Get information about stackalloc, check if it's safely used and can't
+                // Get information about `stackalloc`: check if it's safely used and can't
                 // escape.
                 let pointer = *dst;
-                let safe    = self.is_pointer_safely_used(pointer);
+                let safe    = pointer_safety[&pointer];
 
                 assert!(cx.analysis.stackallocs.insert(pointer, safe).is_none(),
                         "Multiple pointers from stackalloc?");

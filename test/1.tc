@@ -67,3 +67,9 @@ i32 sum(i32 count) {
 
     return total;
 }
+
+void unsafe() {
+    i32 ptr = 0;
+
+    *(i8*)&ptr = 13i8;
+}
