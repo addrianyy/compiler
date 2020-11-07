@@ -342,6 +342,32 @@ impl Instruction {
         }
     }
 
+    pub fn transform_output(&mut self, mut f: impl FnMut(&mut Value)) {
+        match self {
+            Instruction::ArithmeticUnary  { dst, .. } => f(dst),
+            Instruction::ArithmeticBinary { dst, .. } => f(dst),
+            Instruction::IntCompare       { dst, .. } => f(dst),
+            Instruction::Load             { dst, .. } => f(dst),
+            Instruction::Store            { ..      } => {}
+            Instruction::Call             { dst, .. } => {
+                if let Some(dst) = dst {
+                    f(dst);
+                }
+            }
+            Instruction::Branch           { ..      } => {}
+            Instruction::BranchCond       { ..      } => {}
+            Instruction::StackAlloc       { dst, .. } => f(dst),
+            Instruction::Return           { ..      } => {}
+            Instruction::Const            { dst, .. } => f(dst),
+            Instruction::GetElementPtr    { dst, .. } => f(dst),
+            Instruction::Cast             { dst, .. } => f(dst),
+            Instruction::Select           { dst, .. } => f(dst),
+            Instruction::Phi              { dst, .. } => f(dst),
+            Instruction::Alias            { dst, .. } => f(dst),
+            Instruction::Nop                          => {}
+        }
+    }
+
     pub fn transform_inputs(&mut self, mut f: impl FnMut(&mut Value)) {
         match self {
             Instruction::ArithmeticUnary  { value, ..         } => { f(value); }

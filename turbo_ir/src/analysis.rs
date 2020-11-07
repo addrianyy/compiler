@@ -447,7 +447,6 @@ impl FunctionData {
         consts
     }
 
-
     /// Check if there is any path that goes from `from` to `to` without going through
     /// `without`.
     fn can_reach(&self, from: Label, to: Label, without: Label) -> bool {
