@@ -33,6 +33,12 @@ struct PointerAnalysisContext {
     creators: Map<Value, Location>,
 }
 
+impl PointerAnalysisContext {
+    fn get_origin(&self, pointer: Value) -> Value {
+        self.analysis.origins.get(&pointer).copied().unwrap()
+    }
+}
+
 pub(super) struct PointerAnalysis {
     origins:     Map<Value, Value>,
     stackallocs: Map<Value, bool>,
@@ -124,8 +130,7 @@ impl FunctionData {
         }
     }
 
-    fn get_pointer_origin(&self, pointer: Value,
-                          cx: &mut PointerAnalysisContext) -> Value {
+    fn get_pointer_origin(&self, pointer: Value, cx: &mut PointerAnalysisContext) {
         // If pointer origin is unknown or it's at its primary origin this function will
         // return unmodified `pointer`.
 
@@ -133,44 +138,73 @@ impl FunctionData {
         assert!(self.value_type(pointer).is_pointer(),
                 "Tried to get origin of non-pointer value.");
 
-        // Check if we already know about origin of this pointer.
-        if let Some(&origin) = cx.analysis.origins.get(&pointer) {
-            return origin;
-        }
-
         // Try to get origin from an instruction that created the pointer.
         let origin = if let Some(&creator) = cx.creators.get(&pointer) {
             match self.instruction(creator) {
                 // Instructions which can create pointers but for which we don't know the origin.
-                Instruction::Load   { .. } => pointer,
-                Instruction::Call   { .. } => pointer,
-                Instruction::Const  { .. } => pointer,
-                Instruction::Select { .. } => pointer,
+                Instruction::Load  { .. } => pointer,
+                Instruction::Call  { .. } => pointer,
+                Instruction::Const { .. } => pointer,
 
                 // Casted pointers can alias, we cannot get their origin.
                 Instruction::Cast { .. } => pointer,
 
-                // We are actually at primary origin.
+                // We are actually at the primary origin.
                 Instruction::StackAlloc { .. } => pointer,
 
                 // Get origin from aliased value.
-                Instruction::Alias { value, .. } => self.get_pointer_origin(*value, cx),
+                Instruction::Alias { value, .. } => cx.get_origin(*value),
 
                 // GEP result pointer must be originating from it's source.
-                Instruction::GetElementPtr { source, .. } => self.get_pointer_origin(*source, cx),
+                Instruction::GetElementPtr { source, .. } => cx.get_origin(*source),
 
-                Instruction::Phi { .. } => {
-                    // TODO: Check all incoming values.  But to do that we need to handle
-                    // self-referential PHIs.
-                    pointer
+                // Get common origin if it exists.
+                Instruction::Select { on_true, on_false, .. } => {
+                    let true_origin  = cx.get_origin(*on_true);
+                    let false_origin = cx.get_origin(*on_false);
+
+                    if true_origin == false_origin {
+                        true_origin
+                    } else {
+                        pointer
+                    }
+                }
+
+                // Get common origin if it exists.
+                Instruction::Phi { incoming, .. } => {
+                    let mut common_origin = None;
+
+                    // Make sure that all incoming values have the same origin.
+                    for &(_, incoming_value) in incoming {
+                        // Skip self reference.
+                        if incoming_value == pointer {
+                            continue;
+                        }
+
+                        if let Some(&origin) = cx.analysis.origins.get(&incoming_value) {
+                            if common_origin.is_none() || Some(origin) == common_origin {
+                                common_origin = Some(origin);
+                            } else {
+                                // Origin mismatch.
+                                common_origin = None;
+                                break;
+                            }
+                        } else {
+                            // No origin calculated yet, we cannot reason about this PHI.
+                            common_origin = None;
+                            break;
+                        }
+                    }
+
+                    common_origin.unwrap_or(pointer)
                 }
 
                 // Other instructions should never create pointers.
                 x => panic!("Unexpected instruction {:?} created pointer.", x),
             }
         } else {
-            // This pointer doesn't have creator - it's coming from an argument.
-            // We don't know it's origin.
+            // This pointer doesn't have creator - it's coming from an argument or it is
+            // `undefined`. We don't know it's origin.
 
             pointer
         };
@@ -178,8 +212,6 @@ impl FunctionData {
         // Add calculated origin to the map.
         assert!(cx.analysis.origins.insert(pointer, origin).is_none(),
                 "Someone already added origin of this pointer?");
-
-        origin
     }
 
     fn is_pointer_safely_used(&self, pointer: Value) -> bool {
@@ -247,25 +279,13 @@ impl FunctionData {
             creators: self.value_creators(),
         };
 
-        macro_rules! calculate_origin {
-            ($value: expr) => {
-                // Calculate origin if provided value is actually a pointer.
-                if self.value_type($value).is_pointer() {
-                    let _ = self.get_pointer_origin($value, &mut cx);
-                }
+        for value in self.value_processing_order() {
+            if self.value_type(value).is_pointer() {
+                self.get_pointer_origin(value, &mut cx);
             }
         }
 
-        // Go through every instruction and analyze used pointers.
         self.for_each_instruction(|_location, instruction| {
-            // Analyze origins of all used/created pointers by this instruction.
-            if let Some(value) = instruction.created_value() {
-                calculate_origin!(value);
-            }
-            for value in instruction.read_values() {
-                calculate_origin!(value);
-            }
-
             if let Instruction::StackAlloc { dst, .. } = instruction {
                 // Get information about stackalloc, check if it's safely used and can't
                 // escape.
@@ -276,11 +296,6 @@ impl FunctionData {
                         "Multiple pointers from stackalloc?");
             }
         });
-
-        // Analyze origins of arguments to this function.
-        for &value in &self.argument_values {
-            calculate_origin!(value);
-        }
 
         cx.analysis
     }
@@ -880,6 +895,14 @@ impl FunctionData {
         // Handle all function arguments.
         for &value in &self.argument_values {
             // Function arguments can be processed immediately.
+            queue.push_back(value);
+
+            expected_value_count += 1;
+        }
+
+        // Handle all undefined values.
+        for &value in &self.undefined_set {
+            // Undefined values can be processed immediately.
             queue.push_back(value);
 
             expected_value_count += 1;
