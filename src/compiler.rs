@@ -191,6 +191,26 @@ impl Compiler {
         }
     }
 
+    fn implicit_cast_value(&mut self, value: CodegenValue, desired: &Ty) -> ir::Value {
+        let extracted = value.extract(&mut self.ir);
+
+        if &value.ty != desired {
+            return self.int_cast(extracted, &value.ty, desired);
+        }
+
+        extracted
+    }
+
+    fn implicit_cast_binary(&mut self, left: CodegenValue, _op: BinaryOp, right: CodegenValue)
+        -> (CodegenValue, CodegenValue)
+    {
+        if left.ty == right.ty {
+            return (left, right);
+        }
+
+        panic!()
+    }
+
     fn codegen_nonvoid_expression(&mut self, expression: &Expr) -> CodegenValue {
         self.codegen_expression(expression)
             .expect("Expected non-void expression, got void one.")
@@ -240,14 +260,37 @@ impl Compiler {
                 let mut left  = self.codegen_nonvoid_expression(&left);
                 let mut right = self.codegen_nonvoid_expression(&right);
 
-                let mut left_value  = left.extract(&mut self.ir);
-                let mut right_value = right.extract(&mut self.ir);
-
                 let pointers = left.ty.is_pointer() || right.ty.is_pointer();
 
                 match op {
+                    BinaryOp::Add | BinaryOp::Sub if pointers => {
+                        if *op == BinaryOp::Add && right.ty.is_pointer() {
+                            std::mem::swap(&mut left, &mut right);
+                        }
+
+                        assert!(left.ty.is_nonvoid_ptr(), "Add/sub left operand \
+                                must be pointer.");
+
+                        assert!(right.ty.is_arithmetic_type(), "Add/sub right operand \
+                                must be arithmetic.");
+
+                        let     left_value  = left.extract(&mut self.ir);
+                        let mut right_value = right.extract(&mut self.ir);
+
+                        right_value = self.int_cast(right_value, &right.ty, &Ty::U64);
+
+                        if *op == BinaryOp::Sub {
+                            right_value = self.ir.arithmetic_unary(ir::UnaryOp::Neg, right_value);
+                        }
+
+                        let result = self.ir.get_element_ptr(left_value, right_value);
+
+                        Some(CodegenValue::rvalue(left.ty, result))
+                    }
                     BinaryOp::Equal | BinaryOp::NotEqual | BinaryOp::Gt |
                     BinaryOp::Lt    | BinaryOp::Gte      | BinaryOp::Lte => {
+                        let (mut left, mut right) = self.implicit_cast_binary(left, *op, right);
+
                         assert!(left.ty == right.ty && left.ty != Ty::Void, "Cannot compare \
                                 two values with different types (or void types.");
 
@@ -262,8 +305,11 @@ impl Compiler {
                         if let Some(new_op) = op_change {
                             op = new_op;
 
-                            std::mem::swap(&mut left_value, &mut right_value);
+                            std::mem::swap(&mut left, &mut right);
                         }
+
+                        let left_value  = left.extract(&mut self.ir);
+                        let right_value = right.extract(&mut self.ir);
 
                         let predicate = match (op, left.ty.is_signed()) {
                             (BinaryOp::Equal,    _    ) => ir::IntPredicate::Equal,
@@ -282,28 +328,9 @@ impl Compiler {
 
                         Some(CodegenValue::rvalue(Ty::U8, result))
                     }
-                    BinaryOp::Add | BinaryOp::Sub if pointers => {
-                        if *op == BinaryOp::Add && right.ty.is_pointer() {
-                            std::mem::swap(&mut left, &mut right);
-                            std::mem::swap(&mut left_value, &mut right_value);
-                        }
-
-                        assert!(left.ty.is_nonvoid_ptr(), "Add/sub left operand \
-                                must be pointer.");
-                        assert!(right.ty.is_arithmetic_type(), "Add/sub right operand \
-                                must be arithmetic.");
-
-                        right_value = self.int_cast(right_value, &right.ty, &Ty::U64);
-
-                        if *op == BinaryOp::Sub {
-                            right_value = self.ir.arithmetic_unary(ir::UnaryOp::Neg, right_value);
-                        }
-
-                        let result = self.ir.get_element_ptr(left_value, right_value);
-
-                        Some(CodegenValue::rvalue(left.ty, result))
-                    }
                     _ => {
+                        let (left, right) = self.implicit_cast_binary(left, *op, right);
+
                         assert!(left.ty == right.ty && left.ty.is_arithmetic_type(), "Cannot \
                                 apply binary operator to values of different types or \
                                 non-arithmetic values.");
@@ -339,6 +366,9 @@ impl Compiler {
                             BinaryOp::Xor => ir::BinaryOp::Xor,
                             _             => unreachable!(),
                         };
+
+                        let left_value  = left.extract(&mut self.ir);
+                        let right_value = right.extract(&mut self.ir);
 
                         let result = self.ir.arithmetic_binary(left_value, op, right_value);
 
@@ -408,12 +438,10 @@ impl Compiler {
                 let mut generated_args = Vec::new();
 
                 for (index, arg) in args.iter().enumerate() {
-                    let value = self.codegen_nonvoid_expression(arg);
+                    let value  = self.codegen_nonvoid_expression(arg);
+                    let casted = self.implicit_cast_value(value, &function.args[index]);
 
-                    assert!(value.ty == function.args[index], "Invalid type of parameter \
-                            passed to function {}.", target);
-
-                    generated_args.push(value.extract(&mut self.ir));
+                    generated_args.push(casted);
                 }
 
                 self.ir.call(function.function, generated_args).map(|value| {
@@ -431,16 +459,6 @@ impl Compiler {
         let zero = self.ir.iconst(0u32, to_ir_type(&ty));
 
         self.ir.int_compare(value, ir::IntPredicate::NotEqual, zero)
-    }
-
-    fn implicit_cast_value(&mut self, value: CodegenValue, desired: &Ty) -> ir::Value {
-        let extracted = value.extract(&mut self.ir);
-
-        if &value.ty != desired {
-            return self.int_cast(extracted, &value.ty, desired);
-        }
-
-        extracted
     }
 
     fn codegen_statement(&mut self, statement: &Stmt, return_ty: &Ty, depth: u32) -> bool {

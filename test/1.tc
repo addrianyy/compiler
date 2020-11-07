@@ -74,10 +74,15 @@ void unsafe() {
     *(i8*)&ptr = 13i8;
 }
 
+void turboss(i32 x) {
+}
+
 i32 implicit() {
     i32 x = 100i8;
 
     x = 33u64;
 
-    return 1000u64;
+    turboss(123i64);
+
+    return 0x1000000000;
 }
