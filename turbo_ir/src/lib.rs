@@ -19,10 +19,10 @@ use std::rc::Rc;
 pub use ty::Type;
 pub use instruction::{UnaryOp, BinaryOp, IntPredicate, Cast};
 pub use codegen::MachineCode;
+pub use codegen::backends;
 use instruction::Instruction;
 use phi_updater::PhiUpdater;
 use analysis::ConstType;
-use codegen::Backend;
 use graph::Dominators;
 use graph::FlowGraph;
 use passes::Pass;
@@ -543,18 +543,18 @@ impl Module {
         }
     }
 
-    pub fn generate_machine_code(&mut self) -> MachineCode {
+    pub fn generate_machine_code(&mut self, backend: &dyn backends::IRBackend) -> MachineCode {
         assert!(self.finalized, "Cannot generate machine code before finalization.");
 
-        let mut backend = codegen::x86backend::X86Backend::new(self);
+        let mut backend = backend.create(self);
 
         // Generate machine code for each function.
         // Register allocator will add additional `alias` instructions to handle PHIs.
         for (function, internal) in &mut self.functions {
             if let FunctionInternal::Local(data) = internal {
-                let register_allocation = codegen::allocate_registers(data, &backend);
+                let register_allocation = codegen::allocate_registers(data, backend.get());
 
-                backend.generate_function(*function, data, register_allocation);
+                backend.get_mut().generate_function(*function, data, register_allocation);
             }
         }
 

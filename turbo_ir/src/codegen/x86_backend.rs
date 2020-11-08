@@ -1303,8 +1303,9 @@ impl super::Backend for X86Backend {
         self.mcode_map.insert(function_id, (function_offset, function_size));
     }
 
-    fn finalize(self) -> (Vec<u8>, FunctionMCodeMap) {
-        let X86Backend { asm, mcode_map } = self;
+    fn finalize(&mut self) -> (Vec<u8>, FunctionMCodeMap) {
+        let asm       = std::mem::take(&mut self.asm);
+        let mcode_map = std::mem::take(&mut self.mcode_map);
 
         (asm.into_bytes(), mcode_map)
     }

@@ -1,4 +1,4 @@
-pub mod x86backend;
+mod x86_backend;
 mod executable_memory;
 mod register_allocation;
 
@@ -7,16 +7,6 @@ use executable_memory::ExecutableMemory;
 use register_allocation::RegisterAllocation;
 
 pub type FunctionMCodeMap = Map<Function, (usize, usize)>;
-
-pub(super) trait Backend {
-    fn new(ir: &Module) -> Self where Self: Sized;
-    fn hardware_registers(&self) -> usize;
-    fn can_inline_constant(&self, function: &FunctionData, value: Value, constant: i64,
-                           users: &[&Instruction]) -> bool;
-    fn generate_function(&mut self, function: Function, data: &FunctionData,
-                         register_allocation: RegisterAllocation);
-    fn finalize(self) -> (Vec<u8>, FunctionMCodeMap);
-}
 
 pub struct MachineCode {
     buffer:    ExecutableMemory,
@@ -51,8 +41,60 @@ impl MachineCode {
     }
 }
 
+pub(super) trait Backend {
+    fn new(ir: &Module) -> Self where Self: Sized;
+    fn hardware_registers(&self) -> usize;
+    fn can_inline_constant(&self, function: &FunctionData, value: Value, constant: i64,
+                           users: &[&Instruction]) -> bool;
+    fn generate_function(&mut self, function: Function, data: &FunctionData,
+                         register_allocation: RegisterAllocation);
+    fn finalize(&mut self) -> (Vec<u8>, FunctionMCodeMap);
+}
+
 pub(super) fn allocate_registers(function: &mut FunctionData, backend: &dyn Backend)
     -> RegisterAllocation
 {
     function.allocate_registers(backend)
+}
+
+pub mod backends {
+    use super::Backend;
+
+    pub struct BackendInternal {
+        inner: Box<dyn Backend>,
+    }
+
+    impl BackendInternal {
+        pub(in super::super) fn get(&self) -> &dyn Backend {
+            self.inner.as_ref()
+        }
+
+        pub(in super::super) fn get_mut(&mut self) -> &mut dyn Backend {
+            self.inner.as_mut()
+        }
+
+        pub(in super::super) fn finalize(mut self) -> (Vec<u8>, super::FunctionMCodeMap) {
+            self.inner.finalize()
+        }
+    }
+
+    pub trait IRBackend {
+        fn create(&self, ir: &crate::Module) -> BackendInternal;
+    }
+
+    macro_rules! backend {
+        ($module: ident, $name: ident) => {
+            pub struct $name;
+
+            impl IRBackend for $name {
+                fn create(&self, ir: &crate::Module) -> BackendInternal {
+                    BackendInternal {
+                        inner: Box::new(super::$module::$name::new(ir)),
+                    }
+                }
+            }
+        }
+    }
+
+    backend!(x86_backend, X86Backend);
 }

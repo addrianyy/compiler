@@ -29,7 +29,7 @@ fn main() {
         println!();
     }
 
-    let mcode = compiled.ir.generate_machine_code();
+    let mcode = compiled.ir.generate_machine_code(&turbo_ir::backends::X86Backend);
 
     for (prototype, function) in &compiled.functions {
         let buffer = mcode.function_buffer(*function);
