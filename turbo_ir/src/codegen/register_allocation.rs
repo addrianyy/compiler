@@ -1,5 +1,6 @@
-use super::{FunctionData, Value, Location, Label, Map, Set, ConstType,
-            Dominators, FlowGraph, CapacityExt, Instruction, BinaryOp};
+use crate::{FunctionData, Value, Location, Label, Map, Set, ConstType,
+            Dominators, FlowGraph, CapacityExt, Instruction};
+use super::Backend;
 
 const DEBUG_ALLOCATOR: bool = false;
 
@@ -625,7 +626,7 @@ impl FunctionData {
 
         dotgraph.push_str("}\n");
 
-        super::dot::save_svg_graph(&dotgraph, &format!("graphs/interference_{}.svg",
+        crate::dot::save_svg_graph(&dotgraph, &format!("graphs/interference_{}.svg",
                                                        self.prototype.name));
     }
 
@@ -994,18 +995,13 @@ impl FunctionData {
         }
     }
 
-    fn constants_and_skips(&self) -> (Map<Value, i64>, Set<Location>) {
+    fn constants_and_skips(&self, backend: &dyn Backend) -> (Map<Value, i64>, Set<Location>) {
         let mut constants = Map::default();
         let mut skips     = Set::default();
 
         let creators = self.value_creators();
 
-        'skip: for (value, (ty, constant)) in self.constant_values() {
-            // Check if constant fits in imm32.
-            if !(constant as i64 >= i32::MIN as i64 && constant as i64 <= i32::MAX as i64) {
-                continue;
-            }
-
+        for (value, (ty, constant)) in self.constant_values() {
             // Sign extend constant to 64 bit value.
             let constant = match ConstType::new(ty) {
                 ConstType::U1  => (constant & 1) as i64,
@@ -1015,56 +1011,30 @@ impl FunctionData {
                 ConstType::U64 => constant as i64,
             };
 
-            for usage in self.find_uses(value) {
-                let instruction = self.instruction(usage);
+            let users: Vec<&Instruction> = self.find_uses(value)
+                .into_iter()
+                .map(|location| self.instruction(location))
+                .collect();
 
-                // Try to determine if we can easily use constant in particular x86 instruction.
-                match instruction {
-                    Instruction::ArithmeticBinary { a, op, b, .. } => {
-                        let op = *op;
-
-                        // We can easily use this constant if it's second operand of
-                        // most of arithmetic operations.
-                        if *a == value || *b != value {
-                            continue 'skip;
-                        }
-
-                        if op == BinaryOp::Mul || op == BinaryOp::DivU || op == BinaryOp::DivS {
-                            continue 'skip;
-                        }
-                    }
-                    Instruction::IntCompare { .. } => {
-                        // x86 backend can change the order and therafore we cannot
-                        // easily determine if constant can be used as imm.
-                        // TODO: Handle this somehow.
-
-                        /*
-                        if *a == value || *b != value {
-                            continue 'skip;
-                        }
-                        */
-
-                        continue 'skip;
-                    }
-                    _ => continue 'skip,
-                }
+            if backend.can_inline_constant(self, value, constant, &users) {
+                // This is optimizable constant, add it to the list.
+                constants.insert(value, constant);
+                skips.insert(creators[&value]);
             }
-
-            // This is optimizable constant, add it to the list.
-            constants.insert(value, constant);
-            skips.insert(creators[&value]);
         }
 
         (constants, skips)
     }
 
-    pub(super) fn allocate_registers(&mut self, hardware_registers: usize) -> RegisterAllocation {
+    pub(super) fn allocate_registers(&mut self, backend: &dyn Backend) -> RegisterAllocation {
+        let hardware_registers = backend.hardware_registers();
+
         // Rewrite PHIs to use copy (`alias`) instructions. This is done to avoid interference
         // problems.
         self.rewrite_phis();
 
         // Get all constant values and all `iconst` instructions that we can skip.
-        let (constants, skips) = self.constants_and_skips();
+        let (constants, skips) = self.constants_and_skips(backend);
 
         let labels     = self.reachable_labels();
         let dominators = self.dominators();

@@ -1,6 +1,6 @@
 use crate::{Function, FunctionData, Location, Instruction, BinaryOp, UnaryOp,
             IntPredicate, Module, Value, Type, Cast, Map};
-use crate::register_allocation::{Place, RegisterAllocation};
+use super::register_allocation::{Place, RegisterAllocation};
 use super::FunctionMCodeMap;
 
 use asm::{Assembler, OperandSize, Operand};
@@ -144,9 +144,8 @@ pub struct X86Backend {
 }
 
 impl X86Backend {
-    fn x86_function_data(function: &mut FunctionData) -> X86FunctionData {
-        let register_allocation = function.allocate_registers(AVAILABLE_REGISTERS.len());
-
+    fn x86_function_data(function: &FunctionData,
+                         register_allocation: RegisterAllocation) -> X86FunctionData {
         let mut place_to_operand = Map::default();
 
         // Stack layout after prologue:
@@ -1176,9 +1175,57 @@ impl super::Backend for X86Backend {
         }
     }
 
-    fn generate_function(&mut self, function_id: Function, function: &mut FunctionData) {
+    fn hardware_registers(&self) -> usize {
+        AVAILABLE_REGISTERS.len()
+    }
+
+    fn can_inline_constant(&self, _function: &FunctionData, value: Value, constant: i64,
+                           users: &[&Instruction]) -> bool {
+        // Check if constant fits in imm32.
+        if !(constant as i64 >= i32::MIN as i64 && constant as i64 <= i32::MAX as i64) {
+            return false;
+        }
+
+        for user in users {
+            // Try to determine if we can easily use constant in particular x86 instruction.
+            match user {
+                Instruction::ArithmeticBinary { a, op, b, .. } => {
+                    let op = *op;
+
+                    // We can easily use this constant if it's second operand of
+                    // most of arithmetic operations.
+                    if *a == value || *b != value {
+                        return false;
+                    }
+
+                    if op == BinaryOp::Mul || op == BinaryOp::DivU || op == BinaryOp::DivS {
+                        return false;
+                    }
+                }
+                Instruction::IntCompare { .. } => {
+                    // x86 backend can change the order and therafore we cannot
+                    // easily determine if constant can be used as imm.
+                    // TODO: Handle this somehow.
+
+                    /*
+                    if *a == value || *b != value {
+                        continue 'skip;
+                    }
+                    */
+
+                    return false;
+                }
+                _ => return false,
+            }
+        }
+
+        true
+    }
+
+    fn generate_function(&mut self, function_id: Function, function: &FunctionData,
+                         register_allocation: RegisterAllocation) {
         let function_offset = self.asm.current_offset();
-        let x86_data        = Self::x86_function_data(function);
+        let x86_data        = Self::x86_function_data(function, register_allocation);
 
         let context = X86CodegenContext {
             x86_data: &x86_data,

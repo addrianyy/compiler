@@ -1,15 +1,20 @@
 pub mod x86backend;
 mod executable_memory;
+mod register_allocation;
 
-use crate::{Function, FunctionData, Module, Map};
+use crate::{Function, FunctionData, Module, Map, Instruction, Value};
 use executable_memory::ExecutableMemory;
+use register_allocation::RegisterAllocation;
 
 pub type FunctionMCodeMap = Map<Function, (usize, usize)>;
 
 pub(super) trait Backend {
-    fn new(ir: &Module) -> Self;
-
-    fn generate_function(&mut self, function: Function, data: &mut FunctionData);
+    fn new(ir: &Module) -> Self where Self: Sized;
+    fn hardware_registers(&self) -> usize;
+    fn can_inline_constant(&self, function: &FunctionData, value: Value, constant: i64,
+                           users: &[&Instruction]) -> bool;
+    fn generate_function(&mut self, function: Function, data: &FunctionData,
+                         register_allocation: RegisterAllocation);
     fn finalize(self) -> (Vec<u8>, FunctionMCodeMap);
 }
 
@@ -44,4 +49,10 @@ impl MachineCode {
 
         *(&ptr as *const _ as *const T)
     }
+}
+
+pub(super) fn allocate_registers(function: &mut FunctionData, backend: &dyn Backend)
+    -> RegisterAllocation
+{
+    function.allocate_registers(backend)
 }

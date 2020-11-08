@@ -1,5 +1,4 @@
 mod instruction_builders;
-mod register_allocation;
 mod type_inference;
 mod instruction;
 mod collections;
@@ -549,11 +548,13 @@ impl Module {
 
         let mut backend = codegen::x86backend::X86Backend::new(self);
 
-        // Generate machine code for each function. This will call register allocator which
-        // will add additional `alias` instruction to handle PHIs.
+        // Generate machine code for each function.
+        // Register allocator will add additional `alias` instructions to handle PHIs.
         for (function, internal) in &mut self.functions {
             if let FunctionInternal::Local(data) = internal {
-                backend.generate_function(*function, data);
+                let register_allocation = codegen::allocate_registers(data, &backend);
+
+                backend.generate_function(*function, data, register_allocation);
             }
         }
 
