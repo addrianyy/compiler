@@ -1,6 +1,97 @@
-use crate::{FunctionData, Instruction};
+use crate::{FunctionData, Instruction, Label, Value};
 
 pub struct BranchToSelectPass;
+
+fn make_unconditional_branch(function: &mut FunctionData, from: Label, target: Label) {
+    let body      = function.blocks.get_mut(&from).unwrap();
+    let body_size = body.len();
+
+    body[body_size - 1] = Instruction::Branch {
+        target,
+    };
+}
+
+fn move_instructions(function: &mut FunctionData, treshold: usize,
+                     from: &[Label], to: Label) -> bool {
+    let mut total_instructions = 0;
+
+    for &label in from {
+        let body = &function.blocks[&label];
+        let size = body.len();
+
+        // Ignore last instruction (branch) as it will be removed anyway.
+        for instruction in &body[..size - 1] {
+            if !instruction.can_be_reordered() {
+                return false;
+            }
+        }
+
+        total_instructions += size - 1;
+    }
+
+    if total_instructions > treshold {
+        return false;
+    }
+
+    for &from in from {
+        // Remove all body of this label as it's unlinked from CFG anyway.
+        let mut body = function.blocks.remove(&from).unwrap();
+
+        // Remove the last branch.
+        body.pop();
+
+        let to_body = function.blocks.get_mut(&to).unwrap();
+
+        // Move all instruction from this label to the beginning
+        // of `exit`.
+        for instruction in body.into_iter().rev() {
+            to_body.insert(0, instruction);
+        }
+    }
+
+    true
+}
+
+fn rewrite_phis_to_selects(function: &mut FunctionData, condition: Value, label: Label,
+                           true_label: Label, false_label: Label) {
+    let body = function.blocks.get_mut(&label).unwrap();
+
+    for instruction in body {
+        if let Instruction::Phi { dst, incoming } = instruction {
+            assert!(incoming.len() == 2, "Number of incoming values \
+                    doesn't match block predecessor count.");
+
+            let mut true_value  = None;
+            let mut false_value = None;
+
+            // Get value which is returned when we enter from true label and
+            // value which is returned when we enter from false label.
+            for &mut (label, value) in incoming {
+                if label == true_label {
+                    true_value = Some(value);
+                }
+
+                if label == false_label {
+                    false_value = Some(value);
+                }
+            }
+
+            let true_value  = true_value.unwrap();
+            let false_value = false_value.unwrap();
+
+            // Rewrite:
+            // v5 = phi [on_true: v4; on_false: v5]
+            // To:
+            // v5 = select cond, v4, v5
+            *instruction = Instruction::Select {
+                dst:      *dst,
+                cond:     condition,
+                on_true:  true_value,
+                on_false: false_value,
+            };
+        }
+    }
+}
 
 impl super::Pass for BranchToSelectPass {
     fn name(&self) -> &str {
@@ -40,6 +131,8 @@ impl super::Pass for BranchToSelectPass {
         //   v15 = select u1 v4, u32 v10, v11
         //   ret u32 v15
 
+        const COPY_TRESHOLD: usize = 8;
+
         'main_loop: loop {
             // Recalculate data as we have altered the CFG.
             let labels        = function.reachable_labels();
@@ -55,25 +148,112 @@ impl super::Pass for BranchToSelectPass {
                         continue 'next_label;
                     }
 
+                    let mut true_exit  = None;
+                    let mut false_exit = None;
+
+                    if let Instruction::Branch { target } = function.last_instruction(on_true) {
+                        true_exit = Some(*target);
+                    }
+
+                    if let Instruction::Branch { target } = function.last_instruction(on_false) {
+                        false_exit = Some(*target);
+                    }
+
+                    {
+                        struct SkewedCFGInfo {
+                            skew:       Label,
+                            exit:       Label,
+                            true_pred:  Label,
+                            false_pred: Label,
+                        }
+
+                        let mut skewed_info = None;
+
+                        //   A
+                        //  / \
+                        // B   |
+                        //  \ /
+                        //   D 
+
+                        // Try to detect both left-skew and right-skew in the CFG.
+                        if false_exit == Some(on_true) {
+                            // B - `on_false`.
+                            // D - `on_true`.
+                            skewed_info = Some(SkewedCFGInfo {
+                                skew:       on_false,
+                                exit:       on_true,
+                                true_pred:  label,
+                                false_pred: on_false,
+                            });
+                        } else if true_exit == Some(on_false) {
+                            // B - `on_true`.
+                            // D - `on_false`.
+                            skewed_info = Some(SkewedCFGInfo {
+                                skew:       on_true,
+                                exit:       on_false,
+                                true_pred:  on_true,
+                                false_pred: label,
+                            });
+                        }
+
+                        if let Some(skewed_info) = skewed_info {
+                            let SkewedCFGInfo {
+                                skew,
+                                exit,
+                                true_pred,
+                                false_pred,
+                            } = skewed_info;
+
+                            // Skew should be only reachable from `label` and `exit` should be
+                            // reachable from `label` and `skew`.
+                            if flow_incoming[&skew].len() != 1 ||
+                               flow_incoming[&exit].len() != 2 {
+                                continue 'next_label;
+                            }
+
+                            // Avoid loops.
+                            if skew == exit || exit == label {
+                                continue 'next_label;
+                            }
+
+                            // Try to copy all instructions from `skew` to `exit`.
+                            if !move_instructions(function, COPY_TRESHOLD, &[skew], exit) {
+                                continue 'next_label;
+                            }
+
+                            // Make `label` jump directly to `exit`. This will unlink `skew` from
+                            // CFG.
+                            make_unconditional_branch(function, label, exit);
+
+                            rewrite_phis_to_selects(function, cond, exit, true_pred, false_pred);
+
+                            // As we have altered CFG we cannot continue this loop so
+                            // we go directly to the main loop.
+                            continue 'main_loop;
+                        }
+                    }
+
+                    // To continue both `on_true` and `on_false` must end with unconditional
+                    // branch.
+                    if true_exit.is_none() || false_exit.is_none() {
+                        continue 'next_label;
+                    }
+
                     // We cannot optimize this branch if `on_true` or `on_false` label is
                     // reachable from somewhere else then from `label`.
                     if flow_incoming[&on_true].len() != 1 || flow_incoming[&on_false].len() != 1 {
                         continue 'next_label;
                     }
 
+                    let true_exit  = true_exit.unwrap();
+                    let false_exit = false_exit.unwrap();
+
                     // Get exit label if there is a common one. Otherwise we cannot optimize
                     // branch out so we continue.
-                    let exit = match (function.last_instruction(on_true),
-                                      function.last_instruction(on_false)) {
-                        (Instruction::Branch { target: true_target  },
-                         Instruction::Branch { target: false_target }) => {
-                            if true_target == false_target {
-                                *true_target
-                            } else {
-                                continue 'next_label;
-                            }
-                        }
-                        _ => continue 'next_label,
+                    let exit = if true_exit == false_exit {
+                        true_exit
+                    } else {
+                        continue 'next_label;
                     };
 
                     // We cannot optimize this branch if `exit` can be reached from
@@ -99,101 +279,17 @@ impl super::Pass for BranchToSelectPass {
                     // If B and C don't contain non-reorderable instructions we can optimize
                     // the branch out.
 
-                    let mut total_instructions = 0;
-
-                    // Check both `on_true` and `on_false` blocks if they can be reordered
-                    // and count total number of instructions.
-                    for &checked_label in &[on_true, on_false] {
-                        let body = &function.blocks[&checked_label];
-                        let size = body.len();
-
-                        // Ignore last instruction (branch) as it will be removed anyway.
-                        for instruction in &body[..size - 1] {
-                            if !instruction.can_be_reordered() {
-                                continue 'next_label;
-                            }
-                        }
-
-                        total_instructions += size - 1;
-                    }
-
-                    // Check if changing branch to select is worth it.
-                    if total_instructions > 8 {
+                    // Try to copy everything from `on_true` and `on_false` to `exit`.
+                    if !move_instructions(function, COPY_TRESHOLD, &[on_true, on_false], exit) {
                         continue 'next_label;
                     }
 
-                    // We can change branch to select. We will make A jump directly to D,
-                    // copy everything except branches from B and C to D and change
-                    // all PHIs to `select`s.
-
-                    {
-                        let parent_body = function.blocks.get_mut(&label).unwrap();
-                        let body_size   = parent_body.len();
-
-                        // Make `label` enter `exit` directly. This will unlink `on_true` and
-                        // `on_false` from the CFG.
-                        parent_body[body_size - 1] = Instruction::Branch {
-                            target: exit,
-                        };
-                    }
-
-                    // Move everything (except last branch)  from `on_true` and `on_false`
-                    // to the beginning of `exit`. We may put things before PHIs but that
-                    // doesn't matter as we will change PHIs to `select`s.
-                    for &move_label in &[on_true, on_false] {
-                        // Remove all body of this label as it's unlinked from CFG anyway.
-                        let mut body = function.blocks.remove(&move_label).unwrap();
-
-                        // Remove the last branch.
-                        body.pop();
-
-                        let exit_body = function.blocks.get_mut(&exit).unwrap();
-
-                        // Move all instruction from this label to the beginning
-                        // of `exit`.
-                        for instruction in body.into_iter().rev() {
-                            exit_body.insert(0, instruction);
-                        }
-                    }
-
-                    let exit_body = function.blocks.get_mut(&exit).unwrap();
+                    // Make `label` enter `exit` directly. This will unlink `on_true` and
+                    // `on_false` from the CFG.
+                    make_unconditional_branch(function, label, exit);
 
                     // Rewrite all PHIs in `exit` to `select`s.
-                    for instruction in exit_body {
-                        if let Instruction::Phi { dst, incoming } = instruction {
-                            assert!(incoming.len() == 2, "Number of incoming values \
-                                    doesn't match block predecessor count.");
-
-                            let mut true_value  = None;
-                            let mut false_value = None;
-
-                            // Get value which is returned when we enter from true label and
-                            // value which is returned when we enter from false label.
-                            for &mut (label, value) in incoming {
-                                if label == on_true {
-                                    true_value = Some(value);
-                                }
-
-                                if label == on_false {
-                                    false_value = Some(value);
-                                }
-                            }
-
-                            let true_value  = true_value.unwrap();
-                            let false_value = false_value.unwrap();
-
-                            // Rewrite:
-                            // v5 = phi [on_true: v4; on_false: v5]
-                            // To:
-                            // v5 = select cond, v4, v5
-                            *instruction = Instruction::Select {
-                                dst: *dst,
-                                cond,
-                                on_true:  true_value,
-                                on_false: false_value,
-                            };
-                        }
-                    }
+                    rewrite_phis_to_selects(function, cond, exit, on_true, on_false);
 
                     did_something = true;
 
