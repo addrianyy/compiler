@@ -4,8 +4,8 @@ use crate::register_allocation::{Place, RegisterAllocation};
 use super::FunctionMCodeMap;
 
 use asm::{Assembler, OperandSize, Operand};
-use asm::Reg::*;
 use asm::Operand::{Reg, Imm, Mem, Label};
+use asm::Reg::*;
 
 const AVAILABLE_REGISTERS: &[asm::Reg] = &[
     // Non-volatile, don't require REX.
@@ -35,28 +35,6 @@ fn win64_is_volatile(register: asm::Reg) -> bool {
     !matches!(register, Rbx | Rbp | Rdi | Rsi | Rsp | R12 | R13 | R14 | R15)
 }
 
-struct Registers {
-    registers: Vec<asm::Reg>,
-}
-
-impl Registers {
-    fn save_size(&self) -> usize {
-        self.registers.len() * 8
-    }
-
-    fn save_registers(&self, asm: &mut Assembler) {
-        for register in self.registers.iter() {
-            asm.push(&[Reg(*register)]);
-        }
-    }
-
-    fn restore_registers(&self, asm: &mut Assembler) {
-        for register in self.registers.iter().rev() {
-            asm.pop(&[Reg(*register)]);
-        }
-    }
-}
-
 fn type_to_size(ty: Type, pointer: bool) -> usize {
     if ty.is_pointer() {
         assert!(pointer, "Found unexpected pointer.");
@@ -82,6 +60,28 @@ fn type_to_operand_size(ty: Type, pointer: bool) -> OperandSize {
     }
 }
 
+struct Registers {
+    registers: Vec<asm::Reg>,
+}
+
+impl Registers {
+    fn save_size(&self) -> usize {
+        self.registers.len() * 8
+    }
+
+    fn save_registers(&self, asm: &mut Assembler) {
+        for register in self.registers.iter() {
+            asm.push(&[Reg(*register)]);
+        }
+    }
+
+    fn restore_registers(&self, asm: &mut Assembler) {
+        for register in self.registers.iter().rev() {
+            asm.pop(&[Reg(*register)]);
+        }
+    }
+}
+
 trait OperandExt {
     fn is_memory(&self) -> bool;
 }
@@ -93,18 +93,18 @@ impl OperandExt for Operand<'static> {
 }
 
 struct X86FunctionData {
-    place_to_operand:   Map<Place, Operand<'static>>,
-    stackallocs:        Map<Location, i64>,
-    regalloc:           RegisterAllocation,
-    frame_size:         usize,
-    used_registers:     Registers,
-    volatile_registers: Registers,
-    noreturn:           bool,
-    usage_count:        Vec<u32>,
+    place_to_operand:    Map<Place, Operand<'static>>,
+    stackallocs:         Map<Location, i64>,
+    register_allocation: RegisterAllocation,
+    frame_size:          usize,
+    used_registers:      Registers,
+    volatile_registers:  Registers,
+    noreturn:            bool,
+    usage_count:         Vec<u32>,
 }
 
 struct X86CodegenContext<'a> {
-    func:     &'a FunctionData,
+    function: &'a FunctionData,
     x86_data: &'a X86FunctionData,
 }
 
@@ -128,7 +128,7 @@ struct Resolver<'a> {
 
 impl<'a> Resolver<'a> {
     fn resolve(&self, value: Value) -> Operand<'static> {
-        let place = self.context.x86_data.regalloc.get(self.location, value);
+        let place = self.context.x86_data.register_allocation.get(self.location, value);
 
         if let Place::Constant(constant) = place {
             Imm(constant as i64)
@@ -145,7 +145,7 @@ pub struct X86Backend {
 
 impl X86Backend {
     fn x86_function_data(func: &mut FunctionData) -> X86FunctionData {
-        let regalloc = func.allocate_registers(AVAILABLE_REGISTERS.len());
+        let register_allocation = func.allocate_registers(AVAILABLE_REGISTERS.len());
 
         let mut place_to_operand = Map::default();
 
@@ -162,20 +162,26 @@ impl X86Backend {
         // [rbp+24] = argument #2
         // ..
 
-        // Create operands for arguments.
-        for index in 0..regalloc.arguments.len() {
-            // Account for pushed RBP and return address.
-            let offset = 16 + index * 8;
+        let dummy_location = Location::new(crate::Label(0), 0);
 
-            place_to_operand.insert(Place::Argument(index),
-                                    Mem(Some(Rbp), None, offset as i64));
+        // Create operands for arguments.
+        for &argument in &func.argument_values {
+            if let Place::Argument(index) = register_allocation.get(dummy_location, argument) {
+                // Account for pushed RBP and return address.
+                let offset = 16 + index * 8;
+
+                place_to_operand.insert(Place::Argument(index),
+                                        Mem(Some(Rbp), None, offset as i64));
+            } else {
+                panic!("Function argument is in invalid place.");
+            }
         }
 
         let mut free_storage_end_offset = 0;
         let mut frame_size              = 0;
 
         // Create operands for stack slots.
-        for index in 0..regalloc.slots {
+        for index in 0..register_allocation.slots {
             // At offset 0 there is return address.
             // RBP-8 is address of first stack slot.
             let offset = -8 - (index as i64 * 8);
@@ -194,7 +200,7 @@ impl X86Backend {
         }
 
         // Get list of all used registers.
-        let used_registers: Vec<asm::Reg> = regalloc.used_regs.iter()
+        let used_registers: Vec<asm::Reg> = register_allocation.used_registers.iter()
             .map(|index| AVAILABLE_REGISTERS[*index])
             .collect();
 
@@ -260,7 +266,7 @@ impl X86Backend {
         X86FunctionData {
             place_to_operand,
             stackallocs,
-            regalloc,
+            register_allocation,
             frame_size,
             used_registers: Registers {
                 registers: used_registers,
@@ -276,8 +282,8 @@ impl X86Backend {
     fn generate_from_patterns(&mut self, cx: &X86CodegenContext, location: Location,
                               instructions: &[Instruction],
                               next_label:   Option<crate::Label>) -> usize {
-        let func = cx.func;
-        let asm  = &mut self.asm;
+        let function = cx.function;
+        let asm      = &mut self.asm;
 
         let next_location = Location::new(location.label(), location.index() + 1);
 
@@ -302,7 +308,7 @@ impl X86Backend {
                 let on_true_s:  &str = &format!(".{}", on_true);
                 let on_false_s: &str = &format!(".{}", on_false);
 
-                let ty   = func.value_type(*a);
+                let ty   = function.value_type(*a);
                 let size = type_to_operand_size(ty, true);
 
                 let mut pred = *pred;
@@ -385,10 +391,10 @@ impl X86Backend {
                 // We can merge icmp and select. This will allow us to use flag registers
                 // directly and avoid 2 compares and conditional instructions.
 
-                let cmp_ty   = func.value_type(*a);
+                let cmp_ty   = function.value_type(*a);
                 let cmp_size = type_to_operand_size(cmp_ty, true);
 
-                let sel_ty   = func.value_type(*on_true);
+                let sel_ty   = function.value_type(*on_true);
                 let sel_size = type_to_operand_size(sel_ty, true);
 
                 // Resolve all operands with apropriate resolvers.
@@ -439,8 +445,8 @@ impl X86Backend {
     }
 
     fn generate_function_body(&mut self, cx: &X86CodegenContext) {
-        let func   = cx.func;
-        let labels = cx.func.reachable_labels();
+        let function = cx.function;
+        let labels   = cx.function.reachable_labels();
 
         for (index, &label) in labels.iter().enumerate() {
             // Create local label for current block. This label will be used
@@ -450,7 +456,7 @@ impl X86Backend {
             // Get the next label to check for fallthroughs.
             let next_label = labels.get(index + 1).copied();
 
-            let body = &cx.func.blocks[&label];
+            let body = &cx.function.blocks[&label];
 
             let mut inst_id                      = 0;
             let mut instructions: &[Instruction] = body;
@@ -480,7 +486,7 @@ impl X86Backend {
                 instructions = &instructions[1..];
 
                 // Skip instructions which create constants and are removable.
-                if cx.x86_data.regalloc.skips.contains(&location) {
+                if cx.x86_data.register_allocation.skips.contains(&location) {
                     continue;
                 }
 
@@ -491,7 +497,7 @@ impl X86Backend {
                         // All input values are mapped to the same register. Output
                         // can be in different register, we need to check that.
 
-                        let ty    = func.value_type(*dst);
+                        let ty    = function.value_type(*dst);
                         let size  = type_to_operand_size(ty, true);
                         let dst   = r.resolve(*dst);
                         let value = r.resolve(incoming[0].1);
@@ -540,7 +546,7 @@ impl X86Backend {
                         });
                     }
                     Instruction::ArithmeticUnary  { dst, op, value, .. } => {
-                        let ty    = func.value_type(*value);
+                        let ty    = function.value_type(*value);
                         let size  = type_to_operand_size(ty, false);
 
                         let dst   = r.resolve(*dst);
@@ -580,7 +586,7 @@ impl X86Backend {
                             Shift,
                         }
 
-                        let ty   = func.value_type(*a);
+                        let ty   = function.value_type(*a);
                         let size = type_to_operand_size(ty, false);
 
                         let dst = r.resolve(*dst);
@@ -712,7 +718,7 @@ impl X86Backend {
                         });
                     }
                     Instruction::Load { dst, ptr } => {
-                        let ty   = func.value_type(*dst);
+                        let ty   = function.value_type(*dst);
                         let size = type_to_operand_size(ty, true);
 
                         let dst = r.resolve(*dst);
@@ -739,7 +745,7 @@ impl X86Backend {
                         });
                     }
                     Instruction::Store { ptr, value } => {
-                        let ty   = func.value_type(*value);
+                        let ty   = function.value_type(*value);
                         let size = type_to_operand_size(ty, true);
 
                         let value = r.resolve(*value);
@@ -767,7 +773,7 @@ impl X86Backend {
                     }
                     Instruction::Cast { dst, cast, value, ty } => {
                         let size      = type_to_operand_size(*ty, true);
-                        let orig_size = func.value_type(*value).size();
+                        let orig_size = function.value_type(*value).size();
 
                         let dst   = r.resolve(*dst);
                         let value = r.resolve(*value);
@@ -869,10 +875,10 @@ impl X86Backend {
                         }
                     }
                     Instruction::GetElementPtr { dst, source, index } => {
-                        let index_size = func.value_type(*index).size();
+                        let index_size = function.value_type(*index).size();
 
                         // Scale is equal to size of element that pointer points to.
-                        let scale = type_to_size(func.value_type(*source)
+                        let scale = type_to_size(function.value_type(*source)
                                                  .strip_ptr().unwrap(), true);
 
                         let dst    = r.resolve(*dst);
@@ -923,7 +929,7 @@ impl X86Backend {
                     }
                     Instruction::Return { value } => {
                         if let Some(value) = value {
-                            let ty   = func.value_type(*value);
+                            let ty   = function.value_type(*value);
                             let size = type_to_operand_size(ty, true);
 
                             // If there is a return value then copy it to RAX, which
@@ -973,7 +979,7 @@ impl X86Backend {
                         }
                     }
                     Instruction::IntCompare { dst, a, pred, b } => {
-                        let ty   = func.value_type(*a);
+                        let ty   = function.value_type(*a);
                         let size = type_to_operand_size(ty, true);
 
                         let dst = r.resolve(*dst);
@@ -1014,7 +1020,7 @@ impl X86Backend {
                         });
                     }
                     Instruction::Select { dst, cond, on_true, on_false } => {
-                        let ty   = func.value_type(*on_true);
+                        let ty   = function.value_type(*on_true);
                         let size = type_to_operand_size(ty, true);
 
                         let dst      = r.resolve(*dst);
@@ -1055,7 +1061,7 @@ impl X86Backend {
                             arguments_stack_size += 8;
                         }
 
-                        let extern_address = func.function_info
+                        let extern_address = function.function_info
                             .as_ref()
                             .expect("Cannot codegen call without CFI.")
                             .externs
@@ -1107,7 +1113,7 @@ impl X86Backend {
                                 asm.call(&[Reg(Rax)]);
                             }
                             None => {
-                                asm.call(&[Label(&format!("function_{}", target.0))]);
+                                asm.call(&[Label(&format!("functiontion_{}", target.0))]);
                             }
                         }
 
@@ -1121,7 +1127,7 @@ impl X86Backend {
 
                         // Copy the return value from RAX.
                         if let Some(dst) = dst {
-                            let ty   = func.value_type(*dst);
+                            let ty   = function.value_type(*dst);
                             let size = type_to_operand_size(ty, true);
 
                             asm.with_size(size, |asm| {
@@ -1133,7 +1139,7 @@ impl X86Backend {
                         // Copy value from one register to another. This will be
                         // created by register allocator to help handling PHIs.
 
-                        let ty   = func.value_type(*dst);
+                        let ty   = function.value_type(*dst);
                         let size = type_to_operand_size(ty, true);
 
                         let dst   = r.resolve(*dst);
@@ -1176,7 +1182,7 @@ impl super::Backend for X86Backend {
 
         let context = X86CodegenContext {
             x86_data: &x86_data,
-            func:     function,
+            function,
         };
 
         let mut frame_size = x86_data.frame_size;
@@ -1217,7 +1223,7 @@ impl super::Backend for X86Backend {
 
         // Move first arguments from registers to proper stack place.
         for (index, register) in ARGUMENT_REGISTERS.iter().enumerate()
-            .take(x86_data.regalloc.arguments.len())
+            .take(function.argument_values.len())
         {
             // Account for pushed RBP and return address when calculating argument offset.
             let offset = 16 + index * 8;

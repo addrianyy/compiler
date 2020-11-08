@@ -12,20 +12,14 @@ pub enum Place {
 }
 
 pub struct RegisterAllocation {
-    pub allocation: Map<Value, Place>,
-    pub arguments:  Map<Value, Place>,
-    pub used_regs:  Set<usize>,
-    pub skips:      Set<Location>,
-    pub slots:      usize,
+    pub allocation:     Map<Value, Place>,
+    pub used_registers: Set<usize>,
+    pub skips:          Set<Location>,
+    pub slots:          usize,
 }
 
 impl RegisterAllocation {
     pub fn get(&self, location: Location, value: Value) -> Place {
-        // Arguments place is stored in special map, not in normal allocation map.
-        if let Some(place) = self.arguments.get(&value) {
-            return *place;
-        }
-
         self.allocation.get(&value).copied().unwrap_or_else(|| {
             panic!("Cannot resolve {} at location {:?}", value, location)
         })
@@ -1193,11 +1187,10 @@ impl FunctionData {
                     "Multiple places assigned to the value.");
         }
 
-        let mut arguments = Map::new_with_capacity(self.argument_values.len());
-
         // Fill in places of function arguments.
         for (index, argument) in self.argument_values.iter().enumerate() {
-            arguments.insert(*argument, Place::Argument(index));
+            assert!(value_to_place.insert(*argument, Place::Argument(index)).is_none(),
+                    "Argument is already assigned.");
         }
 
         // Fill in places of undefined values to whatever place is available.
@@ -1229,8 +1222,7 @@ impl FunctionData {
         RegisterAllocation {
             allocation: value_to_place,
             slots:      stack_slots,
-            used_regs:  used_registers,
-            arguments,
+            used_registers,
             skips,
         }
     }
