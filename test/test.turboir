@@ -1,0 +1,142 @@
+u32 main(u8* v0) {
+entry:
+  v1 = u32 0
+  v2 = u8* null
+  v3 = icmp eq u8* v0, v2
+  bcond u1 v3, block_2, block_4
+
+block_2:
+  ret u32 v1
+
+block_4:
+  v4 = phi u32 [block_9: v15, entry: v1]
+  v5 = gep u8* v0, u32 v4
+  v6 = u8 0
+  v7 = load u8, u8* v5
+  v8 = icmp ne u8 v7, v6
+  bcond u1 v8, block_5, block_6
+
+block_5:
+  v9 = u8 2
+  v10 = add u8 v7, v9
+  store u8* v5, u8 v10
+  v11 = u8 12
+  v12 = icmp eq u8 v10, v11
+  bcond u1 v12, block_10, block_9
+
+block_6:
+  v13 = u32 312
+  ret u32 v13
+
+block_10:
+  branch block_10
+
+block_9:
+  v14 = u32 1
+  v15 = add u32 v4, v14
+  branch block_4
+}
+
+u32 test12(u32* v0) {
+entry:
+  v1 = u32 1337
+  store u32* v0, u32 v1
+  branch block_1
+
+block_1:
+  branch block_1
+}
+
+u32 abc(u32 v0) {
+entry:
+  v1 = u32 0
+  v2 = icmp ne u32 v0, v1
+  bcond u1 v2, block_2, block_3
+
+block_2:
+  v3 = u32 123
+  ret u32 v3
+
+block_3:
+  v4 = u32 321
+  ret u32 v4
+}
+
+u32 turbo(u32 v0) {
+entry:
+  v1 = u32 4
+  v2 = u32 823
+  v3 = u32 555
+  v4 = icmp eq u32 v0, v1
+  v5 = select u1 v4, u32 v3, v2
+  ret u32 v5
+}
+
+u32 xd(u32 v0) {
+entry:
+  ret u32 v0
+}
+
+u32 sum(u32 v0) {
+entry:
+  v1 = u32 0
+  branch block_1
+
+block_1:
+  v2 = phi u32 [entry: v1, block_8: v12]
+  v3 = phi u32 [entry: v1, block_8: v6]
+  v4 = icmp sgt u32 v0, v2
+  bcond u1 v4, block_5, block_4
+
+block_5:
+  v5 = phi u32 [block_6: v10, block_1: v1]
+  v6 = phi u32 [block_6: v8, block_1: v3]
+  v7 = icmp sgt u32 v2, v5
+  bcond u1 v7, block_6, block_8
+
+block_4:
+  ret u32 v3
+
+block_6:
+  v8 = add u32 v6, v5
+  v9 = u32 1
+  v10 = add u32 v5, v9
+  branch block_5
+
+block_8:
+  v11 = u32 1
+  v12 = add u32 v2, v11
+  branch block_1
+}
+
+void unsafe() {
+entry:
+  v0 = stackalloc u32
+  v1 = u32 0
+  store u32* v0, u32 v1
+  v2 = bitcast u32* v0 to u8*
+  v3 = u8 13
+  store u8* v2, u8 v3
+  ret void
+}
+
+u8 other(u32 v0) {
+entry:
+  v1 = u32 123
+  v2 = add u32 v0, v1
+  v3 = trunc u32 v2 to u8
+  ret u8 v3
+}
+
+u8 implicit(u8 v0) {
+entry:
+  v1 = zext u8 v0 to u32
+  v2 = call u8 other(u32 v1)
+  v3 = u32 1337
+  v4 = zext u8 v2 to u32
+  v5 = add u32 v4, v3
+  v6 = u32 420
+  v7 = mul u32 v5, v6
+  v8 = trunc u32 v7 to u8
+  ret u8 v8
+}

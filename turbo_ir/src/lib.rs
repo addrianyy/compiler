@@ -6,6 +6,7 @@ mod phi_updater;
 mod analysis;
 mod codegen;
 mod display;
+mod parser;
 mod graph;
 mod dump;
 mod dot;
@@ -77,10 +78,10 @@ struct CrossFunctionInfo {
     externs: Map<Function, usize>,
 }
 
-struct FunctionPrototype {
-    name:        String,
-    return_type: Option<Type>,
-    arguments:   Vec<Type>,
+pub struct FunctionPrototype {
+    pub name:        String,
+    pub return_type: Option<Type>,
+    pub arguments:   Vec<Type>,
 }
 
 struct FunctionData {
@@ -218,7 +219,11 @@ impl FunctionData {
             return value;
         }
 
-        let value = self.allocate_typed_value(ty);
+        let value = self.allocate_value();
+
+        if let Some(type_info) = self.type_info.as_mut() {
+            type_info.insert(value, ty);
+        }
 
         self.undefined.insert(ty, value);
         self.undefined_set.insert(value);
@@ -447,6 +452,10 @@ impl Module {
         }
     }
 
+    pub fn parse_from_source(source: &str) -> Self {
+        parser::parse(source)
+    }
+
     pub fn create_function(&mut self, name: &str, return_type: Option<Type>,
                            arguments: Vec<Type>) -> Function {
         unsafe {
@@ -510,6 +519,18 @@ impl Module {
 
     pub fn dump_function_text<W: Write>(&self, function: Function, w: &mut W) -> io::Result<()> {
         self.function(function).dump_text(w)
+    }
+
+    pub fn for_each_local_function<F>(&self, mut callback: F)
+        where F: FnMut(&FunctionPrototype, Function)
+    {
+        for (function, internal) in &self.functions {
+            if let FunctionInternal::Local(data) = internal {
+                let prototype = &data.prototype;
+
+                callback(prototype, *function);
+            }
+        }
     }
 
     pub fn finalize(&mut self) {
