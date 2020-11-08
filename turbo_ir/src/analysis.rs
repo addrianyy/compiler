@@ -74,7 +74,7 @@ impl PointerAnalysis {
         }
 
         // Undefined pointers don't alias anything.
-        if function.undefined_set.contains(&p1) || function.undefined_set.contains(&p2) {
+        if function.is_value_undefined(p1) || function.is_value_undefined(p2) {
             return false;
         }
 
@@ -758,7 +758,7 @@ impl FunctionData {
 
             for (inst_id, inst) in body.iter().enumerate() {
                 if let Some(value) = inst.created_value() {
-                    assert!(!self.undefined_set.contains(&value),
+                    assert!(!self.is_value_undefined(value),
                             "Cannot return to undefined value {}.", value);
                 }
 

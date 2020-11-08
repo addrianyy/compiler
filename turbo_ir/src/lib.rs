@@ -239,6 +239,10 @@ impl FunctionData {
         self.argument_set.contains(&value) || self.undefined_set.contains(&value)
     }
 
+    fn is_value_undefined(&self, value: Value) -> bool {
+        self.undefined_set.contains(&value)
+    }
+
     fn function_prototype(&self, function: Function) -> &FunctionPrototype {
         self.function_info
             .as_ref()

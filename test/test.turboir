@@ -14,7 +14,9 @@ on_true:
     branch exit
 
 on_false:
-    store u32* ptr, u32 two
+    valuex = load u32, u32* ptr
+    x     = add u32 valuex, two
+    store u32* ptr, u32 x
     branch exit
 
 exit:

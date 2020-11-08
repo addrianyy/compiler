@@ -29,6 +29,7 @@ macro_rules! pass {
 
 pass!(pub remove_ineffective_operations, RemoveIneffectiveOperationsPass);
 pass!(pub simplify_expressions, SimplifyExpressionsPass);
+pass!(pub undefined_propagate, UndefinedPropagatePass);
 pass!(pub remove_dead_stores, RemoveDeadStoresPass);
 pass!(pub remove_known_loads, RemoveKnownLoadsPass);
 pass!(pub simplify_compares, SimplifyComparesPass);

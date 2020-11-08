@@ -16,6 +16,7 @@ impl PassRegistry {
         let passes = vec![
             ("remove-ineff",  ir::passes::remove_ineffective_operations()),
             ("expr-simplify", ir::passes::simplify_expressions()),
+            ("undefprop",     ir::passes::undefined_propagate()),
             ("dse",           ir::passes::remove_dead_stores()),
             ("rle",           ir::passes::remove_known_loads()),
             ("cmp-simplify",  ir::passes::simplify_compares()),
