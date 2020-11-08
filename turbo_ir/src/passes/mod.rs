@@ -3,6 +3,7 @@ pub(super) trait Pass {
     fn name(&self) -> &str;
 }
 
+#[derive(Copy, Clone)]
 pub struct IRPass {
     pub(super) inner: &'static dyn Pass,
 }

@@ -159,11 +159,16 @@ impl super::Pass for SimplifyCFGPass {
                         }
                     }
 
-                    if let Some(&new_false) = branch_labels.get(&on_false) {
-                        // Check if PHI instruction depends on the control flow.
-                        if !function.depends_on_predecessors(new_false, &[label, on_false]) {
-                            changed_false = new_false;
-                            phi_updates.push((on_false, new_false));
+                    // It's hard to reason about incoming PHI values because our changes are
+                    // deferred. If we have changed `on_true` then we will try to optimize
+                    // `on_false` next time.
+                    if changed_true == on_true {
+                        if let Some(&new_false) = branch_labels.get(&on_false) {
+                            // Check if PHI instruction depends on the control flow.
+                            if !function.depends_on_predecessors(new_false, &[label, on_false]) {
+                                changed_false = new_false;
+                                phi_updates.push((on_false, new_false));
+                            }
                         }
                     }
 
