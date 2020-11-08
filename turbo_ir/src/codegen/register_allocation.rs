@@ -644,7 +644,7 @@ impl FunctionData {
 
         // Entry block starts with empty state.
         block_alloc_state
-            .entry(Label(0))
+            .entry(self.entry())
             .or_insert_with(Default::default);
 
         let get_entity = |value: Value| {

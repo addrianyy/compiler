@@ -104,15 +104,16 @@ impl FunctionData {
             let insts      = &self.blocks[&label];
             let targets    = self.targets(label);
 
-            let name = match label {
-                Label(0) => self.prototype_representation(formatter),
-                _        => format!("{}:", formatter.fmt_label(label)),
+            let name = if label == self.entry() {
+                self.prototype_representation(formatter)
+            } else {
+                format!("{}:", formatter.fmt_label(label))
             };
 
             dotgraph.push_str(&format!(r#"{} [shape=box fontname="Consolas" label="{}\n"#,
                                        label, name));
 
-            if label == Label(0) {
+            if label == self.entry() {
                 dotgraph.push_str(&format!(r#"\n{}:\n"#, formatter.fmt_label(label)));
             }
 

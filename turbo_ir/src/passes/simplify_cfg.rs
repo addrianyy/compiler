@@ -1,4 +1,4 @@
-use crate::{FunctionData, Instruction, Label, Map, Location};
+use crate::{FunctionData, Instruction, Map, Location};
 
 pub struct SimplifyCFGPass;
 
@@ -29,7 +29,7 @@ impl super::Pass for SimplifyCFGPass {
 
             for (&target, predecessors) in &incoming {
                 // Don't do anything if it's entry block or if it has more than 1 entry point.
-                if target == Label(0) || predecessors.len() != 1 {
+                if target == function.entry() || predecessors.len() != 1 {
                     continue;
                 }
 

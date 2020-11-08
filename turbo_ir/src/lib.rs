@@ -96,6 +96,7 @@ struct FunctionData {
 
     next_value: Value,
     next_label: Label,
+    entry:      Label,
 
     type_info:     Option<TypeInfo>,
     function_info: Option<Rc<CrossFunctionInfo>>,
@@ -119,6 +120,7 @@ impl FunctionData {
 
             next_value: Value(0),
             next_label: Label(0),
+            entry:      Label(0),
 
             type_info:     None,
             function_info: None,
@@ -126,7 +128,7 @@ impl FunctionData {
             phi_locations: Map::default(),
         };
 
-        data.allocate_label();
+        data.entry = data.allocate_label();
 
         for index in 0..argument_count {
             let value = data.allocate_value();
@@ -136,6 +138,10 @@ impl FunctionData {
         }
 
         data
+    }
+
+    fn entry(&self) -> Label {
+        self.entry
     }
 
     fn allocate_label(&mut self) -> Label {
@@ -466,9 +472,11 @@ impl Module {
     }
 
     pub fn switch_function(&mut self, function: Function) {
+        let entry = self.function(function).entry();
+
         self.active_point = Some(ActivePoint {
             function,
-            label: Label(0),
+            label: entry,
         });
     }
 
@@ -480,7 +488,7 @@ impl Module {
     }
 
     pub fn entry_label(&self) -> Label {
-        Label(0)
+        self.function(self.active_point().function).entry()
     }
 
     pub fn argument(&self, index: usize) -> Value {

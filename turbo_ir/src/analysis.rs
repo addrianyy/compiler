@@ -764,7 +764,7 @@ impl FunctionData {
 
                 if let Instruction::Phi { incoming, .. } = inst {
                     assert!(can_see_phi, "PHI nodes are not at the function beginning.");
-                    assert!(label != Label(0), "Entry labels cannot have PHI nodes.");
+                    assert!(label != self.entry(), "Entry labels cannot have PHI nodes.");
                     assert!(!incoming.is_empty(), "PHI nodes cannot be empty.");
 
                     let incoming_labels: Set<Label> = incoming.iter()

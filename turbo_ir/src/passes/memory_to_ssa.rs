@@ -194,7 +194,7 @@ impl super::Pass for MemoryToSsaPass {
                 // Write empty PHI instruction at the beginning of every block except entry one.
                 for &label in &labels {
                     // We cannot put PHI instructions in the entry block.
-                    if label == Label(0) {
+                    if label == function.entry() {
                         continue;
                     }
 
@@ -219,7 +219,7 @@ impl super::Pass for MemoryToSsaPass {
                 // We are done, clean up all the mess that we have done.
                 for &label in &labels {
                     // We cannot put PHI instructions in entry block.
-                    if label == Label(0) {
+                    if label == function.entry() {
                         continue;
                     }
 

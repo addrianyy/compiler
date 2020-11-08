@@ -161,7 +161,7 @@ impl X86Backend {
         // [rbp+24] = argument #2
         // ..
 
-        let dummy_location = Location::new(crate::Label(0), 0);
+        let dummy_location = Location::new(function.entry(), 0);
 
         // Create operands for arguments.
         for &argument in &function.argument_values {

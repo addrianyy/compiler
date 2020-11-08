@@ -7,7 +7,7 @@ pub type Dominators = Map<Label, Label>;
 
 impl FunctionData {
     fn preferred_capacity(&self, start: Label) -> usize {
-        if start == Label(0) {
+        if start == self.entry() {
             self.blocks.len()
         } else {
             0
@@ -56,7 +56,7 @@ impl FunctionData {
     }
 
     pub(super) fn dominators(&self) -> Dominators {
-        let root = Label(0);
+        let root = self.entry();
 
         let postorder = self.traverse_dfs_postorder(root);
         let length    = postorder.len();
@@ -193,7 +193,7 @@ impl FunctionData {
     pub(super) fn flow_graph_outgoing(&self) -> FlowGraph {
         let mut flow_graph = Map::new_with_capacity(self.blocks.len());
 
-        self.for_each_label_bfs(Label(0), true, |label| {
+        self.for_each_label_bfs(self.entry(), true, |label| {
             let entry = flow_graph.entry(label).or_insert_with(Set::default);
 
             for target in self.targets(label) {
@@ -207,7 +207,7 @@ impl FunctionData {
     pub(super) fn flow_graph_incoming(&self) -> FlowGraph {
         let mut flow_graph = Map::new_with_capacity(self.blocks.len());
 
-        self.for_each_label_bfs(Label(0), true, |label| {
+        self.for_each_label_bfs(self.entry(), true, |label| {
             for target in self.targets(label) {
                 flow_graph.entry(target)
                     .or_insert_with(Set::default)
@@ -215,12 +215,12 @@ impl FunctionData {
             }
         });
 
-        flow_graph.entry(Label(0)).or_insert_with(Set::default);
+        flow_graph.entry(self.entry()).or_insert_with(Set::default);
 
         flow_graph
     }
 
     pub(super) fn reachable_labels(&self) -> Vec<Label> {
-        self.traverse_bfs(Label(0), true)
+        self.traverse_bfs(self.entry(), true)
     }
 }
