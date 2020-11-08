@@ -3,7 +3,6 @@ use turbo_ir as ir;
 use ir::passes::IRPass;
 
 use std::io;
-use std::collections::HashSet;
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 struct PassID(usize);
@@ -45,7 +44,7 @@ impl PassRegistry {
 
     fn all_passes(&self) -> Vec<PassID> {
         (0..self.passes.len())
-            .map(|id| PassID(id))
+            .map(PassID)
             .collect()
     }
 
@@ -69,12 +68,28 @@ fn main() -> io::Result<()> {
         let mut module = ir::Module::parse_from_source(&source);
         let registry   = PassRegistry::new();
 
-        let mut passes: HashSet<PassID> = HashSet::new();
+        let mut passes: Vec<PassID> = Vec::new();
+
+        macro_rules! remove_pass {
+            ($pass: expr) => {{
+                if let Some(position) = passes.iter().position(|&pass| pass == $pass) {
+                    passes.remove(position);
+                }
+            }}
+        }
+
+        macro_rules! add_pass {
+            ($pass: expr) => {{
+                if !passes.iter().any(|&pass| pass == $pass) {
+                    passes.push($pass);
+                }
+            }}
+        }
 
         for argument in &args[1..] {
-            let request = if argument.starts_with("+") {
+            let request = if argument.starts_with('+') {
                 Request::Add
-            } else if argument.starts_with("-") {
+            } else if argument.starts_with('-') {
                 Request::Remove
             } else {
                 println!("Unknown argument: {}.", argument);
@@ -85,8 +100,8 @@ fn main() -> io::Result<()> {
                 "all" => {
                     for pass in registry.all_passes() {
                         match request {
-                            Request::Add    => passes.insert(pass),
-                            Request::Remove => passes.remove(&pass),
+                            Request::Add    => add_pass!(pass),
+                            Request::Remove => remove_pass!(pass),
                         };
                     }
                 }
@@ -97,8 +112,8 @@ fn main() -> io::Result<()> {
                     });
 
                     match request {
-                        Request::Add    => passes.insert(pass),
-                        Request::Remove => passes.remove(&pass),
+                        Request::Add    => add_pass!(pass),
+                        Request::Remove => remove_pass!(pass),
                     };
                 }
             }
