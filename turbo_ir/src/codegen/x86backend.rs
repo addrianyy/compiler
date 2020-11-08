@@ -144,8 +144,8 @@ pub struct X86Backend {
 }
 
 impl X86Backend {
-    fn x86_function_data(func: &mut FunctionData) -> X86FunctionData {
-        let register_allocation = func.allocate_registers(AVAILABLE_REGISTERS.len());
+    fn x86_function_data(function: &mut FunctionData) -> X86FunctionData {
+        let register_allocation = function.allocate_registers(AVAILABLE_REGISTERS.len());
 
         let mut place_to_operand = Map::default();
 
@@ -165,7 +165,7 @@ impl X86Backend {
         let dummy_location = Location::new(crate::Label(0), 0);
 
         // Create operands for arguments.
-        for &argument in &func.argument_values {
+        for &argument in &function.argument_values {
             if let Place::Argument(index) = register_allocation.get(dummy_location, argument) {
                 // Account for pushed RBP and return address.
                 let offset = 16 + index * 8;
@@ -221,11 +221,11 @@ impl X86Backend {
 
         let mut stackallocs = Map::default();
         let mut noreturn    = true;
-        let mut usage_count = vec![0; func.value_count()];
+        let mut usage_count = vec![0; function.value_count()];
 
         // Get information about some parts of function.
-        for label in func.reachable_labels() {
-            let body = &func.blocks[&label];
+        for label in function.reachable_labels() {
+            let body = &function.blocks[&label];
 
             for (inst_id, instruction) in body.iter().enumerate() {
                 match instruction {
@@ -1113,7 +1113,7 @@ impl X86Backend {
                                 asm.call(&[Reg(Rax)]);
                             }
                             None => {
-                                asm.call(&[Label(&format!("functiontion_{}", target.0))]);
+                                asm.call(&[Label(&format!("function_{}", target.0))]);
                             }
                         }
 
