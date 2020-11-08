@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 use crate::{FunctionData, Instruction, Cast, Value, ConstType, IntPredicate, Type,
-            BinaryOp, UnaryOp, Map};
+            BinaryOp, UnaryOp};
 
 pub struct RemoveIneffectiveOperationsPass;
 
@@ -10,8 +10,6 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
     }
 
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
-        let mut sign_extensions = Map::default();
-
         let consts   = function.constant_values();
         let creators = function.value_creators();
 
@@ -24,13 +22,6 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
         // v3 = alias u32 v1
         //
         // RemoveAliasesPass will take care of that and further transform the code.
-
-        // Identify all sign extension instructions to optimize unneded operations before GEP.
-        function.for_each_instruction(|_, instruction| {
-            if let Instruction::Cast { dst, cast: Cast::SignExtend, value, .. } = instruction {
-                sign_extensions.insert(*dst, *value);
-            }
-        });
 
         let values_equal = |a: Value, b: Value| {
             // If these values have the same ID they are always equal.
@@ -54,14 +45,20 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
             // to simplify the instruction.
             match *instruction {
                 Instruction::GetElementPtr { dst, source, index } => {
-                    if let Some(&index) = sign_extensions.get(&index) {
+                    let creator = creators.get(&index).map(|location| {
+                        function.instruction(*location)
+                    });
+
+                    if let Some(Instruction::Cast { cast: Cast::SignExtend, value, .. })
+                        = creator
+                    {
                         // GEP sign extends index internally so source the index
                         // from non-sign-extended value. This gives DCE an opportunity
                         // to eliminate unneeded `sext` instruction.
                         replacement = Some(Instruction::GetElementPtr {
                             dst,
                             source,
-                            index,
+                            index: *value,
                         });
                     } else if let Some((_, 0)) = consts.get(&index) {
                         // GEP with index of 0 always returns input value.
