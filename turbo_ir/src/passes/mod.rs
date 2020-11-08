@@ -3,26 +3,43 @@ pub(super) trait Pass {
     fn name(&self) -> &str;
 }
 
+pub struct IRPass {
+    pub(super) inner: &'static dyn Pass,
+}
+
 macro_rules! pass {
+    (pub $module: ident, $pass: ident) => {
+        mod $module;
+
+        #[allow(unused_imports)]
+        pub(super) use $module::$pass;
+
+        pub fn $module() -> IRPass {
+            IRPass {
+                inner: &$module::$pass,
+            }
+        }
+    };
     ($module: ident, $pass: ident) => {
         mod $module;
         pub(super) use $module::$pass;
-    }
+    };
 }
 
-pass!(remove_ineffective_operations, RemoveIneffectiveOperationsPass);
-pass!(simplify_expressions, SimplifyExpressionsPass);
-pass!(remove_dead_stores, RemoveDeadStoresPass);
-pass!(remove_known_loads, RemoveKnownLoadsPass);
-pass!(simplify_compares, SimplifyComparesPass);
-pass!(branch_to_select, BranchToSelectPass);
-pass!(remove_dead_code, RemoveDeadCodePass);
-pass!(const_propagate, ConstPropagatePass);
+pass!(pub remove_ineffective_operations, RemoveIneffectiveOperationsPass);
+pass!(pub simplify_expressions, SimplifyExpressionsPass);
+pass!(pub remove_dead_stores, RemoveDeadStoresPass);
+pass!(pub remove_known_loads, RemoveKnownLoadsPass);
+pass!(pub simplify_compares, SimplifyComparesPass);
+pass!(pub branch_to_select, BranchToSelectPass);
+pass!(pub remove_dead_code, RemoveDeadCodePass);
+pass!(pub const_propagate, ConstPropagatePass);
+pass!(pub memory_to_ssa, MemoryToSsaPass);
+pass!(pub simplify_cfg, SimplifyCFGPass);
+pass!(pub deduplicate, DeduplicatePass);
+pass!(pub x86reorder, X86ReorderPass);
+pass!(pub reorder, ReorderPass);
+
+pass!(remove_nops, RemoveNopsPass);
 pass!(remove_aliases, RemoveAliasesPass);
 pass!(rewrite_values, RewriteValuesPass);
-pass!(memory_to_ssa, MemoryToSsaPass);
-pass!(simplify_cfg, SimplifyCFGPass);
-pass!(deduplicate, DeduplicatePass);
-pass!(remove_nops, RemoveNopsPass);
-pass!(x86reorder, X86ReorderPass);
-pass!(reorder, ReorderPass);

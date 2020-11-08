@@ -15,7 +15,23 @@ fn main() {
     let parsed       = parser::parse(&source);
     let mut compiled = compiler::compile(&parsed);
 
-    compiled.ir.optimize();
+    let passes = &[
+        turbo_ir::passes::const_propagate(),
+        turbo_ir::passes::remove_ineffective_operations(),
+        turbo_ir::passes::simplify_cfg(),
+        turbo_ir::passes::simplify_compares(),
+        turbo_ir::passes::simplify_expressions(),
+        turbo_ir::passes::remove_dead_code(),
+        turbo_ir::passes::memory_to_ssa(),
+        turbo_ir::passes::deduplicate(),
+        turbo_ir::passes::remove_known_loads(),
+        turbo_ir::passes::remove_dead_stores(),
+        turbo_ir::passes::branch_to_select(),
+        turbo_ir::passes::reorder(),
+        turbo_ir::passes::x86reorder(),
+    ];
+
+    compiled.ir.optimize(passes, false);
 
     recreate_directory("mcode");
     recreate_directory("graphs");

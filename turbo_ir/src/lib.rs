@@ -6,11 +6,12 @@ mod phi_updater;
 mod analysis;
 mod codegen;
 mod display;
-mod passes;
 mod graph;
 mod dump;
 mod dot;
 mod ty;
+
+pub mod passes;
 
 use std::time::Instant;
 use std::io::{self, Write};
@@ -27,8 +28,6 @@ use graph::Dominators;
 use graph::FlowGraph;
 use passes::Pass;
 use collections::{Map, Set, LargeKeyMap, CapacityExt};
-
-const OPTIMIZATION_STATS: bool = false;
 
 #[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct Value(u32);
@@ -251,7 +250,7 @@ impl FunctionData {
         self.build_type_info();
     }
 
-    fn optimize(&mut self) {
+    fn optimize(&mut self, passes: &[passes::IRPass], show_statistics: bool) {
         #[derive(Debug, Default, Clone)]
         struct PassStatistics {
             time:      f64,
@@ -259,24 +258,23 @@ impl FunctionData {
             index:     usize,
         }
 
-        let passes: &[&dyn passes::Pass]  = &[
-            &passes::ConstPropagatePass,
-            &passes::RemoveIneffectiveOperationsPass,
-            &passes::SimplifyCFGPass,
-            &passes::SimplifyComparesPass,
-            &passes::SimplifyExpressionsPass,
-            &passes::RemoveDeadCodePass,
-            &passes::MemoryToSsaPass,
-            &passes::DeduplicatePass,
-            &passes::RemoveKnownLoadsPass,
-            &passes::RemoveDeadStoresPass,
-            &passes::BranchToSelectPass,
+        if passes.is_empty() {
+            return;
+        }
+
+        {
+            // Make sure that there are not duplicate passes.
+            let mut pass_names = Set::new_with_capacity(passes.len());
+
+            for pass in passes {
+                assert!(pass_names.insert(pass.inner.name()), "Multiple {} passes.",
+                        pass.inner.name());
+            }
+        }
+
+        let default_passes: &[&dyn Pass] = &[
             &passes::RemoveAliasesPass,
             &passes::RemoveNopsPass,
-
-            // Architecture specific reorder pass must be after generic reorder pass.
-            &passes::ReorderPass,
-            &passes::X86ReorderPass,
         ];
 
         let mut statistics = vec![PassStatistics::default(); passes.len()];
@@ -289,7 +287,7 @@ impl FunctionData {
 
             for (index, pass) in passes.iter().enumerate() {
                 let start   = Instant::now();
-                let success = pass.run_on_function(self);
+                let success = pass.inner.run_on_function(self);
                 let elapsed = start.elapsed().as_secs_f64();
 
                 did_something |= success;
@@ -301,6 +299,10 @@ impl FunctionData {
                 statistics.index      = index;
             }
 
+            for pass in default_passes {
+                did_something |= pass.run_on_function(self);
+            }
+
             iterations += 1;
 
             if !did_something {
@@ -310,7 +312,7 @@ impl FunctionData {
 
         let elapsed = start.elapsed().as_secs_f64();
 
-        if OPTIMIZATION_STATS && !passes.is_empty() {
+        if show_statistics && !passes.is_empty() {
             println!("Optimized {} in {} iterations and {}s.", self.prototype.name,
                      iterations, elapsed);
 
@@ -320,7 +322,7 @@ impl FunctionData {
             let mut total_passes_time = 0.0;
 
             for statistics in &statistics {
-                let name = passes[statistics.index].name();
+                let name = passes[statistics.index].inner.name();
 
                 let is_longer = match longest_pass_name {
                     Some(other) => name.len() > other,
@@ -337,7 +339,7 @@ impl FunctionData {
             let longest_pass_name = longest_pass_name.expect("Failed to get longest pass name.");
 
             for statistics in &statistics {
-                let name = passes[statistics.index].name();
+                let name = passes[statistics.index].inner.name();
 
                 print!("{} ", name);
 
@@ -541,12 +543,12 @@ impl Module {
         self.finalized = true;
     }
 
-    pub fn optimize(&mut self) {
+    pub fn optimize(&mut self, passes: &[passes::IRPass], show_statistics: bool) {
         assert!(self.finalized, "Cannot optimize before finalization.");
 
         for internal in self.functions.values_mut() {
             if let FunctionInternal::Local(data) = internal {
-                data.optimize();
+                data.optimize(passes, show_statistics);
             }
         }
     }

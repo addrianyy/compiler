@@ -1156,11 +1156,7 @@ impl X86Backend {
                             });
                         }
                     }
-                    Instruction::Nop => {
-                        // Optimization passes create these instructions and they must
-                        // be removed before exiting `optimize` function.
-                        panic!("This should never happen...");
-                    }
+                    Instruction::Nop => {}
                 }
             }
         }
