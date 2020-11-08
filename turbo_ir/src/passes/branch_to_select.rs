@@ -1,13 +1,18 @@
 use crate::{FunctionData, Instruction, Label, Value};
 
-pub struct BranchToSelectPass;
+struct SkewedCFGInfo {
+    skew:       Label,
+    exit:       Label,
+    true_pred:  Label,
+    false_pred: Label,
+}
 
-fn make_unconditional_branch(function: &mut FunctionData, from: Label, target: Label) {
+fn make_unconditional_branch(function: &mut FunctionData, from: Label, to: Label) {
     let body      = function.blocks.get_mut(&from).unwrap();
     let body_size = body.len();
 
     body[body_size - 1] = Instruction::Branch {
-        target,
+        target: to,
     };
 }
 
@@ -93,6 +98,8 @@ fn rewrite_phis_to_selects(function: &mut FunctionData, condition: Value, label:
     }
 }
 
+pub struct BranchToSelectPass;
+
 impl super::Pass for BranchToSelectPass {
     fn name(&self) -> &str {
         "branch to select"
@@ -141,112 +148,103 @@ impl super::Pass for BranchToSelectPass {
             'next_label: for label in labels {
                 let bcond = function.last_instruction(label);
 
-                // Check if this can be entry in diamond pattern in CFG.
                 if let Instruction::BranchCond { cond, on_true, on_false } = *bcond {
                     // Skip conditional branches with both labels equal and skip loops.
                     if on_true == on_false || on_true == label || on_false == label {
                         continue 'next_label;
                     }
 
-                    let mut true_exit  = None;
-                    let mut false_exit = None;
-
+                    // Get unconditional branch target for `on_true`.
+                    let mut true_exit = None;
                     if let Instruction::Branch { target } = function.last_instruction(on_true) {
                         true_exit = Some(*target);
                     }
 
+                    // Get unconditional branch target for `on_false`.
+                    let mut false_exit = None;
                     if let Instruction::Branch { target } = function.last_instruction(on_false) {
                         false_exit = Some(*target);
                     }
 
-                    {
-                        struct SkewedCFGInfo {
-                            skew:       Label,
-                            exit:       Label,
-                            true_pred:  Label,
-                            false_pred: Label,
-                        }
+                    let mut skew_info = None;
 
-                        let mut skewed_info = None;
+                    //   A
+                    //  / \
+                    // B   |
+                    //  \ /
+                    //   D
 
-                        //   A
-                        //  / \
-                        // B   |
-                        //  \ /
-                        //   D 
-
-                        // Try to detect both left-skew and right-skew in the CFG.
-                        if false_exit == Some(on_true) {
-                            // B - `on_false`.
-                            // D - `on_true`.
-                            skewed_info = Some(SkewedCFGInfo {
-                                skew:       on_false,
-                                exit:       on_true,
-                                true_pred:  label,
-                                false_pred: on_false,
-                            });
-                        } else if true_exit == Some(on_false) {
-                            // B - `on_true`.
-                            // D - `on_false`.
-                            skewed_info = Some(SkewedCFGInfo {
-                                skew:       on_true,
-                                exit:       on_false,
-                                true_pred:  on_true,
-                                false_pred: label,
-                            });
-                        }
-
-                        if let Some(skewed_info) = skewed_info {
-                            let SkewedCFGInfo {
-                                skew,
-                                exit,
-                                true_pred,
-                                false_pred,
-                            } = skewed_info;
-
-                            // Skew should be only reachable from `label` and `exit` should be
-                            // reachable from `label` and `skew`.
-                            if flow_incoming[&skew].len() != 1 ||
-                               flow_incoming[&exit].len() != 2 {
-                                continue 'next_label;
-                            }
-
-                            // Avoid loops.
-                            if skew == exit || exit == label {
-                                continue 'next_label;
-                            }
-
-                            // Try to copy all instructions from `skew` to `exit`.
-                            if !move_instructions(function, COPY_TRESHOLD, &[skew], exit) {
-                                continue 'next_label;
-                            }
-
-                            // Make `label` jump directly to `exit`. This will unlink `skew` from
-                            // CFG.
-                            make_unconditional_branch(function, label, exit);
-
-                            rewrite_phis_to_selects(function, cond, exit, true_pred, false_pred);
-
-                            // As we have altered CFG we cannot continue this loop so
-                            // we go directly to the main loop.
-                            continue 'main_loop;
-                        }
+                    // Try to detect both left-skew and right-skew in the CFG.
+                    if false_exit == Some(on_true) {
+                        // B - `on_false`.
+                        // D - `on_true`.
+                        skew_info = Some(SkewedCFGInfo {
+                            skew:       on_false,
+                            exit:       on_true,
+                            true_pred:  label,
+                            false_pred: on_false,
+                        });
+                    } else if true_exit == Some(on_false) {
+                        // B - `on_true`.
+                        // D - `on_false`.
+                        skew_info = Some(SkewedCFGInfo {
+                            skew:       on_true,
+                            exit:       on_false,
+                            true_pred:  on_true,
+                            false_pred: label,
+                        });
                     }
 
-                    // To continue both `on_true` and `on_false` must end with unconditional
+                    if let Some(skew_info) = skew_info {
+                        let SkewedCFGInfo {
+                            skew,
+                            exit,
+                            true_pred,
+                            false_pred,
+                        } = skew_info;
+
+                        // Skew should be only reachable from `label` and `exit` should be
+                        // reachable from `label` and `skew`.
+                        if flow_incoming[&skew].len() != 1 ||
+                           flow_incoming[&exit].len() != 2 {
+                            continue 'next_label;
+                        }
+
+                        // Avoid loops.
+                        if skew == exit || skew == label || exit == label {
+                            continue 'next_label;
+                        }
+
+                        // Try to copy all instructions from `skew` to `exit`.
+                        if !move_instructions(function, COPY_TRESHOLD, &[skew], exit) {
+                            continue 'next_label;
+                        }
+
+                        // Make `label` jump directly to `exit`. This will unlink `skew` from
+                        // CFG.
+                        make_unconditional_branch(function, label, exit);
+
+                        rewrite_phis_to_selects(function, cond, exit, true_pred, false_pred);
+
+                        // As we have altered CFG we cannot continue this loop so
+                        // we go directly to the main loop.
+                        continue 'main_loop;
+                    }
+
+                    // To continue, both `on_true` and `on_false` must end with unconditional
                     // branch.
                     if true_exit.is_none() || false_exit.is_none() {
                         continue 'next_label;
                     }
+
+                    let true_exit  = true_exit.unwrap();
+                    let false_exit = false_exit.unwrap();
 
                     // We cannot optimize this branch if `on_true` or `on_false` label is
                     // reachable from somewhere else then from `label`.
                     if flow_incoming[&on_true].len() != 1 || flow_incoming[&on_false].len() != 1 {
                         continue 'next_label;
                     }
-
-                    let true_exit  = true_exit.unwrap();
-                    let false_exit = false_exit.unwrap();
 
                     // Get exit label if there is a common one. Otherwise we cannot optimize
                     // branch out so we continue.
