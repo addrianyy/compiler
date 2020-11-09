@@ -988,7 +988,7 @@ impl FunctionData {
             if DEBUG_ALLOCATOR {
                 println!("Rewritten PHIs: ");
 
-                self.dump_text(&mut std::io::stdout()).unwrap();
+                self.dump_text_stdout();
 
                 println!();
             }

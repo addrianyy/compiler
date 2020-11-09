@@ -525,6 +525,10 @@ impl Module {
         self.function(function).dump_text(w)
     }
 
+    pub fn dump_function_text_stdout(&self, function: Function) {
+        self.function(function).dump_text_stdout()
+    }
+
     pub fn for_each_local_function<F>(&self, mut callback: F)
         where F: FnMut(&FunctionPrototype, Function)
     {

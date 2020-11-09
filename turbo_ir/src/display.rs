@@ -117,11 +117,11 @@ impl FunctionData {
         }
     }
 
-    pub(super) fn print_instruction<W: Write, F: IRFormatter>(
+    pub(super) fn print_instruction<W: Write>(
         &self,
         w:           &mut W,
         instruction: &Instruction,
-        formatter:   &F,
+        formatter:   &dyn IRFormatter,
     ) -> io::Result<()> {
         macro_rules! fmt_type {
             ($value: expr) => { formatter.fmt_type(self.display_type($value)) }

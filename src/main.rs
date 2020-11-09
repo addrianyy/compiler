@@ -40,7 +40,7 @@ fn main() {
     for (prototype, function) in &compiled.functions {
         let name = &prototype.name;
 
-        compiled.ir.dump_function_text(*function, &mut std::io::stdout()).unwrap();
+        compiled.ir.dump_function_text_stdout(*function);
         compiled.ir.dump_function_graph(*function, &format!("graphs/{}.svg", name));
 
         println!();

@@ -127,7 +127,7 @@ fn main() -> io::Result<()> {
         module.optimize(&passes, false);
 
         module.for_each_local_function(|_prototype, function| {
-            module.dump_function_text(function, &mut io::stdout())
+            module.dump_function_text_stdout(function))
                 .expect("Writing to stdout failed.");
 
             println!();

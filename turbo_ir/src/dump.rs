@@ -3,6 +3,23 @@ use std::io::{self, Write};
 use super::{FunctionData, Instruction, Label, Value};
 use super::display::IRFormatter;
 
+#[cfg(windows)]
+fn stdout_use_colors() -> bool {
+    // TODO: Check on Windows if stdout is redirected to file.
+    true
+}
+
+#[cfg(unix)]
+fn stdout_use_colors() -> bool {
+    extern "C" {
+        fn isatty(fd: i32) -> i32;
+    }
+
+    unsafe {
+        isatty(1) == 1
+    }
+}
+
 struct BlankFormatter;
 
 impl IRFormatter for BlankFormatter {
@@ -60,7 +77,7 @@ impl IRFormatter for ConsoleFormatter {
 }
 
 impl FunctionData {
-    fn prototype_representation<F: IRFormatter>(&self, formatter: &F) -> String {
+    fn prototype_representation(&self, formatter: &dyn IRFormatter) -> String {
         let return_type = match self.prototype.return_type {
             Some(ty) => formatter.fmt_type(format!("{}", ty)),
             None     => formatter.fmt_type(String::from("void")),
@@ -85,8 +102,8 @@ impl FunctionData {
         name
     }
 
-    fn instruction_string<F: IRFormatter>(&self, instruction: &Instruction,
-                                          formatter: &F) -> String {
+    fn instruction_string(&self, instruction: &Instruction,
+                          formatter: &dyn IRFormatter) -> String {
         let mut buffer = Vec::new();
 
         self.print_instruction(&mut buffer, instruction, formatter).unwrap();
@@ -142,9 +159,8 @@ impl FunctionData {
         super::dot::save_svg_graph(&dotgraph, path);
     }
 
-    pub fn dump_text<W: Write>(&self, w: &mut W) -> io::Result<()> {
-        let formatter = &ConsoleFormatter;
-
+    pub fn dump_text_formatter<W: Write>(&self, w: &mut W,
+                                         formatter: &dyn IRFormatter) -> io::Result<()> {
         writeln!(w, "{} {{", self.prototype_representation(formatter))?;
 
         let     indent = "  ";
@@ -167,5 +183,20 @@ impl FunctionData {
         writeln!(w, "}}")?;
 
         Ok(())
+    }
+
+    pub fn dump_text<W: Write>(&self, w: &mut W) -> io::Result<()> {
+        self.dump_text_formatter(w, &BlankFormatter)
+    }
+
+    pub fn dump_text_stdout(&self) {
+        let formatter: &dyn IRFormatter = if stdout_use_colors() {
+            &ConsoleFormatter
+        } else {
+            &BlankFormatter
+        };
+
+        self.dump_text_formatter(&mut std::io::stdout(), formatter)
+            .expect("Failed to write to stdout.");
     }
 }
