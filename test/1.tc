@@ -81,3 +81,33 @@ u8 other(u32 x) {
 u8 implicit(u8 x) {
     return (other(x) + 1337) * 420;
 }
+
+i32 turbo_ss(i32 value) {
+    i32 result;
+
+    if (value == 22) {
+        result = 49;
+    } else {
+        result += 8;
+    }
+
+    return result;
+}
+
+i32 abasdsa(i32 value) {
+    i32 output;
+
+    if (value == 4) {
+        output = 55;
+    }
+
+    if (value > 33) {
+        output += 44;
+    }
+
+    if (value > 88) {
+        output -= 4;
+    }
+
+    return output;
+}

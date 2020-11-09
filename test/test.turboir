@@ -1,25 +1,6 @@
-u32 test(u32 arg) {
+u32 turbo_ss(u32 v0) {
 entry:
-    zero = u32 0
-    one  = u32 1
-    two  = u32 2
-
-    ptr = stackalloc u32
-
-    cond = icmp ne u32 arg, zero
-    bcond u1 cond, on_true, on_false
-
-on_true:
-    store u32* ptr, u32 one
-    branch exit
-
-on_false:
-    valuex = load u32, u32* ptr
-    x     = add u32 valuex, two
-    store u32* ptr, u32 x
-    branch exit
-
-exit:
-    value = load u32, u32* ptr
-    ret u32 value
+    store u32* undefined, u32 undefined
+    v1 = load u32, u32* undefined
+    ret u32 v1
 }
