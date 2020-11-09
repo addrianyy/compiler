@@ -14,7 +14,7 @@ struct PassRegistry {
 impl PassRegistry {
     fn new() -> Self {
         let passes = vec![
-            ("remove-ineff",  ir::passes::remove_ineffective_operations()),
+            ("opopt",         ir::passes::remove_ineffective_operations()),
             ("expr-simplify", ir::passes::simplify_expressions()),
             ("undefprop",     ir::passes::undefined_propagate()),
             ("dse",           ir::passes::remove_dead_stores()),
@@ -127,8 +127,7 @@ fn main() -> io::Result<()> {
         module.optimize(&passes, false);
 
         module.for_each_local_function(|_prototype, function| {
-            module.dump_function_text_stdout(function))
-                .expect("Writing to stdout failed.");
+            module.dump_function_text_stdout(function);
 
             println!();
         });
