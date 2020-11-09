@@ -1,6 +1,17 @@
-u32 turbo_ss(u32 v0) {
+u32 turbo_ss(u1 cond, u32 v0) {
 entry:
-    store u32* undefined, u32 undefined
-    v1 = load u32, u32* undefined
-    ret u32 v1
+    x = stackalloc u32
+    store u32* x, u32 v0
+    bcond u1 cond, lbl1, lbl2
+
+lbl1:
+    branch lbl2
+    
+
+lbl2:
+    bcond u1 cond, lbl1, exit
+
+exit:
+    vv = load u32, u32* x
+    ret u32 vv
 }

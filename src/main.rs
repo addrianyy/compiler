@@ -27,6 +27,7 @@ fn main() {
         turbo_ir::passes::remove_known_loads(),
         turbo_ir::passes::remove_dead_stores(),
         turbo_ir::passes::undefined_propagate(),
+        turbo_ir::passes::minimize_phis(),
         turbo_ir::passes::branch_to_select(),
         turbo_ir::passes::reorder(),
         turbo_ir::passes::x86reorder(),

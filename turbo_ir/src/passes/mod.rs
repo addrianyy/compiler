@@ -37,6 +37,7 @@ pass!(pub branch_to_select, BranchToSelectPass);
 pass!(pub remove_dead_code, RemoveDeadCodePass);
 pass!(pub const_propagate, ConstPropagatePass);
 pass!(pub memory_to_ssa, MemoryToSsaPass);
+pass!(pub minimize_phis, MinimizePhisPass);
 pass!(pub simplify_cfg, SimplifyCFGPass);
 pass!(pub deduplicate, DeduplicatePass);
 pass!(pub x86reorder, X86ReorderPass);

@@ -24,6 +24,7 @@ impl PassRegistry {
             ("dce",           ir::passes::remove_dead_code()),
             ("constprop",     ir::passes::const_propagate()),
             ("mem2ssa",       ir::passes::memory_to_ssa()),
+            ("phimin",        ir::passes::minimize_phis()),
             ("cfg-simplify",  ir::passes::simplify_cfg()),
             ("dedup",         ir::passes::deduplicate()),
             ("reorder",       ir::passes::reorder()),
