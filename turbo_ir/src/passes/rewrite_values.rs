@@ -37,7 +37,7 @@ impl super::Pass for RewriteValuesPass {
             let value = values.allocate(argument);
 
             // Old value and new value must be the same.
-            assert!(value == argument, "Argument value allocations don't match.");
+            assert_eq!(value, argument, "Argument value allocations don't match.");
         }
 
         // Allocate new values for all created IR values.

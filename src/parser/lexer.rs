@@ -223,7 +223,7 @@ impl Lexer {
 
                     source = &source[end + 1..];
 
-                    assert!(inside.len() == 1);
+                    assert_eq!(inside.len(), 1);
                     let ch = inside.bytes().next().unwrap();
 
                     tokens.push(Token::Literal(Literal::Char(ch)));
@@ -302,8 +302,8 @@ impl Lexer {
                         }
 
                         if ch == '.' {
-                            assert!(base == Base::Dec,
-                                    "Only decimal float literals are supported.");
+                            assert_eq!(base, Base::Dec,
+                                       "Only decimal float literals are supported.");
                             assert!(!has_dot, "Multiple dots in float literal.");
 
                             has_dot = true;

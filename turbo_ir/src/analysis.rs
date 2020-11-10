@@ -382,8 +382,8 @@ impl FunctionData {
                             // We need to remove this entry, but make sure that values are the
                             // same.
 
-                            assert!(existing_new == value, "Tried to replace invalid \
-                                    PHI incoming.");
+                            assert_eq!(existing_new, value, "Tried to replace invalid \
+                                       PHI incoming.");
 
                             return false;
                         }
@@ -673,7 +673,7 @@ impl FunctionData {
                 // it was already checked before.
                 if label != end_label {
                     // `start_label` should never be here.
-                    assert!(label != start_label);
+                    assert_ne!(label, start_label);
 
                     // Make sure that there is no invalid instruction in every block
                     // that we can hit.
@@ -764,18 +764,18 @@ impl FunctionData {
 
                 if let Instruction::Phi { incoming, .. } = inst {
                     assert!(can_see_phi, "PHI nodes are not at the function beginning.");
-                    assert!(label != self.entry(), "Entry labels cannot have PHI nodes.");
+                    assert_ne!(label, self.entry(), "Entry labels cannot have PHI nodes.");
                     assert!(!incoming.is_empty(), "PHI nodes cannot be empty.");
 
                     let incoming_labels: Set<Label> = incoming.iter()
                         .map(|(label, _value)| *label)
                         .collect();
 
-                    assert!(incoming_labels == flow_incoming[&label], "PHI node incoming \
-                            labels and block predecessors don't match.");
+                    assert_eq!(incoming_labels, flow_incoming[&label], "PHI node incoming \
+                               labels and block predecessors don't match.");
 
-                    assert!(incoming.len() == incoming_labels.len(),
-                            "PHI node has duplicate labels.");
+                    assert_eq!(incoming.len(), incoming_labels.len(),
+                               "PHI node has duplicate labels.");
 
                     for &(label, value) in incoming {
                         if self.is_value_special(value) {

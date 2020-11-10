@@ -63,8 +63,8 @@ fn rewrite_phis_to_selects(function: &mut FunctionData, condition: Value, label:
 
     for instruction in body {
         if let Instruction::Phi { dst, incoming } = instruction {
-            assert!(incoming.len() == 2, "Number of incoming values \
-                    doesn't match block predecessor count.");
+            assert_eq!(incoming.len(), 2, "Number of incoming values \
+                       doesn't match block predecessor count.");
 
             let mut true_value  = None;
             let mut false_value = None;

@@ -404,8 +404,8 @@ impl InterferenceGraph {
         let order = self.coloring_order(reverse);
 
         // Make sure that optimal ordering we got is valid.
-        assert!(order.len() == self.vertices.len(), "Order doesn't include all \
-                vertices in the graph.");
+        assert_eq!(order.len(), self.vertices.len(), "Order doesn't include all \
+                   vertices in the graph.");
 
         let mut coloring = Coloring::default();
 
@@ -431,8 +431,8 @@ impl InterferenceGraph {
         }
 
         // Make sure that we actually colored everything.
-        assert!(coloring.vertex_color.len() == self.vertices.len(),
-                "Not all vertices were colored.");
+        assert_eq!(coloring.vertex_color.len(), self.vertices.len(),
+                   "Not all vertices were colored.");
 
         coloring
     }
@@ -1092,7 +1092,7 @@ impl FunctionData {
                 }
             }
 
-            assert!(usages.len() == required_registers, "Color count mismatch.");
+            assert_eq!(usages.len(), required_registers, "Color count mismatch.");
 
             let mut usages: Vec<(Color, usize)> = usages.into_iter().collect();
 

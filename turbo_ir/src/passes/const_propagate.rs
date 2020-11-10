@@ -140,8 +140,8 @@ impl super::Pass for ConstPropagatePass {
                 }
                 Instruction::ArithmeticBinary { a, op, b, .. } => {
                     if let (Some(&(a_ty, a)), Some(&(b_ty, b))) = (consts.get(a), consts.get(b)) {
-                        assert!(a_ty == b_ty, "Constprop: binary arihmetic instruction \
-                                has different operand types.");
+                        assert_eq!(a_ty, b_ty, "Constprop: binary arihmetic instruction \
+                                   has different operand types.");
 
                         let result = match ConstType::new(a_ty) {
                             ConstType::U1  => panic!("U1 not allowed in binary instruction."),
@@ -156,8 +156,8 @@ impl super::Pass for ConstPropagatePass {
                 }
                 Instruction::IntCompare { a, pred, b, .. } => {
                     if let (Some(&(a_ty, a)), Some(&(b_ty, b))) = (consts.get(a), consts.get(b)) {
-                        assert!(a_ty == b_ty, "Constprop: int compare instruction \
-                                has different operand types.");
+                        assert_eq!(a_ty, b_ty, "Constprop: int compare instruction \
+                                   has different operand types.");
 
                         let result = match ConstType::new(a_ty) {
                             ConstType::U1  => panic!("U1 not allowed in compare instruction."),

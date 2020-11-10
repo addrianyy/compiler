@@ -215,8 +215,8 @@ impl X86Backend {
             .collect();
 
         // Make sure that stack is properly aligned.
-        assert!(free_storage_end_offset % 8 == 0);
-        assert!(frame_size % 8 == 0);
+        assert_eq!(free_storage_end_offset % 8, 0);
+        assert_eq!(frame_size % 8, 0);
 
         let mut stackallocs = Map::default();
         let mut noreturn    = true;
@@ -259,8 +259,8 @@ impl X86Backend {
         // we are saving registers.
 
         // Make sure alignment is correct (again).
-        assert!(free_storage_end_offset % 8 == 0);
-        assert!(frame_size % 8 == 0);
+        assert_eq!(free_storage_end_offset % 8, 0);
+        assert_eq!(frame_size % 8, 0);
 
         X86FunctionData {
             place_to_operand,
@@ -1240,7 +1240,7 @@ impl super::Backend for X86Backend {
             expected_frame_size += context.x86_data.used_registers.save_size();
         }
 
-        assert!(expected_frame_size % 8 == 0, "Frame size is not even 8 byte aligned.");
+        assert_eq!(expected_frame_size % 8, 0, "Frame size is not even 8 byte aligned.");
 
         // Before call stack is 16-byte aligned so after call it's not. Align the stack
         // to 16 byte boundary.

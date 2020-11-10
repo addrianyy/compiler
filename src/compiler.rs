@@ -253,7 +253,7 @@ impl Compiler {
             right_ty = common_ty;
         }
 
-        assert!(left_ty == right_ty, "Implicit cast failed.");
+        assert_eq!(left_ty, right_ty, "Implicit cast failed.");
 
         if left.ty != left_ty {
             let extracted = left.extract(&mut self.ir);
@@ -493,8 +493,8 @@ impl Compiler {
             Expr::Call { target, args } => {
                 let function = self.functions.get(target);
 
-                assert!(function.args.len() == args.len(),
-                        "Number of arguments mismatch in call.");
+                assert_eq!(function.args.len(), args.len(),
+                           "Number of arguments mismatch in call.");
 
                 let mut generated_args = Vec::new();
 
@@ -691,8 +691,8 @@ impl Compiler {
                         self.ir.ret(Some(casted));
                     }
                     None => {
-                        assert!(return_ty == &Ty::Void, "Cannot return void from \
-                                non-void function.");
+                        assert_eq!(return_ty, &Ty::Void, "Cannot return void from \
+                                   non-void function.");
 
                         self.ir.ret(None);
                     }
@@ -731,7 +731,7 @@ impl Compiler {
         }
 
         if depth == 0 && !terminated {
-            assert!(return_ty == &Ty::Void, "Non-void function without return.");
+            assert_eq!(return_ty, &Ty::Void, "Non-void function without return.");
 
             self.ir.ret(None);
         }

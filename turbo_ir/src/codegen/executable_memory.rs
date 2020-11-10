@@ -69,7 +69,7 @@ unsafe fn free_rwx(base: *mut u8, size: usize) {
 
     let result = munmap(base, size);
 
-    assert!(result == 0, "Freeing memory at addresss {:p} failed.", base);
+    assert_eq!(result, 0, "Freeing memory at addresss {:p} failed.", base);
 }
 
 pub struct ExecutableMemory {

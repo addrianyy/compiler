@@ -114,7 +114,7 @@ impl FunctionContext {
 
     fn force_type(&mut self, value: Value, ty: Type) {
         if let Some(before) = self.types.insert(value, ty) {
-            assert!(before == ty, "{} type mistmatch ({} vs {}).", value, before, ty);
+            assert_eq!(before, ty, "{} type mistmatch ({} vs {}).", value, before, ty);
         }
     }
 }
@@ -157,8 +157,8 @@ impl Parser {
             if current == &Token::Comma {
                 self.lexer.eat();
             } else {
-                assert!(current == &close, "Expected comma or closing paren \
-                        in argument list. Got {:?}.", current);
+                assert_eq!(current, &close, "Expected comma or closing paren \
+                           in argument list. Got {:?}.", current);
             }
         }
     }
@@ -220,7 +220,7 @@ impl Parser {
             &Token::Keyword(keyword) => {
                 match keyword {
                     Keyword::True | Keyword::False => {
-                        assert!(ty == Type::U1, "true/false constants can be only used for U1.");
+                        assert_eq!(ty, Type::U1, "true/false constants can be only used for U1.");
 
                         (keyword == Keyword::True) as u64
                     }
@@ -264,7 +264,7 @@ impl Parser {
         let name      = self.lexer.eat_identifier();
         let function  = self.functions[name];
 
-        assert!(destination.is_some() == return_ty.is_some(), "Call return type mismatch.");
+        assert_eq!(destination.is_some(), return_ty.is_some(), "Call return type mismatch.");
 
         if let Some(destination) = destination {
             cx.force_type(destination, return_ty.unwrap());
@@ -662,8 +662,8 @@ pub fn parse(source: &str) -> Module {
         for (value, ty) in &cx.types {
             let actual = function_data.value_type(*value);
 
-            assert!(actual == *ty, "{}: {} type mistmatch (user {} vs infered {}).",
-                    function_data.prototype.name, value, ty, actual);
+            assert_eq!(actual, *ty, "{}: {} type mistmatch (user {} vs infered {}).",
+                       function_data.prototype.name, value, ty, actual);
         }
     }
 

@@ -100,8 +100,8 @@ impl super::Pass for ReorderPass {
                     if let Some(best_location) = best_location {
                         // We have found the best location to reorder instruction.
 
-                        assert!(creator.label() != best_location.label(),
-                                "It's illegal to reorder within the same block.");
+                        assert_ne!(creator.label(), best_location.label(),
+                                   "It's illegal to reorder within the same block.");
 
                         // Remove creator instruction.
                         let creator = std::mem::replace(&mut function.blocks

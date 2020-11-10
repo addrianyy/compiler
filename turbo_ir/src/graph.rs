@@ -63,7 +63,7 @@ impl FunctionData {
         let root_idx  = length - 1;
 
         assert!(length > 0);
-        assert!(postorder[root_idx] == root);
+        assert_eq!(postorder[root_idx], root);
 
         let predecessors_map: Vec<Vec<usize>> = {
             let mut predecessors_map = self.flow_graph_incoming();
@@ -101,7 +101,7 @@ impl FunctionData {
             changed = false;
 
             for idx in (0..length - 1).rev() {
-                assert!(postorder[idx] != root);
+                assert_ne!(postorder[idx], root);
 
                 let new_idom_idx = {
                     let mut predecessors = predecessors_map[idx]
@@ -154,8 +154,8 @@ impl FunctionData {
             let mut no_callback = false;
 
             if is_first {
-                assert!(label == start, "Current label must be start if this \
-                        is first iteration.");
+                assert_eq!(label, start, "Current label must be start if this \
+                           is first iteration.");
             }
 
             if !is_first && !include_start && label == start && !included_start {

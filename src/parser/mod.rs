@@ -69,8 +69,8 @@ impl Parser {
             if current == &Token::Comma {
                 let _ = self.lexer.eat();
             } else {
-                assert!(current == &Token::ParenClose,
-                        "Expected comma or closing paren in argument list. Got {:?}", current);
+                assert_eq!(current, &Token::ParenClose,
+                           "Expected comma or closing paren in argument list. Got {:?}", current);
             }
         }
     }

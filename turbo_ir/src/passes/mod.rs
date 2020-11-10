@@ -1,6 +1,6 @@
 pub(super) trait Pass {
-    fn run_on_function(&self, function: &mut crate::FunctionData) -> bool;
     fn name(&self) -> &str;
+    fn run_on_function(&self, function: &mut crate::FunctionData) -> bool;
 }
 
 #[derive(Copy, Clone)]

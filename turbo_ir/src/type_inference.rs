@@ -25,8 +25,8 @@ impl FunctionData {
                 let a = cx.get_type(*a);
                 let b = cx.get_type(*b);
 
-                assert!(a == b, "Binary arithmetic instruction must have operands \
-                                 of the same type.");
+                assert_eq!(a, b, "Binary arithmetic instruction must have operands \
+                                  of the same type.");
 
                 a
             }
@@ -34,8 +34,8 @@ impl FunctionData {
                 let a = cx.get_type(*a);
                 let b = cx.get_type(*b);
 
-                assert!(a == b, "Int compare instruction must have operands \
-                                 of the same type.");
+                assert_eq!(a, b, "Int compare instruction must have operands \
+                                  of the same type.");
 
                 Type::U1
             }
@@ -53,8 +53,8 @@ impl FunctionData {
                 let on_true  = cx.get_type(*on_true);
                 let on_false = cx.get_type(*on_false);
 
-                assert!(on_true == on_false, "Select instruction must have operands \
-                                              of the same type.");
+                assert_eq!(on_true, on_false, "Select instruction must have operands \
+                                               of the same type.");
 
                 on_true
             }
@@ -92,8 +92,8 @@ impl FunctionData {
                 let dst   = cx.get_type(*dst);
                 let value = cx.get_type(*value);
 
-                assert!(dst == value, "Unary arithmetic instruction requires all \
-                        operands to be of the same type");
+                assert_eq!(dst, value, "Unary arithmetic instruction requires all \
+                           operands to be of the same type");
 
                 assert!(dst.is_arithmetic(), "Unary arithmetic instruction can be \
                         only done on arithmetic types.");
@@ -114,11 +114,11 @@ impl FunctionData {
                 let a   = cx.get_type(*a);
                 let b   = cx.get_type(*b);
 
-                assert!(dst == Type::U1, "Int compare instruction requires \
-                        destination type to be U1.");
+                assert_eq!(dst, Type::U1, "Int compare instruction requires \
+                           destination type to be U1.");
 
-                assert!(a == b, "Int compare instruction requires all \
-                        input operands to be of the same type");
+                assert_eq!(a, b, "Int compare instruction requires all \
+                           input operands to be of the same type");
             }
             Instruction::Load { dst, ptr } => {
                 let dst = cx.get_type(*dst);
@@ -127,8 +127,7 @@ impl FunctionData {
                 let stripped = ptr.strip_ptr()
                     .expect("Load instruction can only load from pointers.");
 
-                assert!(dst == stripped,
-                        "Load instruction destination must have pointee type.");
+                assert_eq!(dst, stripped, "Load instruction destination must have pointee type.");
             }
             Instruction::Store { ptr, value } => {
                 let ptr   = cx.get_type(*ptr);
@@ -137,8 +136,7 @@ impl FunctionData {
                 let stripped = ptr.strip_ptr()
                     .expect("Store instruction can only store to pointers.");
 
-                assert!(value == stripped,
-                        "Store instruction value must have pointee type.");
+                assert_eq!(value, stripped, "Store instruction value must have pointee type.");
             }
             Instruction::Call { dst, func, args } => {
                 let prototype = self.function_prototype(*func);
@@ -147,16 +145,16 @@ impl FunctionData {
                     let return_type = prototype.return_type
                         .expect("Cannot take the return value of void function.");
 
-                    assert!(cx.get_type(*dst) == return_type,
-                            "Function call return value doesn't match.");
+                    assert_eq!(cx.get_type(*dst), return_type,
+                               "Function call return value doesn't match.");
                 }
 
-                assert!(args.len() == prototype.arguments.len(), "Function call with invalid \
-                        argument count.");
+                assert_eq!(args.len(), prototype.arguments.len(), "Function call with invalid \
+                           argument count.");
 
                 for (index, arg) in args.iter().enumerate() {
-                    assert!(cx.get_type(*arg) == prototype.arguments[index],
-                            "Function call with invalid arguments.");
+                    assert_eq!(cx.get_type(*arg), prototype.arguments[index],
+                               "Function call with invalid arguments.");
                 }
             }
             Instruction::Branch { .. } => {
@@ -164,20 +162,20 @@ impl FunctionData {
             Instruction::BranchCond { cond, .. } => {
                 let cond = cx.get_type(*cond);
 
-                assert!(cond == Type::U1, "Conditional branch input must be U1.");
+                assert_eq!(cond, Type::U1, "Conditional branch input must be U1.");
             }
             Instruction::StackAlloc { dst, ty, size } => {
                 let dst = cx.get_type(*dst);
 
                 assert!(*size > 0, "Stack alloc cannot allocate 0 sized array.");
-                assert!(dst.strip_ptr().expect("Stack alloc destination must be pointer.") == *ty,
-                        "Stack alloc destination must be pointer to input type.");
+                assert_eq!(dst.strip_ptr().expect("Stack alloc destination must be pointer."), *ty,
+                           "Stack alloc destination must be pointer to input type.");
             }
             Instruction::Return { value } => {
                 let value = value.map(|value| cx.get_type(value));
 
-                assert!(value == self.prototype.return_type, "Return instruction operand type \
-                        must be the same function as function return type.");
+                assert_eq!(value, self.prototype.return_type, "Return instruction operand type \
+                           must be the same function as function return type.");
             }
             Instruction::Const { dst, ty, imm, .. } => {
                 let dst = cx.get_type(*dst);
@@ -186,7 +184,7 @@ impl FunctionData {
                     assert!(*imm == 0 || *imm == 1, "Invalid U1 constant {}.", imm);
                 }
 
-                assert!(dst == *ty, "Const value instruction operand types must be the same.");
+                assert_eq!(dst, *ty, "Const value instruction operand types must be the same.");
             }
             Instruction::GetElementPtr { dst, source, index } => {
                 let dst    = cx.get_type(*dst);
@@ -194,14 +192,14 @@ impl FunctionData {
                 let index  = cx.get_type(*index);
 
                 assert!(index.is_arithmetic(), "GEP index must be arithmetic.");
-                assert!(dst == source, "GEP destination and source must be the same type.");
+                assert_eq!(dst, source, "GEP destination and source must be the same type.");
                 assert!(dst.is_pointer(), "GEP input type is not valid pointer.");
             }
             Instruction::Cast { dst, cast, value, ty } => {
                 let dst   = cx.get_type(*dst);
                 let value = cx.get_type(*value);
 
-                assert!(dst == *ty, "{} destination must be the same type as cast type.", cast);
+                assert_eq!(dst, *ty, "{} destination must be the same type as cast type.", cast);
                 assert!(value != Type::U1 && *ty != Type::U1, "Cannot cast U1s.");
 
                 match cast {
@@ -218,8 +216,8 @@ impl FunctionData {
                         }
                     }
                     Cast::Bitcast => {
-                        assert!(value.size() == ty.size(), "{} must cast between values \
-                                with the same size.", cast);
+                        assert_eq!(value.size(), ty.size(), "{} must cast between values \
+                                   with the same size.", cast);
                     }
                 }
             }
@@ -229,7 +227,7 @@ impl FunctionData {
                 let on_true   = cx.get_type(*on_true);
                 let on_false  = cx.get_type(*on_false);
 
-                assert!(cond == Type::U1, "Select condition input must be U1.");
+                assert_eq!(cond, Type::U1, "Select condition input must be U1.");
                 assert!(on_true == on_false && dst == on_true, "Select values and destination \
                         must have the same type.");
             }
@@ -237,14 +235,14 @@ impl FunctionData {
                 let dst = cx.get_type(*dst);
 
                 for (_label, value) in incoming {
-                    assert!(cx.get_type(*value) == dst, "PHI values must have the same types.");
+                    assert_eq!(cx.get_type(*value), dst, "PHI values must have the same types.");
                 }
             }
             Instruction::Nop => {
             }
             Instruction::Alias { dst, value } => {
-                assert!(cx.get_type(*dst) == cx.get_type(*value), "Alias can only alias values \
-                        of the same type.");
+                assert_eq!(cx.get_type(*dst), cx.get_type(*value), "Alias can only alias values \
+                           of the same type.");
             }
         }
     }
