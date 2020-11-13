@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use turbo_ir as ir;
 
 extern "win64" fn read_char() -> u8 {
@@ -156,7 +158,7 @@ fn main() {
 
     //ir.dump_function_text_stdout(function);
 
-    type Func = extern "win64" fn(*mut u8);
+    type Func = unsafe extern "win64" fn(*mut u8);
 
     let machine_code = ir.generate_machine_code(&ir::backends::X86Backend);
     let function_ptr = unsafe {
@@ -169,7 +171,13 @@ fn main() {
 
     println!("Running...");
 
+    let start = Instant::now();
+
     unsafe {
         function_ptr(buffer.as_mut_ptr());
     }
+
+    let elapsed = start.elapsed().as_secs_f64();
+
+    println!("Executed in {}s.", elapsed);
 }
