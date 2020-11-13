@@ -592,6 +592,7 @@ impl FunctionData {
         let mut included_start = false;
         let mut included_end   = false;
 
+        // Check instructions in all queued labels.
         for &label in labels {
             for (inst_id, instruction) in self.blocks[&label].iter().enumerate() {
                 // Ignore start instruction and end instruction.
@@ -615,6 +616,7 @@ impl FunctionData {
             }
         }
 
+        // Check start label partially if we haven't checked it previously.
         if !included_start {
             // Make sure there is no invalid instruction in the remaining part of start block.
             for instruction in &self.blocks[&start_label][start.index() + 1..] {
@@ -626,6 +628,7 @@ impl FunctionData {
             }
         }
 
+        // Check end label partially if we haven't checked it previously.
         if !included_end {
             // Make sure there is no invalid instruction in the initial part of end block.
             for instruction in &self.blocks[&end_label][..end.index()] {
@@ -673,9 +676,12 @@ impl FunctionData {
             return None;
         }
 
+        // Get a key for this path validation.
         let key = (start_label, end_label, memory_kill);
 
+        // Check if this path was already explored.
         if let Some(labels) = cache.labels.get(&key) {
+            // It was, check all blocks that are part of this path.
             return labels.as_ref().and_then(|labels| {
                 self.validate_blocks(start, end, labels, verifier)
             });
@@ -693,6 +699,7 @@ impl FunctionData {
             });
 
             if let Some(blocks) = blocks {
+                // Queue traversal of additional blocks.
                 for block in blocks {
                     labels.insert(block);
                 }
@@ -737,10 +744,12 @@ impl FunctionData {
             result = Some(labels.into_iter().collect());
         }
 
+        // Validate calculated path.
         let validated = result.as_ref().and_then(|labels| {
             self.validate_blocks(start, end, &labels, verifier)
         });
 
+        // Add blocks that belong to that path to the cache.
         cache.labels.insert(key, result);
 
         validated
