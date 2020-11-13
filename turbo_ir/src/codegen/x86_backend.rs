@@ -31,6 +31,26 @@ const ARGUMENT_REGISTERS: &[asm::Reg] = &[
     R9,
 ];
 
+#[derive(PartialEq, Eq)]
+enum OpType {
+    Normal,
+    Divmod,
+    Shift,
+}
+
+fn op_type(op: BinaryOp) -> OpType {
+    match op {
+        BinaryOp::Shr | BinaryOp::Shl | BinaryOp::Sar => {
+            OpType::Shift
+        }
+        BinaryOp::ModU | BinaryOp::ModS | BinaryOp::DivU |
+        BinaryOp::DivS => {
+            OpType::Divmod
+        }
+        _ => OpType::Normal,
+    }
+}
+
 fn win64_is_volatile(register: asm::Reg) -> bool {
     !matches!(register, Rbx | Rbp | Rdi | Rsi | Rsp | R12 | R13 | R14 | R15)
 }
@@ -66,6 +86,16 @@ fn signextend(value: u64, size: OperandSize) -> i64 {
         OperandSize::Bits16 => value as u16 as i16 as i64,
         OperandSize::Bits32 => value as u32 as i32 as i64,
         OperandSize::Bits64 => value as i64,
+    }
+}
+
+fn copy(asm: &mut Assembler, dst: Operand<'static>, src: Operand<'static>, temp: asm::Reg) {
+    if dst.is_memory() && src.is_memory() {
+        // Use intermediate register for memory-memory copy.
+        asm.mov(&[Reg(temp), src]);
+        asm.mov(&[dst, Reg(temp)]);
+    } else {
+        asm.mov(&[dst, src]);
     }
 }
 
@@ -287,9 +317,249 @@ impl X86Backend {
         }
     }
 
+    fn gep_operand(&mut self, cx: &X86CodegenContext, r: &Resolver<'_>,
+                   source:      Value,
+                   index:       Value,
+                   source_temp: asm::Reg,
+                   index_temp:  asm::Reg) -> Operand<'static> {
+        let function   = &cx.function;
+        let index_size = function.value_type(index).size();
+
+        // Scale is equal to the size of element that pointer points to.
+        let scale = type_to_size(function.value_type(source)
+                                    .strip_ptr().unwrap(), true);
+
+        let source = r.resolve(source);
+        let index  = r.resolve(index);
+
+        // We will create [source+index] operand so both source and index must
+        // be in registers.
+
+        // Move source value to register if required.
+        let source = if let Reg(register) = source {
+            register
+        } else {
+            self.asm.mov(&[Reg(source_temp), source]);
+
+            Rax
+        };
+
+        match index {
+            Imm(imm) => {
+                Mem(Some(source), None, imm * scale as i64)
+            }
+            Reg(register) if index_size == 8 => {
+                Mem(Some(source), Some((register, scale)), 0)
+            }
+            _ => {
+                // Sign extend index to 64 bit value and move it to the register.
+                let operands = &[Reg(index_temp), index];
+
+                match index_size {
+                    1 => self.asm.movsxb(operands),
+                    2 => self.asm.movsxw(operands),
+                    4 => self.asm.movsxd(operands),
+                    8 => self.asm.mov(operands),
+                    _ => unreachable!(),
+                }
+
+                Mem(Some(source), Some((index_temp, scale)), 0)
+            }
+        }
+    }
+
+    fn generate_gep_access(&mut self, cx: &X86CodegenContext, location: Location,
+                           instructions: &[&Instruction]) -> usize {
+        let r        = cx.resolver(location);
+        let function = &cx.function;
+
+        match instructions {
+            [Instruction::GetElementPtr { dst: gep_dst,  source, index },
+             Instruction::Load          { dst: load_dst, ptr }, ..]
+                 if gep_dst == ptr && cx.usage_count(*gep_dst) == 1 =>
+            {
+                let ty       = function.value_type(*load_dst);
+                let size     = type_to_operand_size(ty, true);
+                let load_dst = r.resolve(*load_dst);
+
+                let operand = self.gep_operand(cx, &r, *source, *index, Rax, Rcx);
+
+                self.asm.with_size(size, |asm| {
+                    copy(asm, load_dst, operand, Rax);
+                });
+
+                2
+            }
+            [Instruction::GetElementPtr { dst: gep_dst, source, index },
+             Instruction::Store         { ptr, value }, ..]
+                 if gep_dst == ptr && cx.usage_count(*gep_dst) == 1 =>
+            {
+                let ty    = function.value_type(*value);
+                let size  = type_to_operand_size(ty, true);
+                let value = r.resolve(*value);
+
+                let operand = self.gep_operand(cx, &r, *source, *index, Rax, Rcx);
+
+                self.asm.with_size(size, |asm| {
+                    copy(asm, operand, value, Rax);
+                });
+
+                2
+            }
+            _ => 0,
+        }
+    }
+
+    fn generate_complex_gep_access(&mut self, cx: &X86CodegenContext, location: Location,
+                                   mut instructions: &[&Instruction]) -> usize {
+        let r        = cx.resolver(location);
+        let function = &cx.function;
+
+        let mut gep_info = None;
+        let mut consumed = 0;
+
+        if let Instruction::GetElementPtr { dst, source, index } = &instructions[0] {
+            if cx.usage_count(*dst) != 2 {
+                return 0;
+            }
+
+            instructions = &instructions[1..];
+            consumed     = 1;
+
+            gep_info = Some((*dst, *source, *index));
+        }
+
+        match instructions {
+            [Instruction::Load              { dst: loaded_value, ptr: loaded_ptr },
+             Instruction::ArithmeticBinary  { dst: op_dst, a, op, b },
+             Instruction::Store             { ptr: stored_ptr, value: stored_value }, ..] => {
+                if loaded_ptr   != stored_ptr ||
+                   loaded_value != a ||
+                   loaded_value == b ||
+                   stored_value != op_dst
+                {
+                    return 0;
+                }
+
+                if cx.usage_count(*op_dst) != 1 || cx.usage_count(*loaded_value) != 1 {
+                    return 0;
+                }
+
+                if op_type(*op) != OpType::Normal {
+                    return 0;
+                }
+
+                let ty   = function.value_type(*loaded_value);
+                let size = type_to_operand_size(ty, true);
+
+                let mut rhs = r.resolve(*b);
+
+                let lhs = if let Some((gep_ptr, source, index)) = gep_info {
+                    if gep_ptr != *loaded_ptr {
+                        return 0;
+                    }
+
+                    self.gep_operand(cx, &r, source, index, Rax, Rcx)
+                } else {
+                    let ptr = r.resolve(*loaded_ptr);
+
+                    match ptr {
+                        Reg(register) => {
+                            Mem(Some(register), None, 0)
+                        }
+                        Mem(..) => {
+                            self.asm.mov(&[Reg(Rax), ptr]);
+
+                            Mem(Some(Rax), None, 0)
+                        }
+                        _ => unreachable!(),
+                    }
+                };
+
+                if rhs.is_memory() {
+                    self.asm.mov(&[Reg(Rdx), rhs]);
+
+                    rhs = Reg(Rdx);
+                }
+
+                let operands = [lhs, rhs];
+
+                self.asm.with_size(size, |asm| {
+                    match op {
+                        BinaryOp::Add => asm.add(&operands),
+                        BinaryOp::Sub => asm.sub(&operands),
+                        BinaryOp::Mul => asm.imul(&operands),
+                        BinaryOp::And => asm.and(&operands),
+                        BinaryOp::Or  => asm.or(&operands),
+                        BinaryOp::Xor => asm.xor(&operands),
+                        _             => panic!(),
+                    }
+                });
+
+                consumed + 3
+            }
+            _ => 0,
+        }
+    }
+
     fn generate_from_patterns(&mut self, cx: &X86CodegenContext, location: Location,
                               instructions: &[Instruction],
                               next_label:   Option<crate::Label>) -> usize {
+        const MAX_INSTRUCTIONS: usize = 10;
+
+        let     instruction_count     = MAX_INSTRUCTIONS.min(instructions.len());
+        let mut filtered_instructions = Vec::with_capacity(instruction_count);
+
+        for (index, instruction) in instructions[..instruction_count].iter().enumerate() {
+            let location = Location::new(location.label(), location.index() + index);
+
+            // Skip instructions which create constants and are removable.
+            if cx.x86_data.register_allocation.skips.contains(&location) {
+                continue;
+            }
+
+            filtered_instructions.push(instruction);
+        }
+
+        let get_skipped = |generated: usize| {
+            let mut skipped  = 0;
+            let mut iterator = 0;
+
+            if generated == 0 {
+                return 0;
+            }
+
+            for (index, _instruction) in instructions.iter().enumerate() {
+                let location = Location::new(location.label(), location.index() + index);
+
+                // Skip instructions which create constants and are removable.
+                if cx.x86_data.register_allocation.skips.contains(&location) {
+                    skipped += 1;
+                    continue;
+                }
+
+                iterator += 1;
+
+                if generated == iterator {
+                    return skipped;
+                }
+            }
+
+            panic!("Failed to get amount if skipped instructions.");
+        };
+
+        let instructions: &[&Instruction] = &filtered_instructions;
+
+        let generated = self.generate_complex_gep_access(cx, location, instructions);
+        if  generated > 0 {
+            return generated + get_skipped(generated);
+        }
+
+        let generated = self.generate_gep_access(cx, location, instructions);
+        if  generated > 0 {
+            return generated + get_skipped(generated);
+        }
+
         let function = cx.function;
         let asm      = &mut self.asm;
 
@@ -304,7 +574,7 @@ impl X86Backend {
         //
         // If from two instructions we create one, we must make sure that one which
         // we are "destroying" has apropriate number of uses.
-        match instructions {
+        let generated = match instructions {
             [Instruction::IntCompare { dst, a, pred, b },
              Instruction::BranchCond { cond, on_true, on_false }, ..]
                  if dst == cond && cx.usage_count(*dst) == 1 =>
@@ -449,7 +719,9 @@ impl X86Backend {
                 2
             }
             _ => 0,
-        }
+        };
+
+        generated + get_skipped(generated)
     }
 
     fn generate_function_body(&mut self, cx: &X86CodegenContext) {
@@ -583,12 +855,6 @@ impl X86Backend {
                         });
                     }
                     Instruction::ArithmeticBinary { dst, a, op, b } => {
-                        enum OpType {
-                            Normal,
-                            Divmod,
-                            Shift,
-                        }
-
                         let ty   = function.value_type(*a);
                         let size = type_to_operand_size(ty, false);
 
@@ -602,16 +868,7 @@ impl X86Backend {
                             // Different instructions on x86 have different constraints.
                             // Get the operation type. Each different type corresponds
                             // to different constaints.
-                            let op_type = match op {
-                                BinaryOp::Shr | BinaryOp::Shl | BinaryOp::Sar => {
-                                    OpType::Shift
-                                }
-                                BinaryOp::ModU | BinaryOp::ModS | BinaryOp::DivU |
-                                BinaryOp::DivS => {
-                                    OpType::Divmod
-                                }
-                                _ => OpType::Normal,
-                            };
+                            let op_type = op_type(*op);
 
                             // Intermediate register to used.
                             let mut result_reg = None;

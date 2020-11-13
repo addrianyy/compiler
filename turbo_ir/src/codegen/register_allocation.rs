@@ -975,6 +975,41 @@ impl FunctionData {
         }
     }
 
+    fn rewrite_arguments(&mut self) {
+        let usage_counts = self.usage_counts();
+        let arguments    = self.argument_values.clone();
+
+        let mut aliases = Map::default();
+
+        for argument in arguments {
+            if usage_counts[argument.index()] > 5 {
+                let ty    = self.value_type(argument);
+                let value = self.allocate_typed_value(ty);
+
+                aliases.insert(argument, value);
+            }
+        }
+
+        if !aliases.is_empty() {
+            self.for_each_instruction_mut(|_, instruction| {
+                instruction.transform_inputs(|value| {
+                    if let Some(new) = aliases.get(value) {
+                        *value = *new;
+                    }
+                });
+            });
+
+            let entry_body = self.blocks.get_mut(&self.entry()).unwrap();
+
+            for (old, new) in aliases {
+                entry_body.insert(0, Instruction::Alias {
+                    dst:   new,
+                    value: old,
+                });
+            }
+        }
+    }
+
     fn constants_and_skips(&self, backend: &dyn Backend) -> (Map<Value, i64>, Set<Location>) {
         let mut constants = Map::default();
         let mut skips     = Set::default();
@@ -1012,6 +1047,8 @@ impl FunctionData {
         // Rewrite PHIs to use copy (`alias`) instructions. This is done to avoid interference
         // problems.
         self.rewrite_phis();
+
+        self.rewrite_arguments();
 
         // Get all constant values and all `iconst` instructions that we can skip.
         let (constants, skips) = self.constants_and_skips(backend);
