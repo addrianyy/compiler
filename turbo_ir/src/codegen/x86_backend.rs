@@ -60,6 +60,15 @@ fn type_to_operand_size(ty: Type, pointer: bool) -> OperandSize {
     }
 }
 
+fn signextend(value: u64, size: OperandSize) -> i64 {
+    match size {
+        OperandSize::Bits8  => value as u8  as i8  as i64,
+        OperandSize::Bits16 => value as u16 as i16 as i64,
+        OperandSize::Bits32 => value as u32 as i32 as i64,
+        OperandSize::Bits64 => value as i64,
+    }
+}
+
 struct Registers {
     registers: Vec<asm::Reg>,
 }
@@ -525,12 +534,7 @@ impl X86Backend {
                             let dst = r.resolve(*dst);
 
                             // Properly sign-extend value as required by x86.
-                            let imm = match size {
-                                OperandSize::Bits8  => *imm as u8  as i8  as i64,
-                                OperandSize::Bits16 => *imm as u16 as i16 as i64,
-                                OperandSize::Bits32 => *imm as u32 as i32 as i64,
-                                OperandSize::Bits64 => *imm as i64,
-                            };
+                            let imm = signextend(*imm, size);
 
                             if imm > i32::MAX as i64 || imm < i32::MIN as i64 {
                                 // We must use different instructions sequence
@@ -887,12 +891,24 @@ impl X86Backend {
                         // We will do lea [source+index] so both source and index must
                         // be in registers.
 
-                        // Sign extend index to 64 bit value and move it to the register.
-                        let index = match index {
+                        // Move source value to register if required.
+                        let source = if let Reg(register) = source {
+                            register
+                        } else {
+                            asm.mov(&[Reg(Rax), source]);
+
+                            Rax
+                        };
+
+                        let operand = match index {
+                            Imm(imm) => {
+                                Mem(Some(source), None, imm * scale as i64)
+                            }
                             Reg(register) if index_size == 8 => {
-                                register
+                                Mem(Some(source), Some((register, scale)), 0)
                             }
                             _ => {
+                                // Sign extend index to 64 bit value and move it to the register.
                                 let operands = &[Reg(Rcx), index];
 
                                 match index_size {
@@ -903,19 +919,9 @@ impl X86Backend {
                                     _ => unreachable!(),
                                 }
 
-                                Rcx
+                                Mem(Some(source), Some((Rcx, scale)), 0)
                             }
                         };
-
-                        // Move source value to register if required.
-                        let source = if let Reg(register) = source {
-                            register
-                        } else {
-                            asm.mov(&[Reg(Rax), source]);
-                            Rax
-                        };
-
-                        let operand = Mem(Some(source), Some((index, scale)), 0);
 
                         // Calculate element pointer using lea.
                         if dst.is_memory() {
@@ -1211,6 +1217,12 @@ impl super::Backend for X86Backend {
 
                     return false;
                 }
+                Instruction::GetElementPtr { index, .. } => {
+                    if *index != value {
+                        return false;
+                    }
+                }
+                Instruction::Return { .. } => {},
                 _ => return false,
             }
         }
