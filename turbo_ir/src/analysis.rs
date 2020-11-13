@@ -3,6 +3,8 @@ use std::collections::VecDeque;
 use super::{FunctionData, Value, Location, Label, Dominators, Map, Set,
             Instruction, Type, CapacityExt};
 
+const VALUE_DIVIDER: usize = 8;
+
 pub(super) type Users    = Map<Value, Set<Location>>;
 pub(super) type DomCache = Set<(Label, Label)>;
 pub(super) type Const    = u64;
@@ -223,7 +225,7 @@ impl FunctionData {
             .rev()
             .collect();
 
-        let     users                            = self.users();
+        let     users                            = self.pointer_users();
         let mut pointer_safety: Map<Value, bool> = Map::default();
 
         macro_rules! is_safe {
@@ -880,7 +882,7 @@ impl FunctionData {
     }
 
     pub(super) fn value_creators(&self) -> Map<Value, Location> {
-        let mut creators = Map::new_with_capacity(self.value_count() / 8);
+        let mut creators = Map::new_with_capacity(self.value_count() / VALUE_DIVIDER);
 
         self.for_each_instruction(|location, instruction| {
             if let Some(value) = instruction.created_value() {
@@ -934,7 +936,7 @@ impl FunctionData {
     }
 
     pub(super) fn users(&self) -> Users {
-        let mut users = Map::default();
+        let mut users = Map::new_with_capacity(self.value_count() / VALUE_DIVIDER);
 
         for label in self.reachable_labels() {
             let body = &self.blocks[&label];
@@ -954,8 +956,32 @@ impl FunctionData {
         users
     }
 
+    pub(super) fn pointer_users(&self) -> Users {
+        let mut users = Map::new_with_capacity(self.value_count() / VALUE_DIVIDER);
+
+        for label in self.reachable_labels() {
+            let body = &self.blocks[&label];
+
+            for (inst_id, instruction) in body.iter().enumerate() {
+                let location = Location::new(label, inst_id);
+
+                for value in instruction.read_values() {
+                    if self.value_type(value).is_pointer() {
+                        // Mark `value` as used by this instruction.
+                        users.entry(value)
+                            .or_insert_with(Set::default)
+                            .insert(location);
+                    }
+                }
+            }
+        }
+
+        users
+    }
+
     pub(super) fn value_processing_order(&self) -> Vec<Value> {
-        let mut users: Map<Value, Set<(Location, Value)>> = Map::default();
+        let mut users: Map<Value, Set<(Location, Value)>> =
+            Map::new_with_capacity(self.value_count() / VALUE_DIVIDER);
 
         let mut queue = VecDeque::new();
         let mut phis  = Vec::new();
@@ -997,7 +1023,7 @@ impl FunctionData {
 
                     // PHIs can have cycles and they need to be handled specially.
                     if let Instruction::Phi { dst, incoming } = instruction {
-                        phis.push((dst, incoming));
+                        phis.push((*dst, incoming));
                     }
 
                     for value in read_values {
@@ -1013,8 +1039,8 @@ impl FunctionData {
         }
 
         let mut order  = Vec::with_capacity(expected_value_count);
-        let mut done   = Set::new_with_capacity(expected_value_count);
-        let mut ignore = Set::default();
+        let mut done   = FastValueSet::new(self);
+        let mut ignore = FastValueSet::new(self);
 
         // Try to iteratively solve dependencies.
         'main_loop: loop {
@@ -1028,14 +1054,14 @@ impl FunctionData {
                     // of this value.
                     for &(location, output) in users.iter() {
                         // Skip if output is already processed or queued to be processed.
-                        if done.contains(&output) || ignore.contains(&output) {
+                        if done.contains(output) || ignore.contains(output) {
                             continue;
                         }
 
                         // If all input values of this instruction are now processed,
                         // `output` is ready to be processed too.
                         let ready = self.instruction(location).read_values().iter()
-                            .all(|&input| input == output || done.contains(&input));
+                            .all(|&input| input == output || done.contains(input));
 
                         if ready {
                             queue.push_back(output);
@@ -1046,7 +1072,7 @@ impl FunctionData {
             }
 
             // Remove all processed PHIs.
-            phis.retain(|(value, _)| !done.contains(value));
+            phis.retain(|(value, _)| !done.contains(*value));
 
             // No PHIs left to process, we are done.
             if phis.is_empty() {
@@ -1060,10 +1086,14 @@ impl FunctionData {
 
             // Find PHI which has smallest number of known inputs (but at least one).
             for &(phi_value, incoming) in &phis {
+                let mut known_inputs = 0;
+
                 // Get amount of known inputs to PHI.
-                let known_inputs = incoming.iter()
-                    .filter(|(_, value)| value != phi_value && done.contains(value))
-                    .count();
+                for &(_, value) in incoming.iter() {
+                    if value != phi_value && done.contains(value) {
+                        known_inputs += 1;
+                    }
+                }
 
                 // We can't do anything with PHIs that have no known inputs.
                 if known_inputs < 1 {
@@ -1077,7 +1107,7 @@ impl FunctionData {
                 };
 
                 if better {
-                    best_phi = Some((*phi_value, known_inputs));
+                    best_phi = Some((phi_value, known_inputs));
                 }
             }
 
@@ -1127,5 +1157,38 @@ impl FunctionData {
             }
             _ => false,
         }
+    }
+}
+
+const BITS_PER_VALUE: usize = std::mem::size_of::<usize>() * 8;
+
+struct FastValueSet {
+    bitmap: Vec<usize>,
+}
+
+impl FastValueSet {
+    fn new(function: &FunctionData) -> Self {
+        Self {
+            bitmap: vec![0; (function.value_count() + (BITS_PER_VALUE - 1)) / BITS_PER_VALUE],
+        }
+    }
+
+    fn clear(&mut self) {
+        self.bitmap.iter_mut()
+            .for_each(|value| *value = 0);
+    }
+
+    fn contains(&self, value: Value) -> bool {
+        let index = value.index() / BITS_PER_VALUE;
+        let bit   = value.index() % BITS_PER_VALUE;
+
+        (self.bitmap[index] & (1 << bit)) != 0
+    }
+
+    fn insert(&mut self, value: Value) {
+        let index = value.index() / BITS_PER_VALUE;
+        let bit   = value.index() % BITS_PER_VALUE;
+
+        self.bitmap[index] |= 1 << bit;
     }
 }
