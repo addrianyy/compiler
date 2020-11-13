@@ -68,23 +68,7 @@ impl super::Pass for RemoveDeadStoresPass {
                         let result = function.validate_path_memory(&dominators, start, end,
                                                                    KillTarget::Start,
                                                                    |instruction| {
-                            match instruction {
-                                Instruction::Load { ptr, .. } => {
-                                    // If pointers alias than this load can see ths pointer
-                                    // value and we cannot eliminate the store.
-
-                                    !pointer_analysis.can_alias(function, pointer, *ptr)
-                                }
-                                Instruction::Call { .. } => {
-                                    // If a function can access the pointer than it can
-                                    // see its value and we cannot eliminate the store.
-
-                                    !function.can_call_access_pointer(&pointer_analysis,
-                                                                      instruction,
-                                                                      pointer)
-                                }
-                                _ => true,
-                            }
+                            !function.can_load_pointer(instruction, &pointer_analysis, pointer)
                         });
 
                         if result.is_some() {

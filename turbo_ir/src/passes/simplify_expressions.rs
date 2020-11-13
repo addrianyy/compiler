@@ -21,8 +21,7 @@ impl super::Pass for SimplifyExpressionsPass {
 
         // Keep trying to simplify till there is nothing left to do.
         loop {
-            let consts       = function.constant_values();
-            let usage_counts = function.usage_counts();
+            let consts = function.constant_values();
 
             let mut success = false;
 
@@ -98,9 +97,8 @@ impl super::Pass for SimplifyExpressionsPass {
                             Some(chain) => {
                                 // This is next part of previously calculated chain.
                                 // We cannot chain both operations if they have different
-                                // binary operator. Also, if previous chain part is used more
-                                // than one time we don't gain anything from chaining.
-                                if chain.op != *op || usage_counts[value.index()] > 1 {
+                                // binary operator.
+                                if chain.op != *op {
                                     None
                                 } else {
                                     // Join current operation and previous chain into one.

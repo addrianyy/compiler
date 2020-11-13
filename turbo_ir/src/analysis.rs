@@ -1048,4 +1048,36 @@ impl FunctionData {
 
         order
     }
+
+    pub(super) fn can_load_pointer(&self, instruction: &Instruction,
+                                   pointer_analysis: &PointerAnalysis,
+                                   pointer: Value) -> bool {
+        match instruction {
+            Instruction::Call  { .. } => {
+                self.can_call_access_pointer(&pointer_analysis,
+                                             instruction,
+                                             pointer)
+            }
+            Instruction::Load { ptr, .. } => {
+                pointer_analysis.can_alias(self, pointer, *ptr)
+            }
+            _ => false,
+        }
+    }
+
+    pub(super) fn can_store_pointer(&self, instruction: &Instruction,
+                                    pointer_analysis: &PointerAnalysis,
+                                    pointer: Value) -> bool {
+        match instruction {
+            Instruction::Call  { .. } => {
+                self.can_call_access_pointer(&pointer_analysis,
+                                             instruction,
+                                             pointer)
+            }
+            Instruction::Store { ptr, .. } => {
+                pointer_analysis.can_alias(self, pointer, *ptr)
+            }
+            _ => false,
+        }
+    }
 }

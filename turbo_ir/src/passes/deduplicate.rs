@@ -18,28 +18,6 @@ fn deduplication_key(instruction: &Instruction) -> DeduplicationKey {
     (std::mem::discriminant(instruction), instruction.input_parameters())
 }
 
-fn can_modify_pointer(function: &FunctionData, instruction: &Instruction,
-                      pointer_analysis: &PointerAnalysis, pointer: Value) -> bool {
-    match instruction {
-        Instruction::Call  { .. } => {
-            // If call can affect this pointer we cannot
-            // continue further.
-
-            function.can_call_access_pointer(&pointer_analysis,
-                                             instruction,
-                                             pointer)
-        }
-        Instruction::Store { ptr, .. } => {
-            // Make sure that stored pointer can't
-            // alias a pointer loaded by source to
-            // deduplicate.
-
-            pointer_analysis.can_alias(function, pointer, *ptr)
-        }
-        _ => false,
-    }
-}
-
 fn deduplicate(function: &mut FunctionData, source: Location, target: Location) {
     // All values which can be deduplicated must create values.
     let source_value = function.instruction(source).created_value().unwrap();
@@ -138,8 +116,7 @@ fn deduplicate_precise(function: &mut FunctionData) -> bool {
                         // modified loaded ptr and output value will be different.
                         function.validate_path_memory(&dominators, source, location,
                                                       KillTarget::End, |instruction| {
-                            !can_modify_pointer(function, instruction, &pointer_analysis,
-                                                load_ptr)
+                            !function.can_store_pointer(instruction, &pointer_analysis, load_ptr)
                         })
                     } else {
                         function.validate_path_count(&dominators, source, location)
@@ -204,6 +181,9 @@ fn deduplicate_fast(function: &mut FunctionData) -> bool {
                     // that nothing affected value of this pointer.
                     for instruction in &body[source_id + 1..inst_id] {
                         if can_modify_pointer(function, instruction, &pointer_analysis, *ptr) {
+                            // Make this `load` source for another deduplication.
+                            dedup_list.insert(key, inst_id);
+
                             continue 'next_instruction;
                         }
                     }

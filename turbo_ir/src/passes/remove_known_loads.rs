@@ -71,21 +71,7 @@ impl super::Pass for RemoveKnownLoadsPass {
                     // Check if we actually can source load from this store.
                     let result = function.validate_path_memory(&dominators, start, end,
                                                                KillTarget::End, |instruction| {
-                        match instruction {
-                            Instruction::Call { .. } => {
-                                // If call can affect this pointer we cannot continue further.
-
-                                !function.can_call_access_pointer(&pointer_analysis,
-                                                                  instruction, load_ptr)
-                            }
-                            Instruction::Store { ptr, .. } => {
-                                // If pointers alias then something can possibly affect loaded
-                                // pointer. We can't source load from this store.
-
-                                !pointer_analysis.can_alias(function, load_ptr, *ptr)
-                            }
-                            _ => true,
-                        }
+                        !function.can_store_pointer(instruction, &pointer_analysis, load_ptr)
                     });
 
                     if let Some(instruction_count) = result {
