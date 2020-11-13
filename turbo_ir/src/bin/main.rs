@@ -26,7 +26,7 @@ impl PassRegistry {
             ("mem2ssa",       ir::passes::memory_to_ssa()),
             ("phimin",        ir::passes::minimize_phis()),
             ("cfg-simplify",  ir::passes::simplify_cfg()),
-            ("dedup",         ir::passes::deduplicate()),
+            ("dedup",         ir::passes::deduplicate_precise()),
             ("reorder",       ir::passes::reorder()),
             ("x86reorder",    ir::passes::x86reorder()),
         ];

@@ -23,7 +23,7 @@ fn main() {
         turbo_ir::passes::simplify_expressions(),
         turbo_ir::passes::remove_dead_code(),
         turbo_ir::passes::memory_to_ssa(),
-        turbo_ir::passes::deduplicate(),
+        turbo_ir::passes::deduplicate_precise(),
         turbo_ir::passes::remove_known_loads(),
         turbo_ir::passes::remove_dead_stores(),
         turbo_ir::passes::undefined_propagate(),
