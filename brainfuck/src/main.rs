@@ -144,8 +144,8 @@ fn main() {
         turbo_ir::passes::remove_dead_code(),
         turbo_ir::passes::memory_to_ssa(),
         turbo_ir::passes::deduplicate_fast(),
-        turbo_ir::passes::remove_known_loads(),
-        turbo_ir::passes::remove_dead_stores(),
+        turbo_ir::passes::remove_known_loads_fast(),
+        turbo_ir::passes::remove_dead_stores_fast(),
         turbo_ir::passes::undefined_propagate(),
         turbo_ir::passes::minimize_phis(),
         turbo_ir::passes::branch_to_select(),
@@ -155,7 +155,7 @@ fn main() {
 
     println!("Optimizing...");
 
-    //ir.optimize(passes, true);
+    ir.optimize(passes, true);
     ir.dump_function_text(function, &mut File::create("result.turboir").unwrap()).unwrap();
 
     type Func = unsafe extern "win64" fn(*mut u8);

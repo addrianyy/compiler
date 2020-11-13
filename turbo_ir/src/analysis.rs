@@ -51,13 +51,6 @@ pub(super) enum KillTarget {
 }
 
 impl PointerAnalysis {
-    pub fn get_stackalloc(&self, pointer: Value) -> Option<bool> {
-        // Get origin of the pointer.
-        let pointer = self.origins[&pointer];
-
-        self.stackallocs.get(&pointer).copied()
-    }
-
     pub fn can_alias(&self, function: &FunctionData, p1: Value, p2: Value) -> bool {
         // If two pointers are the same they always alias.
         if p1 == p2 {

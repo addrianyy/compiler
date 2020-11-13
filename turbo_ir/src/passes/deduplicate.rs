@@ -1,5 +1,4 @@
-use crate::{FunctionData, Instruction, Location, Value, LargeKeyMap, Map,
-            analysis::PointerAnalysis, analysis::KillTarget};
+use crate::{FunctionData, Instruction, Location, LargeKeyMap, Map, analysis::KillTarget};
 
 type DeduplicationKey = (std::mem::Discriminant<Instruction>, Vec<crate::instruction::Param>);
 
@@ -180,7 +179,7 @@ fn deduplicate_fast(function: &mut FunctionData) -> bool {
                     // Go through every instruction inbetween and make sure
                     // that nothing affected value of this pointer.
                     for instruction in &body[source_id + 1..inst_id] {
-                        if can_modify_pointer(function, instruction, &pointer_analysis, *ptr) {
+                        if function.can_store_pointer(instruction, &pointer_analysis, *ptr) {
                             // Make this `load` source for another deduplication.
                             dedup_list.insert(key, inst_id);
 
