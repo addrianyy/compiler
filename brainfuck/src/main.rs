@@ -1,5 +1,4 @@
 use std::time::Instant;
-use std::fs::File;
 
 use turbo_ir as ir;
 
@@ -7,8 +6,8 @@ extern "win64" fn read_char() -> u8 {
     panic!()
 }
 
-extern "win64" fn print_char(ch: u8) {
-    print!("{}", ch as char);
+extern "win64" fn print_char(_ch: u8) {
+    //print!("{}", ch as char);
 }
 
 fn main() {
@@ -132,7 +131,12 @@ fn main() {
     assert!(loops.is_empty(), "Unmatched loops.");
 
     ir.ret(None);
+
+    let start = Instant::now();
+
     ir.finalize();
+
+    let finalize_time = start.elapsed().as_secs_f64();
 
     let passes = &[
         turbo_ir::passes::const_propagate(),
@@ -152,17 +156,31 @@ fn main() {
         turbo_ir::passes::x86reorder(),
     ];
 
-    println!("Optimizing...");
+    let start = Instant::now();
 
-    ir.optimize(passes, true);
-    ir.dump_function_text(function, &mut File::create("result.turboir").unwrap()).unwrap();
+    ir.optimize(passes, false);
+
+    let optimize_time = start.elapsed().as_secs_f64();
+
+    //ir.dump_function_text(function, &mut File::create("result.turboir").unwrap()).unwrap();
 
     type Func = unsafe extern "win64" fn(*mut u8);
+
+    let start = Instant::now();
 
     let machine_code = ir.generate_machine_code(&ir::backends::X86Backend);
     let function_ptr = unsafe {
         machine_code.function_ptr::<Func>(function)
     };
+
+    let codegen_time = start.elapsed().as_secs_f64();
+
+    println!();
+    println!("Finalization in {}s.", finalize_time);
+    println!("Optimization in {}s.", optimize_time);
+    println!("Codegen      in {}s.", codegen_time);
+    println!("Total        in {}s.", finalize_time + codegen_time + optimize_time);
+    println!();
 
     let mut buffer = vec![0u8; 30 * 1000];
 
@@ -176,7 +194,7 @@ fn main() {
         function_ptr(buffer.as_mut_ptr());
     }
 
-    let elapsed = start.elapsed().as_secs_f64();
+    let running_time = start.elapsed().as_secs_f64();
 
-    println!("Executed in {}s.", elapsed);
+    println!("Executed in {}s.", running_time);
 }

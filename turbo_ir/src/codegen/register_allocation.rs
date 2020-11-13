@@ -1,5 +1,5 @@
 use crate::{FunctionData, Value, Location, Label, Map, Set, ConstType,
-            Dominators, FlowGraph, CapacityExt, Instruction};
+            Dominators, FlowGraph, CapacityExt, Instruction, analysis::DomCache};
 use super::Backend;
 
 const DEBUG_ALLOCATOR: bool = false;
@@ -100,7 +100,7 @@ impl ValueLiveness {
     }
 
     fn add_usage_internal(&mut self, location: Location, cx: &LivenessContext,
-                          skip_checks: bool) -> bool {
+                          skip_checks: bool, cache: &mut DomCache) -> bool {
         // Mark value as used at `location`. This will not make predecessors aware of
         // value liveness.
 
@@ -137,7 +137,8 @@ impl ValueLiveness {
         if !skip_checks {
             // Make sure that this value can be used at `location`.
             let creation = Location::new(self.creation_block, self.creation_start);
-            let valid    = cx.function.validate_path(cx.dominators, creation, location);
+            let valid    = cx.function.validate_path_cached(cx.dominators, creation, location,
+                                                            cache);
             assert!(valid, "This value cannot be used at that location.");
         }
 
@@ -151,11 +152,11 @@ impl ValueLiveness {
         true
     }
 
-    fn add_usage(&mut self, location: Location, cx: &LivenessContext) {
+    fn add_usage(&mut self, location: Location, cx: &LivenessContext, cache: &mut DomCache) {
         // Mark value as used at `location`. If this is the first time value is used
         // in `location.block()` we need to also mark value as used in every predecessor.
 
-        if self.add_usage_internal(location, cx, false) {
+        if self.add_usage_internal(location, cx, false, cache) {
             let mut work_list = vec![location.label()];
 
             // First time used in this block. Mark value as used in predecessors.
@@ -167,7 +168,8 @@ impl ValueLiveness {
 
                     // Mark as used and check if we need to mark value as used in
                     // predecessors of this predecessor.
-                    if self.add_usage_internal(Location::new(predecessor, length), cx, false) {
+                    if self.add_usage_internal(Location::new(predecessor, length), cx, false,
+                                               cache) {
                         work_list.push(predecessor);
                     }
                 }
@@ -436,6 +438,7 @@ impl InterferenceGraph {
 impl FunctionData {
     fn liveness(&self, dominators: &Dominators) -> Liveness {
         let mut liveness = Liveness::default();
+        let mut cache    = Set::default();
 
         let flow_incoming = self.flow_graph_incoming();
         let cx            = LivenessContext {
@@ -467,7 +470,7 @@ impl FunctionData {
                     .expect("Failed to get liveness state for value.");
 
                 // Mark that this value is used at `location`.
-                input_liveness.add_usage(location, &cx);
+                input_liveness.add_usage(location, &cx, &mut cache);
             }
         });
 
@@ -494,7 +497,7 @@ impl FunctionData {
                     let length = self.blocks[&label].len();
 
                     // Make incoming value live to the end of the block (case 1).
-                    value_liveness.add_usage(Location::new(*label, length), &cx);
+                    value_liveness.add_usage(Location::new(*label, length), &cx, &mut cache);
 
                     // Queue use of value in PHI block (case 2).
                     special_phi_uses.push((location, *value));
@@ -513,7 +516,7 @@ impl FunctionData {
             // We don't want to use `add_usage` here because it will propagate uses
             // to all predecessors which we don't want for PHI incoming values. Therefore we
             // use internal function which won't modify liveness in predecessors.
-            value_liveness.add_usage_internal(location, &cx, true);
+            value_liveness.add_usage_internal(location, &cx, true, &mut cache);
 
             // If PHI input value is defined in the same block it's used its lifetime
             // will be set to whole block. This is not good. This value will live

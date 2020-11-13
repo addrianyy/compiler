@@ -30,16 +30,15 @@ impl super::Pass for SimplifyExpressionsPass {
         let mut did_something             = false;
         let mut chains: Map<Value, Chain> = Map::default();
         let mut creators                  = function.value_creators();
+        let mut consts                    = function.constant_values();
 
         let labels = function.reachable_labels();
 
         // Keep trying to simplify till there is nothing left to do.
         loop {
-            let consts = function.constant_values();
+            chains.clear();
 
             let mut success = false;
-
-            chains.clear();
 
             // Chain commulative operations with at least two constant operands.
             // (a + 1) + 1
@@ -178,6 +177,9 @@ impl super::Pass for SimplifyExpressionsPass {
                         b:   temp_constant,
                     },
                 ];
+
+                // Add new constant to the list.
+                consts.insert(temp_constant, (ir_type, chain_value));
 
                 // Get the block which created expression which we are going to simplify.
                 let creator = creators[&output_value];

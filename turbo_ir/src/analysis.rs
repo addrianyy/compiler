@@ -3,8 +3,9 @@ use std::collections::VecDeque;
 use super::{FunctionData, Value, Location, Label, Dominators, Map, Set,
             Instruction, Type, CapacityExt};
 
-pub(super) type Users = Map<Value, Set<Location>>;
-pub(super) type Const = u64;
+pub(super) type Users    = Map<Value, Set<Location>>;
+pub(super) type DomCache = Set<(Label, Label)>;
+pub(super) type Const    = u64;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub(super) enum ConstType {
@@ -727,8 +728,9 @@ impl FunctionData {
         false
     }
 
-    pub(super) fn validate_path(&self, dominators: &Dominators,
-                                start: Location, end: Location) -> bool {
+    pub(super) fn validate_path_cached(&self, dominators: &Dominators,
+                                       start: Location, end: Location,
+                                       cache: &mut DomCache) -> bool {
         let start_label = start.label();
         let end_label   = end.label();
 
@@ -736,13 +738,25 @@ impl FunctionData {
             return start.index() < end.index();
         }
 
-        self.dominates(dominators, start_label, end_label)
+        if cache.contains(&(start_label, end_label)) {
+            return true;
+        }
+
+        let dominates = self.dominates(dominators, start_label, end_label);
+
+        if dominates {
+            cache.insert((start_label, end_label));
+        }
+
+        dominates
     }
 
     pub(super) fn validate_ssa(&self) {
         let dominators    = self.dominators();
         let creators      = self.value_creators();
         let flow_incoming = self.flow_graph_incoming();
+
+        let mut cache = Set::default();
 
         for label in self.reachable_labels() {
             let _    = self.targets(label);
@@ -788,7 +802,8 @@ impl FunctionData {
                             .expect("Value used but not created.");
                         let usage_loc = Location::new(label, other_body.len());
 
-                        assert!(self.validate_path(&dominators, creation_loc, usage_loc),
+                        assert!(self.validate_path_cached(&dominators, creation_loc, usage_loc,
+                                                          &mut cache),
                                 "PHI value {} is used before being created.", value);
                     }
 
@@ -807,7 +822,8 @@ impl FunctionData {
                     let creation_loc = *creators.get(&value).expect("Value used but not created.");
                     let usage_loc    = Location::new(label, inst_id);
 
-                    assert!(self.validate_path(&dominators, creation_loc, usage_loc),
+                    assert!(self.validate_path_cached(&dominators, creation_loc, usage_loc,
+                                                      &mut cache),
                             "Value {} is used before being created.", value);
                 }
             }
