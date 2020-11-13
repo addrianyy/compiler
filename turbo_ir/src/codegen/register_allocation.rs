@@ -341,49 +341,54 @@ impl InterferenceGraph {
     fn coloring_order(&self) -> Vec<Entity> {
         // https://staame.wordpress.com/2014/12/17/simple-chordal-graph-coloring/
 
-        let mut elimination_ordering = Vec::new();
-        let mut weights              = Map::default();
+        let mut max_index = 0;
 
-        // Start with all vertices queued for processing.
-        let mut queue: Set<_> = self.vertices.iter()
-            .copied()
-            .collect();
+        for &vertex in &self.vertices {
+            if vertex.0 > max_index {
+                max_index = vertex.0;
+            }
+        }
 
         // Assign weight of 0 for all vertices.
-        for &vertex in &queue {
-            assert!(weights.insert(vertex, 0).is_none(),
-                    "Multiple weigths for single vertex.");
-        }
+        let mut weights = vec![0; max_index as usize + 1];
+
+        // Empty elimination order.
+        let mut elimination_ordering = Vec::with_capacity(self.vertices.len());
+
+        // Start with all vertices queued for processing.
+        let mut queue: Vec<_> = self.vertices.iter()
+            .copied()
+            .collect();
 
         while !queue.is_empty() {
             let mut heaviest = None;
 
             // Find vertex in the queue with highest weight.
-            for &vertex in &queue {
-                let weight  = weights[&vertex];
+            for (index, &vertex) in queue.iter().enumerate() {
+                let weight  = weights[vertex.0 as usize];
                 let heavier = match heaviest {
-                    Some((_, other_weight)) => weight > other_weight,
-                    None                    => true,
+                    Some((_, _, other_weight)) => weight > other_weight,
+                    None                       => true,
                 };
 
                 if heavier {
-                    heaviest = Some((vertex, weight));
+                    heaviest = Some((index, vertex, weight));
                 }
             }
 
             // Get vertex from the queue with maximum weight.
-            let heaviest = heaviest.expect("Failed to find heaviest vertex.").0;
+            let heaviest = heaviest.expect("Failed to find heaviest vertex.");
 
             // Get all neighbours of the vertex with maximum weight.
-            let adjacent = self.edges[&heaviest].clone();
+            let adjacent = &self.edges[&heaviest.1];
 
             // Remove vertex from the queue and append it to perfect elimination order.
-            queue.remove(&heaviest);
-            elimination_ordering.push(heaviest);
+            queue.remove(heaviest.0);
+            elimination_ordering.push(heaviest.1);
 
-            // Increase weights of all neighbour vertices which are still in the queue.
-            for vertex in adjacent.intersection(&queue) {
-                *weights.get_mut(&vertex).unwrap() += 1;
+            // Increase weights of all neighbour vertices.
+            for vertex in adjacent {
+                weights[vertex.0 as usize] += 1;
             }
         }
 
@@ -630,6 +635,7 @@ impl FunctionData {
         };
 
         let mut interference = InterferenceGraph::default();
+        let mut to_free: Vec<Value> = Vec::new();
 
         for &label in bfs_labels {
             // If there is no register usage state for this block then take one
@@ -662,7 +668,7 @@ impl FunctionData {
             for (inst_id, instruction) in block.iter().enumerate() {
                 let location = Location::new(label, inst_id);
 
-                let mut to_free: Vec<Value> = Vec::new();
+                to_free.clear();
 
                 // Get a list of all values which aren't used anymore and can be freed.
                 for &value in block_allocs.iter() {
@@ -672,7 +678,7 @@ impl FunctionData {
                 }
 
                 // Free all queued values.
-                for value in to_free {
+                for &value in &to_free {
                     // Get index of unused value.
                     let item = block_allocs.iter()
                         .position(|&x| x == value)
