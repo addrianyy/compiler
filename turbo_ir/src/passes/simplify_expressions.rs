@@ -1,4 +1,4 @@
-use crate::{FunctionData, Instruction, Value, ConstType, BinaryOp, Map, Type};
+use crate::{FunctionData, Instruction, Value, ConstType, BinaryOp, Map, Type, Location, Label};
 
 #[derive(Clone)]
 struct Chain {
@@ -6,6 +6,17 @@ struct Chain {
     consts: Vec<u64>,
     ty:     ConstType,
     op:     BinaryOp,
+}
+
+fn rebuild_creators_in_block(function: &FunctionData,
+                             creators: &mut Map<Value, Location>, label: Label) {
+    for (inst_id, instruction) in function.blocks[&label].iter().enumerate() {
+        let location = Location::new(label, inst_id);
+
+        if let Some(value) = instruction.created_value() {
+            creators.insert(value, location);
+        }
+    }
 }
 
 pub struct SimplifyExpressionsPass;
@@ -18,6 +29,7 @@ impl super::Pass for SimplifyExpressionsPass {
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let mut did_something             = false;
         let mut chains: Map<Value, Chain> = Map::default();
+        let mut creators                  = function.value_creators();
 
         // Keep trying to simplify till there is nothing left to do.
         loop {
@@ -165,9 +177,6 @@ impl super::Pass for SimplifyExpressionsPass {
                     },
                 ];
 
-                // Because we are inserting instructions we need to recalculate value creators.
-                let creators = function.value_creators();
-
                 // Get the block which created expression which we are going to simplify.
                 let creator = creators[&output_value];
                 let body    = function.blocks.get_mut(&creator.label()).unwrap();
@@ -179,6 +188,9 @@ impl super::Pass for SimplifyExpressionsPass {
                 for instruction in simplified.into_iter().rev() {
                     body.insert(creator.index(), instruction);
                 }
+
+                // We have modified `creator.label()` so we need to rebuild creators for it.
+                rebuild_creators_in_block(function, &mut creators, creator.label());
 
                 did_something = true;
                 success       = true;

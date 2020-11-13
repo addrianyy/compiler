@@ -6,3 +6,6 @@ edition = "2018"
 
 [dependencies]
 turbo_ir = { path = "../turbo_ir" }
+
+[profile.release]
+debug = true

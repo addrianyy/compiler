@@ -1,3 +1,5 @@
 /target
 /graphs
 Cargo.lock
+*.svg
+*.bin

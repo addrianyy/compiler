@@ -4,3 +4,5 @@
 /.idea
 *.bin
 *.svg
+perf.data
+perf.data.old

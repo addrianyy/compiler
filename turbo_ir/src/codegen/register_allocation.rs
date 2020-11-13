@@ -1015,6 +1015,7 @@ impl FunctionData {
         let mut skips     = Set::default();
 
         let creators = self.value_creators();
+        let users    = self.users();
 
         for (value, (ty, constant)) in self.constant_values() {
             // Sign extend constant to 64 bit value.
@@ -1026,10 +1027,12 @@ impl FunctionData {
                 ConstType::U64 => constant as i64,
             };
 
-            let users: Vec<&Instruction> = self.find_uses(value)
-                .into_iter()
-                .map(|location| self.instruction(location))
-                .collect();
+            let users: Vec<&Instruction> = users.get(&value).map(|users| {
+                users
+                    .iter()
+                    .map(|location| self.instruction(*location))
+                    .collect()
+            }).unwrap_or_else(Vec::new);
 
             if backend.can_inline_constant(self, value, constant, &users) {
                 // This is optimizable constant, add it to the list.

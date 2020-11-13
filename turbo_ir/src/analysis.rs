@@ -3,6 +3,7 @@ use std::collections::VecDeque;
 use super::{FunctionData, Value, Location, Label, Dominators, Map, Set,
             Instruction, Type, CapacityExt};
 
+pub(super) type Users = Map<Value, Set<Location>>;
 pub(super) type Const = u64;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -221,6 +222,7 @@ impl FunctionData {
             .rev()
             .collect();
 
+        let     users                            = self.users();
         let mut pointer_safety: Map<Value, bool> = Map::default();
 
         macro_rules! is_safe {
@@ -240,35 +242,39 @@ impl FunctionData {
             // Make sure that all uses are safe. If they are it means that we always know
             // all values which point to the same memory as this pointer. Otherwise, pointer may
             // escape and be accessed by unknown instruction.
-            for location in self.find_uses(pointer) {
-                safe = match self.instruction(location) {
-                    Instruction::Store { ptr, value } => {
-                        // Make sure that we are actually storing TO the pointer, not
-                        // storing the pointer.
-                        *ptr == pointer && *value != pointer
-                    }
-                    Instruction::Load          { .. } => true,
-                    Instruction::Return        { .. } => true,
-                    Instruction::IntCompare    { .. } => true,
-                    Instruction::GetElementPtr { dst, source, .. } => {
-                        // GEP returns memory which belongs to the source pointer. Make sure
-                        // that GEP return value is safely used.
-                        *source == pointer && is_safe!(*dst)
-                    }
-                    Instruction::Alias { dst, .. } => {
-                        // Make sure that aliased pointer is safely used.
-                        is_safe!(*dst)
-                    }
-                    Instruction::Phi { dst, .. } => {
-                        // If PHI pointer safety wasn't computed then assume that it is unsafe.
-                        pointer_safety.get(&dst).copied().unwrap_or(false)
-                    }
-                    // All other uses (casts, etc..) are not safe and we can't reason about them.
-                    _ => false,
-                };
+            if let Some(users) = users.get(&pointer) {
+                for &location in users {
+                    safe = match self.instruction(location) {
+                        Instruction::Store { ptr, value } => {
+                            // Make sure that we are actually storing TO the pointer, not
+                            // storing the pointer.
+                            *ptr == pointer && *value != pointer
+                        }
+                        Instruction::Load          { .. } => true,
+                        Instruction::Return        { .. } => true,
+                        Instruction::IntCompare    { .. } => true,
+                        Instruction::GetElementPtr { dst, source, .. } => {
+                            // GEP returns memory which belongs to the source pointer. Make sure
+                            // that GEP return value is safely used.
+                            *source == pointer && is_safe!(*dst)
+                        }
+                        Instruction::Alias { dst, .. } => {
+                            // Make sure that aliased pointer is safely used.
+                            is_safe!(*dst)
+                        }
+                        Instruction::Phi { dst, .. } => {
+                            // If PHI pointer safety wasn't computed then assume
+                            // that it is unsafe.
+                            pointer_safety.get(&dst).copied().unwrap_or(false)
+                        }
+                        // All other uses (casts, etc..) are not safe and we can't
+                        // reason about them.
+                        _ => false,
+                    };
 
-                if !safe {
-                    break;
+                    if !safe {
+                        break;
+                    }
                 }
             }
 
@@ -846,11 +852,11 @@ impl FunctionData {
     }
 
     pub(super) fn value_creators(&self) -> Map<Value, Location> {
-        let mut creators = Map::default();
+        let mut creators = Map::new_with_capacity(self.value_count() / 8);
 
         self.for_each_instruction(|location, instruction| {
             if let Some(value) = instruction.created_value() {
-                creators.insert(value,location);
+                creators.insert(value, location);
             }
         });
 
@@ -897,6 +903,27 @@ impl FunctionData {
         });
 
         results
+    }
+
+    pub(super) fn users(&self) -> Users {
+        let mut users = Map::default();
+
+        for label in self.reachable_labels() {
+            let body = &self.blocks[&label];
+
+            for (inst_id, instruction) in body.iter().enumerate() {
+                let location = Location::new(label, inst_id);
+
+                for value in instruction.read_values() {
+                    // Mark `value` as used by this instruction.
+                    users.entry(value)
+                        .or_insert_with(Set::default)
+                        .insert(location);
+                }
+            }
+        }
+
+        users
     }
 
     pub(super) fn value_processing_order(&self) -> Vec<Value> {
