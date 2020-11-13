@@ -3,6 +3,7 @@ use crate::{FunctionData, Value, Location, Label, Map, Set, ConstType,
 use super::Backend;
 
 const DEBUG_ALLOCATOR: bool = false;
+const ALLOCATOR_INFO:  bool = true;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Place {
@@ -341,7 +342,7 @@ impl InterferenceGraph {
         self.edges[&e1].contains(&e2)
     }
 
-    fn coloring_order(&self, reverse: bool) -> Vec<Entity> {
+    fn coloring_order(&self) -> Vec<Entity> {
         // https://staame.wordpress.com/2014/12/17/simple-chordal-graph-coloring/
 
         let mut elimination_ordering = Vec::new();
@@ -390,18 +391,12 @@ impl InterferenceGraph {
             }
         }
 
-        // In theory you should reverse perfect elimination ordering to
-        // get optimal coloring order.
-        if reverse {
-            elimination_ordering.into_iter().rev().collect()
-        } else {
-            elimination_ordering
-        }
+        elimination_ordering
     }
 
-    fn color_internal(&self, reverse: bool) -> Coloring {
+    fn color(&self) -> Coloring {
         // Get optimal ordering for greedy coloring algorithm.
-        let order = self.coloring_order(reverse);
+        let order = self.coloring_order();
 
         // Make sure that optimal ordering we got is valid.
         assert_eq!(order.len(), self.vertices.len(), "Order doesn't include all \
@@ -435,21 +430,6 @@ impl InterferenceGraph {
                    "Not all vertices were colored.");
 
         coloring
-    }
-
-    fn color(&self) -> Coloring {
-        // Reversed PEO should give better results but I am not sure. Let's try both
-        // to make sure that that's actually the case.
-        // TODO: Remove this when we are sure about the results.
-        let normal   = self.color_internal(false);
-        let reversed = self.color_internal(true);
-
-        // Notify user when there is any difference in coloring results.
-        assert_eq!(reversed.color_list.len(), normal.color_list.len(),
-                   "Reversed PEO gave different graph coloring results than normal one.");
-
-        // Return reversed version by default.
-        reversed
     }
 }
 
@@ -1068,10 +1048,12 @@ impl FunctionData {
         let coloring           = interference.color();
         let required_registers = coloring.color_list.len();
 
-        if DEBUG_ALLOCATOR {
+        if DEBUG_ALLOCATOR || ALLOCATOR_INFO {
             println!("{}: Colored interference graph with {} colors. HR: {}.",
                      self.prototype.name, coloring.color_list.len(), hardware_registers);
+        }
 
+        if DEBUG_ALLOCATOR {
             // Dump colored interference graph to the file.
             self.dump_interference_graph(&interference, &coloring,
                                          &virtual_registers.registers);

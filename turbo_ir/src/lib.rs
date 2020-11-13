@@ -356,7 +356,7 @@ impl FunctionData {
                     print!(" ");
                 }
 
-                println!("| {:>2} successes | {:>8.4} ms elapsed [{:>6.2}%]",
+                println!("| {:>3} successes | {:>15.4} ms elapsed [{:>6.2}%]",
                          statistics.successes,
                          statistics.time * 1000.0,
                          (statistics.time / total_passes_time) * 100.0);
