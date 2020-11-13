@@ -31,6 +31,8 @@ impl super::Pass for SimplifyExpressionsPass {
         let mut chains: Map<Value, Chain> = Map::default();
         let mut creators                  = function.value_creators();
 
+        let labels = function.reachable_labels();
+
         // Keep trying to simplify till there is nothing left to do.
         loop {
             let consts = function.constant_values();
@@ -79,7 +81,7 @@ impl super::Pass for SimplifyExpressionsPass {
                 }}
             }
 
-            function.for_each_instruction(|_, instruction| {
+            function.for_each_instruction_with_labels(&labels, |_, instruction| {
                 // We only simplify binary expressions for now.
                 if let Instruction::ArithmeticBinary { dst, a, op, b } = instruction {
                     // If operator is commulative then (a op b) op c == a op (a b).

@@ -822,6 +822,18 @@ impl FunctionData {
         &mut self.blocks.get_mut(&location.label()).unwrap()[location.index()]
     }
 
+    pub(super) fn for_each_instruction_with_labels(
+        &self,
+        labels:       &[Label],
+        mut callback: impl FnMut(Location, &Instruction)
+    ) {
+        for &label in labels {
+            for (inst_id, inst) in self.blocks[&label].iter().enumerate() {
+                callback(Location::new(label, inst_id), inst)
+            }
+        }
+    }
+
     pub(super) fn for_each_instruction(&self, mut callback: impl FnMut(Location, &Instruction)) {
         for label in self.reachable_labels() {
             for (inst_id, inst) in self.blocks[&label].iter().enumerate() {

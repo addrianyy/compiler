@@ -1,4 +1,4 @@
-use crate::{FunctionData, Instruction};
+use crate::{FunctionData, Instruction, Set};
 
 pub struct RemoveAliasesPass;
 
@@ -22,11 +22,15 @@ impl super::Pass for RemoveAliasesPass {
         // This will get optimized to:
         // v3 = add u32 v1, v0
 
+        let mut users      = function.users();
+        let mut new_users  = Vec::new();
+        let mut next_index = 0;
+
         loop {
             let mut alias = None;
 
             // Go through every instruction in every block to find alias instruction.
-            'alias_search: for &label in &labels {
+            'alias_search: for (index, &label) in labels[next_index..].iter().enumerate() {
                 let body = function.blocks.get_mut(&label).unwrap().iter_mut();
 
                 for instruction in body {
@@ -37,6 +41,9 @@ impl super::Pass for RemoveAliasesPass {
                         // Remove alias instruction.
                         *instruction = Instruction::Nop;
 
+                        // Start from this label next time.
+                        next_index += index;
+
                         // Break out to perform the replacement.
                         break 'alias_search;
                     }
@@ -44,16 +51,47 @@ impl super::Pass for RemoveAliasesPass {
             }
 
             if let Some((old, new)) = alias {
-                for &label in &labels {
-                    let body = function.blocks.get_mut(&label).unwrap().iter_mut();
+                // We start with no new users of `new` value.
+                new_users.clear();
 
-                    for instruction in body {
-                        // Replace all uses of alias output value to alias operand.
+                if let Some(old_users) = users.get(&old) {
+                    new_users.reserve(users.len());
+
+                    // Go through every possible user and change `old` inputs to `new` inputs.
+                    for &user in old_users {
+                        let instruction = function.instruction_mut(user);
+                        let mut changed = false;
+
                         instruction.transform_inputs(|value| {
                             if *value == old {
-                                *value = new;
+                                *value  = new;
+                                changed = true;
                             }
                         });
+
+                        // If we have changed input then `user` is now user of `new` too.
+                        if changed {
+                            new_users.push(user);
+                        }
+                    }
+
+                    // Nobody uses `old` anymore.
+                    // users.remove(&old);
+                    //
+                    // This seems to slow down algorithm and is not needed to don't remove it
+                    // actually.
+                }
+
+                // If there are new users of `new` then fill them in.
+                if !new_users.is_empty() {
+                    let users = users.entry(new)
+                        .or_insert_with(Set::default);
+
+                    users.reserve(new_users.len());
+
+                    // Add new users of `new` value.
+                    for &new_user in &new_users {
+                        users.insert(new_user);
                     }
                 }
 
