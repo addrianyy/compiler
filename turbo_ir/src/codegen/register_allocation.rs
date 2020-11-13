@@ -50,11 +50,11 @@ impl Liveness {
             println!("  {} [{}:{}] [creation]", liveness.creation_block,
                      liveness.creation_start, liveness.creation_end);
 
-            for interval in &liveness.intervals {
-                if interval.end == function.blocks[&interval.block].len() {
-                    println!("  {} [whole]", interval.block);
+            for (block, interval) in liveness.intervals.iter() {
+                if interval.end == function.blocks[&block].len() {
+                    println!("  {} [whole]", block);
                 } else {
-                    println!("  {} [0:{}]", interval.block, interval.end);
+                    println!("  {} [0:{}]", block, interval.end);
                 }
             }
 
@@ -64,8 +64,6 @@ impl Liveness {
 }
 
 struct Interval {
-    block: Label,
-
     /// Instruction ID where value was last used in the block. Equal to block size if
     /// value is used in successors too.
     end: usize,
@@ -82,7 +80,7 @@ struct ValueLiveness {
     /// value is used in successors too.
     creation_end: usize,
 
-    intervals: Vec<Interval>,
+    intervals: Map<Label, Interval>,
 
     holes: Set<usize>,
 }
@@ -94,7 +92,7 @@ impl ValueLiveness {
             creation_block: creation.label(),
             creation_start: creation.index(),
             creation_end:   creation.index(),
-            intervals:      Vec::new(),
+            intervals:      Map::default(),
             holes:          Set::default(),
         }
     }
@@ -122,14 +120,12 @@ impl ValueLiveness {
             return false;
         }
 
-        for interval in &mut self.intervals {
-            if interval.block == location.label() {
-                // This value was already used in `location.block()`. Update last usage index.
-                interval.end = usize::max(interval.end, location.index());
+        if let Some(interval) = self.intervals.get_mut(&location.label()) {
+            // This value was already used in `location.block()`. Update last usage index.
+            interval.end = usize::max(interval.end, location.index());
 
-                // No more work needed.
-                return false;
-            }
+            // No more work needed.
+            return false;
         }
 
         // This value wasn't marked as used in `location.block()`. Create a new interval for it.
@@ -142,9 +138,8 @@ impl ValueLiveness {
             assert!(valid, "This value cannot be used at that location.");
         }
 
-        self.intervals.push(Interval {
-            block: location.label(),
-            end:   location.index(),
+        self.intervals.insert(location.label(), Interval {
+            end: location.index(),
         });
 
         // Return true so `add_usage` will handle changing liveness of this value for
@@ -192,12 +187,11 @@ impl ValueLiveness {
             return self.creation_end <= location.index();
         }
 
-        for interval in &self.intervals {
-            if interval.block == location.label() {
-                // We have found interval that describes usage for block of interest.
-                // This value dies if last use is before or on instruction at `location`.
-                return interval.end <= location.index();
-            }
+        if let Some(interval) = self.intervals.get(&location.label()) {
+            // We have found interval that describes usage for block of interest.
+            // This value dies if last use is before or on instruction at `location`.
+            //return self.intervals[*idx].end <= location.index();
+            return interval.end <= location.index();
         }
 
         // This value doesn't live in this block.
