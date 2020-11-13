@@ -9,7 +9,7 @@ pub(super) type ValidationKey = (Label, Label, Option<KillTarget>);
 
 #[derive(Default)]
 pub(super) struct ValidationCache {
-    labels: Map<ValidationKey, Vec<Label>>,
+    labels: Map<ValidationKey, Option<Vec<Label>>>,
 }
 
 pub(super) type Users    = Map<Value, Set<Location>>;
@@ -55,7 +55,7 @@ pub(super) struct PointerAnalysis {
     stackallocs: Map<Value, bool>,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Copy, Clone, Hash, PartialEq, Eq)]
 pub(super) enum KillTarget {
     Start,
     End,
@@ -577,6 +577,69 @@ impl FunctionData {
         })
     }
 
+    fn validate_blocks(
+        &self,
+        start:        Location,
+        end:          Location,
+        labels:       &[Label],
+        mut verifier: impl FnMut(&Instruction) -> bool,
+    ) -> Option<usize> {
+        let start_label = start.label();
+        let end_label   = end.label();
+
+        let mut instruction_count = 0;
+
+        let mut included_start = false;
+        let mut included_end   = false;
+
+        for &label in labels {
+            for (inst_id, instruction) in self.blocks[&label].iter().enumerate() {
+                // Ignore start instruction and end instruction.
+                let location = Location::new(label, inst_id);
+
+                if location == start {
+                    included_start = true;
+                    continue;
+                }
+
+                if location == end {
+                    included_end = true;
+                    continue;
+                }
+
+                if !verifier(instruction) {
+                    return None;
+                }
+
+                instruction_count += 1;
+            }
+        }
+
+        if !included_start {
+            // Make sure there is no invalid instruction in the remaining part of start block.
+            for instruction in &self.blocks[&start_label][start.index() + 1..] {
+                if !verifier(instruction) {
+                    return None;
+                }
+
+                instruction_count += 1;
+            }
+        }
+
+        if !included_end {
+            // Make sure there is no invalid instruction in the initial part of end block.
+            for instruction in &self.blocks[&end_label][..end.index()] {
+                if !verifier(instruction) {
+                    return None;
+                }
+
+                instruction_count += 1;
+            }
+        }
+
+        Some(instruction_count)
+    }
+
     fn validate_path_internal(
         &self,
         dominators:   &Dominators,
@@ -589,10 +652,10 @@ impl FunctionData {
         let start_label = start.label();
         let end_label   = end.label();
 
-        let mut instruction_count = 0;
-
         // Base case: both path points are in the same block.
         if start_label == end_label {
+            let mut instruction_count = 0;
+
             // Start must be before end to make valid path.
             if start.index() < end.index() {
                 // Verify all instructions between `start` and `end`.
@@ -610,8 +673,20 @@ impl FunctionData {
             return None;
         }
 
+        let key = (start_label, end_label, memory_kill);
+
+        if let Some(labels) = cache.labels.get(&key) {
+            return labels.as_ref().and_then(|labels| {
+                self.validate_blocks(start, end, labels, verifier)
+            });
+        }
+
+        let mut result: Option<Vec<Label>> = None;
+
         // When path points are in different blocks then start block must dominate end block.
         if self.dominates(dominators, start_label, end_label) {
+            let mut labels = Set::default();
+
             // If there is a cycle then other blocks may need to be checked.
             let blocks = memory_kill.and_then(|memory_kill| {
                 self.escaping_cycle_blocks(start_label, end_label, memory_kill)
@@ -619,38 +694,8 @@ impl FunctionData {
 
             if let Some(blocks) = blocks {
                 for block in blocks {
-                    for (inst_id, instruction) in self.blocks[&block].iter().enumerate() {
-                        // Ignore start instruction and end instruction.
-                        let location = Location::new(block, inst_id);
-                        if  location == start || location == end {
-                            continue;
-                        }
-
-                        if !verifier(instruction) {
-                            return None;
-                        }
-
-                        // Don't increase the instruction count.
-                    }
+                    labels.insert(block);
                 }
-            }
-
-            // Make sure there is no invalid instruction in the remaining part of start block.
-            for instruction in &self.blocks[&start_label][start.index() + 1..] {
-                if !verifier(instruction) {
-                    return None;
-                }
-
-                instruction_count += 1;
-            }
-
-            // Make sure there is no invalid instruction in the initial part of end block.
-            for instruction in &self.blocks[&end_label][..end.index()] {
-                if !verifier(instruction) {
-                    return None;
-                }
-
-                instruction_count += 1;
             }
 
             // Find all blocks that are possible to hit when going from start to end.
@@ -685,22 +730,20 @@ impl FunctionData {
                     // `start_label` should never be here.
                     assert_ne!(label, start_label);
 
-                    // Make sure that there is no invalid instruction in every block
-                    // that we can hit.
-                    for instruction in &self.blocks[&label] {
-                        if !verifier(instruction) {
-                            return None;
-                        }
-
-                        instruction_count += 1;
-                    }
+                    labels.insert(label);
                 }
             }
 
-            return Some(instruction_count);
+            result = Some(labels.into_iter().collect());
         }
 
-        None
+        let validated = result.as_ref().and_then(|labels| {
+            self.validate_blocks(start, end, &labels, verifier)
+        });
+
+        cache.labels.insert(key, result);
+
+        validated
     }
 
     pub(super) fn validate_path_memory(
