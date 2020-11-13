@@ -94,31 +94,29 @@ fn remove_dead_stores_fast(function: &mut FunctionData) -> bool {
         'next_instruction: for inst_id in 0..body_len {
             let instruction = &body[inst_id];
 
-            match instruction {
-                Instruction::Store { ptr, .. } => {
-                    if let Some(prev_store_id) = stores.get(ptr).copied() {
-                        stores.insert(*ptr, inst_id);
+            if let Instruction::Store { ptr, .. } = instruction {
+                if let Some(prev_store_id) = stores.get(ptr).copied() {
+                    // Update latest store.
+                    stores.insert(*ptr, inst_id);
 
-                        // Make sure that nothing inbetween can load `ptr`.
-                        for instruction in &body[prev_store_id + 1..inst_id] {
-                            if function.can_load_pointer(instruction, &pointer_analysis, *ptr) {
-                                continue 'next_instruction;
-                            }
+                    // Make sure that nothing inbetween can load `ptr`.
+                    for instruction in &body[prev_store_id + 1..inst_id] {
+                        if function.can_load_pointer(instruction, &pointer_analysis, *ptr) {
+                            continue 'next_instruction;
                         }
-
-                        // Remove `prev_store` as it is dead.
-
-                        let location = Location::new(label, prev_store_id);
-
-                        *function.instruction_mut(location) = Instruction::Nop;
-
-                        body          = &function.blocks[&label];
-                        did_something = true;
-                    } else {
-                        stores.insert(*ptr, inst_id);
                     }
+
+                    // Remove `prev_store` as it is dead.
+
+                    let location = Location::new(label, prev_store_id);
+
+                    *function.instruction_mut(location) = Instruction::Nop;
+
+                    body          = &function.blocks[&label];
+                    did_something = true;
+                } else {
+                    stores.insert(*ptr, inst_id);
                 }
-                _ => {}
             }
         }
     }

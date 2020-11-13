@@ -134,7 +134,6 @@ fn main() {
     ir.ret(None);
     ir.finalize();
 
-
     let passes = &[
         turbo_ir::passes::const_propagate(),
         turbo_ir::passes::remove_ineffective_operations(),
