@@ -1,0 +1,8 @@
+[package]
+name = "brainfuck"
+version = "0.1.0"
+authors = ["addrianyy <adrianvpl@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+turbo_ir = { path = "../compiler/turbo_ir" }
