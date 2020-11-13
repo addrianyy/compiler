@@ -24,7 +24,7 @@ pub use codegen::MachineCode;
 pub use codegen::backends;
 use instruction::Instruction;
 use phi_updater::PhiUpdater;
-use analysis::ConstType;
+use analysis::{ConstType, ValidationCache};
 use graph::Dominators;
 use graph::FlowGraph;
 use passes::Pass;

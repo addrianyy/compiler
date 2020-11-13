@@ -1,4 +1,5 @@
-use crate::{FunctionData, Instruction, Location, LargeKeyMap, Map, analysis::KillTarget};
+use crate::{FunctionData, Instruction, Location, LargeKeyMap, Map,
+            ValidationCache, analysis::KillTarget};
 
 type DeduplicationKey = (std::mem::Discriminant<Instruction>, Vec<crate::instruction::Param>);
 
@@ -36,13 +37,15 @@ fn deduplicate(function: &mut FunctionData, source: Location, target: Location) 
 /// Precise deduplication that can deduplicate values across blocks.
 fn deduplicate_precise(function: &mut FunctionData) -> bool {
     let mut did_something = false;
+    let mut vcache        = ValidationCache::default();
     let pointer_analysis  = function.analyse_pointers();
     let dominators        = function.dominators();
+    let labels            = function.reachable_labels();
 
     let mut dedup_list: LargeKeyMap<_, Vec<Location>> = LargeKeyMap::default();
 
     // Create a list of all deduplication candidates for a given instruction key.
-    function.for_each_instruction(|location, instruction| {
+    function.for_each_instruction_with_labels(&labels, |location, instruction| {
         // Skip instructions which cannot be deduplicated.
         if !can_be_deduplicated(instruction) {
             return;
@@ -70,7 +73,7 @@ fn deduplicate_precise(function: &mut FunctionData) -> bool {
         }
     }
 
-    for label in function.reachable_labels() {
+    for &label in &labels {
         let mut body = &function.blocks[&label];
         let body_len = body.len();
 
@@ -89,7 +92,7 @@ fn deduplicate_precise(function: &mut FunctionData) -> bool {
             // Try to get possible instructions which we can deduplicate this instruction from.
             if let Some(sources) = fast_dedup.get(&location) {
                 // Recalculate `phi_used` here because added aliases may have changed it.
-                let phi_used = function.phi_used_values();
+                let phi_used = function.phi_used_values(&labels);
 
                 // Find the best source for deduplication.
                 for &source in *sources {
@@ -106,7 +109,7 @@ fn deduplicate_precise(function: &mut FunctionData) -> bool {
                         // If both locations are in different blocks and value
                         // is used in PHI then `validate_path_memory` cannot reason about
                         // it. TODO: Fix this.
-                        if source.label() != location.label() && phi_used.contains(&load_ptr) {
+                        if source.label() != location.label() && phi_used.contains(load_ptr) {
                             continue;
                         }
 
@@ -114,11 +117,11 @@ fn deduplicate_precise(function: &mut FunctionData) -> bool {
                         // load. Something inbetween two instructions may have
                         // modified loaded ptr and output value will be different.
                         function.validate_path_memory(&dominators, source, location,
-                                                      KillTarget::End, |instruction| {
+                                                      KillTarget::End, &mut vcache, |instruction| {
                             !function.can_store_pointer(instruction, &pointer_analysis, load_ptr)
                         })
                     } else {
-                        function.validate_path_count(&dominators, source, location)
+                        function.validate_path_count(&dominators, source, location, &mut vcache)
                     };
 
                     if let Some(instruction_count) = result {

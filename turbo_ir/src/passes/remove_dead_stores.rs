@@ -1,15 +1,17 @@
-use crate::{FunctionData, Instruction, Map, Location, analysis::KillTarget};
+use crate::{FunctionData, Instruction, Map, Location, ValidationCache, analysis::KillTarget};
 
 fn remove_dead_stores_precise(function: &mut FunctionData) -> bool {
     let dominators       = function.dominators();
     let pointer_analysis = function.analyse_pointers();
-    let phi_used         = function.phi_used_values();
+    let labels           = function.reachable_labels();
+    let phi_used         = function.phi_used_values(&labels);
 
+    let mut vcache        = ValidationCache::default();
     let mut stores        = Map::default();
     let mut did_something = false;
 
     // Create a database of all stores in the function.
-    function.for_each_instruction(|location, instruction| {
+    function.for_each_instruction_with_labels(&labels, |location, instruction| {
         if let Instruction::Store { ptr, .. } = instruction {
             // Add store instance for this pointer.
             stores.entry(*ptr)
@@ -42,7 +44,7 @@ fn remove_dead_stores_precise(function: &mut FunctionData) -> bool {
                     // If both locations are in different blocks and value
                     // is used in PHI then `validate_path_memory` cannot reason about
                     // it. TODO: Fix this.
-                    if start.label() != end.label() && phi_used.contains(&pointer) {
+                    if start.label() != end.label() && phi_used.contains(pointer) {
                         continue;
                     }
 
@@ -50,7 +52,7 @@ fn remove_dead_stores_precise(function: &mut FunctionData) -> bool {
                     // sure that there is nothing inbetween that can load our pointer.
                     // If there is something, we can't eliminate the store.
                     let result = function.validate_path_memory(&dominators, start, end,
-                                                               KillTarget::Start,
+                                                               KillTarget::Start, &mut vcache,
                                                                |instruction| {
                         !function.can_load_pointer(instruction, &pointer_analysis, pointer)
                     });

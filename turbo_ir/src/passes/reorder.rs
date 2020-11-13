@@ -1,4 +1,4 @@
-use crate::{FunctionData, Instruction, Location};
+use crate::{FunctionData, Instruction, Location, ValidationCache};
 
 pub struct ReorderPass;
 
@@ -9,6 +9,7 @@ impl super::Pass for ReorderPass {
 
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let mut did_something = false;
+        let mut vcache        = ValidationCache::default();
         let dominators        = function.dominators();
 
         // Reorder instructions so they are executed just before first
@@ -76,7 +77,7 @@ impl super::Pass for ReorderPass {
                             // Because we sum them up, it's not a perfect measure.
                             // TODO: Find better way of determining the best reorder.
                             let result = function.validate_path_count(&dominators, location,
-                                                                      other_location);
+                                                                      other_location, &mut vcache);
 
                             if let Some(count) = result {
                                 instruction_count += count;

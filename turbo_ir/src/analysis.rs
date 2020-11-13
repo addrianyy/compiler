@@ -5,6 +5,13 @@ use super::{FunctionData, Value, Location, Label, Dominators, Map, Set,
 
 const VALUE_DIVIDER: usize = 8;
 
+pub(super) type ValidationKey = (Label, Label, Option<KillTarget>);
+
+#[derive(Default)]
+pub(super) struct ValidationCache {
+    labels: Map<ValidationKey, Vec<Label>>,
+}
+
 pub(super) type Users    = Map<Value, Set<Location>>;
 pub(super) type DomCache = Set<(Label, Label)>;
 pub(super) type Const    = u64;
@@ -576,6 +583,7 @@ impl FunctionData {
         start:        Location,
         end:          Location,
         memory_kill:  Option<KillTarget>,
+        cache:        &mut ValidationCache,
         mut verifier: impl FnMut(&Instruction) -> bool,
     ) -> Option<usize> {
         let start_label = start.label();
@@ -701,9 +709,10 @@ impl FunctionData {
         start:      Location,
         end:        Location,
         target:     KillTarget,
+        cache:      &mut ValidationCache,
         verifier:   impl FnMut(&Instruction) -> bool,
     ) -> Option<usize> {
-        self.validate_path_internal(dominators, start, end, Some(target), verifier)
+        self.validate_path_internal(dominators, start, end, Some(target), cache, verifier)
     }
 
     pub(super) fn validate_path_count(
@@ -711,8 +720,9 @@ impl FunctionData {
         dominators: &Dominators,
         start:      Location,
         end:        Location,
+        cache:      &mut ValidationCache,
     ) -> Option<usize> {
-        self.validate_path_internal(dominators, start, end, None, |_| true)
+        self.validate_path_internal(dominators, start, end, None, cache, |_| true)
     }
 
     pub(super) fn dominates(&self, dominators: &Dominators,
@@ -921,10 +931,10 @@ impl FunctionData {
         results
     }
 
-    pub(super) fn phi_used_values(&self) -> Set<Value> {
-        let mut results = Set::default();
+    pub(super) fn phi_used_values(&self, labels: &[Label]) -> FastValueSet {
+        let mut results = FastValueSet::new(self);
 
-        self.for_each_instruction(|_location, instruction| {
+        self.for_each_instruction_with_labels(labels, |_location, instruction| {
             if let Instruction::Phi { incoming, .. } = instruction {
                 for (_, value) in incoming {
                     results.insert(*value);
@@ -1162,30 +1172,30 @@ impl FunctionData {
 
 const BITS_PER_VALUE: usize = std::mem::size_of::<usize>() * 8;
 
-struct FastValueSet {
+pub struct FastValueSet {
     bitmap: Vec<usize>,
 }
 
 impl FastValueSet {
-    fn new(function: &FunctionData) -> Self {
+    pub(super) fn new(function: &FunctionData) -> Self {
         Self {
             bitmap: vec![0; (function.value_count() + (BITS_PER_VALUE - 1)) / BITS_PER_VALUE],
         }
     }
 
-    fn clear(&mut self) {
+    pub fn clear(&mut self) {
         self.bitmap.iter_mut()
             .for_each(|value| *value = 0);
     }
 
-    fn contains(&self, value: Value) -> bool {
+    pub fn contains(&self, value: Value) -> bool {
         let index = value.index() / BITS_PER_VALUE;
         let bit   = value.index() % BITS_PER_VALUE;
 
         (self.bitmap[index] & (1 << bit)) != 0
     }
 
-    fn insert(&mut self, value: Value) {
+    pub fn insert(&mut self, value: Value) {
         let index = value.index() / BITS_PER_VALUE;
         let bit   = value.index() % BITS_PER_VALUE;
 

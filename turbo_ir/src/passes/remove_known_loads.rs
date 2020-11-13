@@ -1,14 +1,16 @@
-use crate::{FunctionData, Instruction, Map, Location, analysis::KillTarget};
+use crate::{FunctionData, Instruction, Map, Location, ValidationCache, analysis::KillTarget};
 
 fn remove_known_loads_precise(function: &mut FunctionData) -> bool {
     let pointer_analysis = function.analyse_pointers();
     let dominators       = function.dominators();
+    let labels           = function.reachable_labels();
 
+    let mut vcache = ValidationCache::default();
     let mut loads  = Vec::new();
     let mut stores = Map::default();
 
     // Create a database of all loads and stores in the function.
-    function.for_each_instruction(|location, instruction| {
+    function.for_each_instruction_with_labels(&labels, |location, instruction| {
         match instruction {
             Instruction::Load { dst, ptr } => {
                 // Add load to a linear list of loads which we will try to optimize.
@@ -32,7 +34,7 @@ fn remove_known_loads_precise(function: &mut FunctionData) -> bool {
         if let Some(stores) = stores.get(&load_ptr) {
             // Recalculate `phi_used` here because added aliases may have changed it.
             // We may have sourced loaded pointer from store.
-            let phi_used = function.phi_used_values();
+            let phi_used = function.phi_used_values(&labels);
 
             let mut best_replacement = None;
             let mut best_icount      = None;
@@ -45,13 +47,14 @@ fn remove_known_loads_precise(function: &mut FunctionData) -> bool {
                 // If both locations are in different blocks and value
                 // is used in PHI then `validate_path_memory` cannot reason about
                 // it. TODO: Fix this.
-                if start.label() != end.label() && phi_used.contains(&load_ptr) {
+                if start.label() != end.label() && phi_used.contains(load_ptr) {
                     continue;
                 }
 
                 // Check if we actually can source load from this store.
                 let result = function.validate_path_memory(&dominators, start, end,
-                                                           KillTarget::End, |instruction| {
+                                                           KillTarget::End, &mut vcache,
+                                                           |instruction| {
                     !function.can_store_pointer(instruction, &pointer_analysis, load_ptr)
                 });
 
