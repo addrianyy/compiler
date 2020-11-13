@@ -7,7 +7,7 @@ extern "win64" fn read_char() -> u8 {
 }
 
 extern "win64" fn print_char(_ch: u8) {
-    //print!("{}", ch as char);
+    //print!("{}", _ch as char);
 }
 
 fn main() {
@@ -162,7 +162,10 @@ fn main() {
 
     let optimize_time = start.elapsed().as_secs_f64();
 
-    //ir.dump_function_text(function, &mut File::create("result.turboir").unwrap()).unwrap();
+    /*
+    use std::fs::File;
+    ir.dump_function_text(function, &mut File::create("result.turboir").unwrap()).unwrap();
+    */
 
     type Func = unsafe extern "win64" fn(*mut u8);
 
