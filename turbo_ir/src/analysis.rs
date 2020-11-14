@@ -138,10 +138,6 @@ impl FunctionData {
         // If pointer origin is unknown or it's at its primary origin this function will
         // return unmodified `pointer`.
 
-        // Make sure that `pointer` is actually a pointer.
-        assert!(self.value_type(pointer).is_pointer(),
-                "Tried to get origin of non-pointer value.");
-
         // Try to get origin from an instruction that created the pointer.
         let origin = if let Some(&creator) = cx.creators.get(&pointer) {
             match self.instruction(creator) {
@@ -218,7 +214,17 @@ impl FunctionData {
                 "Someone already added origin of this pointer?");
     }
 
-    fn pointer_safety(&self, processing_order: Vec<Value>, labels: &[Label]) -> Map<Value, bool> {
+    fn safe_pointers(&self, processing_order: Vec<Value>, pointers: &FastValueSet,
+                     labels: &[Label]) -> FastValueSet {
+        let mut safe_pointers = FastValueSet::new(self);
+        let users             = self.pointer_users_with_labels(&pointers, labels);
+
+        macro_rules! is_safe {
+            ($value: expr) => {
+                safe_pointers.contains($value)
+            }
+        }
+
         // Reverse ordering so every value is used before being created.
         //
         // We are at point P in the processing order on which value V is created.
@@ -227,23 +233,9 @@ impl FunctionData {
         //
         // After reversing it, it is guaranteed that all output values of instructions that
         // use V are before P and were already processed (which is what we want).
-        let processing_order: Vec<_> = processing_order
-            .into_iter()
-            .rev()
-            .collect();
-
-        let     users                            = self.pointer_users_with_labels(labels);
-        let mut pointer_safety: Map<Value, bool> = Map::default();
-
-        macro_rules! is_safe {
-            ($value: expr) => {
-                pointer_safety.get(&$value).copied().unwrap()
-            }
-        }
-
-        for pointer in processing_order {
+        for pointer in processing_order.into_iter().rev() {
             // Ignore non-pointer values.
-            if !self.value_type(pointer).is_pointer() {
+            if !pointers.contains(pointer) {
                 continue;
             }
 
@@ -275,7 +267,7 @@ impl FunctionData {
                         Instruction::Phi { dst, .. } => {
                             // If PHI pointer safety wasn't computed then assume
                             // that it is unsafe.
-                            pointer_safety.get(&dst).copied().unwrap_or(false)
+                            is_safe!(*dst)
                         }
                         // All other uses (casts, etc..) are not safe and we can't
                         // reason about them.
@@ -288,11 +280,12 @@ impl FunctionData {
                 }
             }
 
-            assert!(pointer_safety.insert(pointer, safe).is_none(), "Safety was already \
-                    computed for this pointer");
+            if safe {
+                safe_pointers.insert(pointer);
+            }
         }
 
-        pointer_safety
+        safe_pointers
     }
 
     pub(super) fn analyse_pointers(&self) -> PointerAnalysis {
@@ -307,16 +300,19 @@ impl FunctionData {
         };
 
         let processing_order = self.value_processing_order();
+        let mut pointers     = FastValueSet::new(self);
 
         // Get origin of all pointers used in the function.
         for &value in &processing_order {
             if self.value_type(value).is_pointer() {
+                pointers.insert(value);
+
                 self.get_pointer_origin(value, &mut cx);
             }
         }
 
-        // Get safety of every pointer in the function.
-        let pointer_safety = self.pointer_safety(processing_order, &labels);
+        // Get list of all safe pointers in the function.
+        let safe_pointers = self.safe_pointers(processing_order, &pointers, &labels);
 
         // Process `stackalloc`s to determine which ones are safely used.
         self.for_each_instruction_with_labels(&labels, |_location, instruction| {
@@ -324,7 +320,7 @@ impl FunctionData {
                 // Get information about `stackalloc`: check if it's safely used and can't
                 // escape.
                 let pointer = *dst;
-                let safe    = pointer_safety[&pointer];
+                let safe    = safe_pointers.contains(pointer);
 
                 assert!(cx.analysis.stackallocs.insert(pointer, safe).is_none(),
                         "Multiple pointers from stackalloc?");
@@ -1037,7 +1033,8 @@ impl FunctionData {
         users
     }
 
-    pub(super) fn pointer_users_with_labels(&self, labels: &[Label]) -> Users {
+    pub(super) fn pointer_users_with_labels(&self, pointers: &FastValueSet,
+                                            labels: &[Label]) -> Users {
         let mut users = Map::new_with_capacity(self.value_count() / VALUE_DIVIDER);
 
         for &label in labels {
@@ -1047,7 +1044,7 @@ impl FunctionData {
                 let location = Location::new(label, inst_id);
 
                 for value in instruction.read_values() {
-                    if self.value_type(value).is_pointer() {
+                    if pointers.contains(value) {
                         // Mark `value` as used by this instruction.
                         users.entry(value)
                             .or_insert_with(Set::default)
