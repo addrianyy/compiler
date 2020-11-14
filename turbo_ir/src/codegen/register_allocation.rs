@@ -435,7 +435,7 @@ impl InterferenceGraph {
 }
 
 impl FunctionData {
-    fn liveness(&self, dominators: &Dominators) -> Liveness {
+    fn liveness(&self, dominators: &Dominators, labels: &[Label]) -> Liveness {
         let mut liveness = Liveness::default();
         let mut cache    = Set::default();
 
@@ -446,7 +446,7 @@ impl FunctionData {
             dominators,
         };
 
-        self.for_each_instruction(|location, instruction| {
+        self.for_each_instruction_with_labels(labels, |location, instruction| {
             if let Some(value) = instruction.created_value() {
                 // Create a new, empty liveness state for output value.
                 assert!(liveness.values.insert(value, ValueLiveness::new(location)).is_none(),
@@ -476,7 +476,7 @@ impl FunctionData {
         let mut special_phi_uses = Vec::new();
 
         // Now handle PHI input values.
-        self.for_each_instruction(|location, instruction| {
+        self.for_each_instruction_with_labels(labels, |location, instruction| {
             if let Instruction::Phi { incoming, .. } = instruction {
                 // All PHI input values will be mapped to the same register.
                 //
@@ -504,7 +504,7 @@ impl FunctionData {
             }
         });
 
-        let creators = self.value_creators();
+        let creators = self.value_creators_with_labels(labels);
 
         // Handle uses of incoming values in PHI blocks.
         for (location, value) in special_phi_uses {
@@ -858,7 +858,7 @@ impl FunctionData {
         virtual_registers
     }
 
-    fn rewrite_phis(&mut self) {
+    fn rewrite_phis(&mut self, labels: &[Label]) {
         // label_0:
         //   v1 = u32 0
         //   branch label_1
@@ -901,7 +901,7 @@ impl FunctionData {
         let mut phis = Vec::new();
 
         // Get list of all PHIs in the function.
-        self.for_each_instruction(|location, instruction| {
+        self.for_each_instruction_with_labels(labels, |location, instruction| {
             if let Instruction::Phi { dst, incoming } = instruction {
                 phis.push((location, *dst, incoming.clone()));
             }
@@ -978,7 +978,7 @@ impl FunctionData {
         }
     }
 
-    fn rewrite_arguments(&mut self) {
+    fn rewrite_arguments(&mut self, labels: &[Label]) {
         let usage_counts = self.usage_counts();
         let arguments    = self.argument_values.clone();
 
@@ -994,7 +994,7 @@ impl FunctionData {
         }
 
         if !aliases.is_empty() {
-            self.for_each_instruction_mut(|_, instruction| {
+            self.for_each_instruction_with_labels_mut(labels, |_, instruction| {
                 instruction.transform_inputs(|value| {
                     if let Some(new) = aliases.get(value) {
                         *value = *new;
@@ -1014,14 +1014,16 @@ impl FunctionData {
         }
     }
 
-    fn constants_and_skips(&self, backend: &dyn Backend) -> (Map<Value, i64>, Set<Location>) {
+    fn constants_and_skips(&self, backend: &dyn Backend, labels: &[Label])
+        -> (Map<Value, i64>, Set<Location>)
+    {
         let mut constants = Map::default();
         let mut skips     = Set::default();
 
-        let creators = self.value_creators();
-        let users    = self.users();
+        let creators = self.value_creators_with_labels(labels);
+        let users    = self.users_with_labels(labels);
 
-        for (value, (ty, constant)) in self.constant_values() {
+        for (value, (ty, constant)) in self.constant_values_with_labels(labels) {
             // Sign extend constant to 64 bit value.
             let constant = match ConstType::new(ty) {
                 ConstType::U1  => (constant & 1) as i64,
@@ -1050,19 +1052,16 @@ impl FunctionData {
 
     pub(super) fn allocate_registers(&mut self, backend: &dyn Backend) -> RegisterAllocation {
         let hardware_registers = backend.hardware_registers();
+        let labels             = self.reachable_labels();
 
-        // Rewrite PHIs to use copy (`alias`) instructions. This is done to avoid interference
-        // problems.
-        self.rewrite_phis();
-
-        self.rewrite_arguments();
+        self.rewrite_phis(&labels);
+        self.rewrite_arguments(&labels);
 
         // Get all constant values and all `iconst` instructions that we can skip.
-        let (constants, skips) = self.constants_and_skips(backend);
+        let (constants, skips) = self.constants_and_skips(backend, &labels);
 
-        let labels     = self.reachable_labels();
         let dominators = self.dominators();
-        let liveness   = self.liveness(&dominators);
+        let liveness   = self.liveness(&dominators, &labels);
 
         if DEBUG_ALLOCATOR {
             println!("Values liveness: ");

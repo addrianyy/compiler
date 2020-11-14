@@ -22,7 +22,7 @@ impl super::Pass for RemoveAliasesPass {
         // This will get optimized to:
         // v3 = add u32 v1, v0
 
-        let mut users      = function.users();
+        let mut users      = function.users_with_labels(&labels);
         let mut new_users  = Vec::new();
         let mut next_index = 0;
 
