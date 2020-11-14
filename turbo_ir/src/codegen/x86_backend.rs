@@ -183,8 +183,8 @@ pub struct X86Backend {
 }
 
 impl X86Backend {
-    fn x86_function_data(function: &FunctionData,
-                         register_allocation: RegisterAllocation) -> X86FunctionData {
+    fn x86_function_data(function: &FunctionData, register_allocation: RegisterAllocation,
+                         labels: &[crate::Label]) -> X86FunctionData {
         let mut place_to_operand = Map::default();
 
         // Stack layout after prologue:
@@ -262,7 +262,7 @@ impl X86Backend {
         let mut usage_count = vec![0; function.value_count()];
 
         // Get information about some parts of function.
-        for label in function.reachable_labels() {
+        for &label in labels {
             let body = &function.blocks[&label];
 
             for (inst_id, instruction) in body.iter().enumerate() {
@@ -724,9 +724,8 @@ impl X86Backend {
         generated + get_skipped(generated)
     }
 
-    fn generate_function_body(&mut self, cx: &X86CodegenContext) {
+    fn generate_function_body(&mut self, cx: &X86CodegenContext, labels: &[crate::Label]) {
         let function = cx.function;
-        let labels   = cx.function.reachable_labels_dfs();
 
         for (index, &label) in labels.iter().enumerate() {
             // Create local label for current block. This label will be used
@@ -1508,7 +1507,8 @@ impl super::Backend for X86Backend {
     fn generate_function(&mut self, function_id: Function, function: &FunctionData,
                          register_allocation: RegisterAllocation) {
         let function_offset = self.asm.current_offset();
-        let x86_data        = Self::x86_function_data(function, register_allocation);
+        let labels          = function.reachable_labels_dfs();
+        let x86_data        = Self::x86_function_data(function, register_allocation, &labels);
 
         let context = X86CodegenContext {
             x86_data: &x86_data,
@@ -1564,7 +1564,7 @@ impl super::Backend for X86Backend {
         }
 
         // Codegen function.
-        self.generate_function_body(&context);
+        self.generate_function_body(&context, &labels);
 
         if !context.x86_data.noreturn {
             // Function returns so we need to generate epilogue.
