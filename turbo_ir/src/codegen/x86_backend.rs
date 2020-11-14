@@ -797,7 +797,7 @@ impl X86Backend {
                     Instruction::Const { dst, ty, imm } => {
                         let size = type_to_operand_size(*ty, true);
 
-                        // Make sure that U1 (bool) has correct cosntant value.
+                        // Make sure that U1 (bool) has correct constant value.
                         if *ty == Type::U1 {
                             assert!(*imm == 0 || *imm == 1, "Invalid U1 constant {}.", imm);
                         }
@@ -833,24 +833,25 @@ impl X86Backend {
                             let operands = if one_operand {
                                 // If destination is the same as operand then we can
                                 // modify value in place.
-                                [value]
+                                [dst]
                             } else {
-                                // Destination and operands are different, we need to use
-                                // intermediate register.
-                                asm.mov(&[Reg(Rax), value]);
-                                [Reg(Rax)]
+                                // Destination and operands are different.
+                                // Move `value` to `dst` and modify `dst` in place.
+                                if dst.is_memory() && value.is_memory() {
+                                    // Use intermediate register for memory-memory moves.
+                                    asm.mov(&[Reg(Rax), value]);
+                                    asm.mov(&[dst, Reg(Rax)]);
+                                } else {
+                                    asm.mov(&[dst, value]);
+                                }
+
+                                [dst]
                             };
 
                             // Do the unary operation.
                             match op {
                                 UnaryOp::Neg => asm.neg(&operands),
                                 UnaryOp::Not => asm.not(&operands),
-                            }
-
-                            // If we haven't modified value in place then copy it to destination
-                            // from an intermediate register.
-                            if !one_operand {
-                                asm.mov(&[dst, Reg(Rax)]);
                             }
                         });
                     }
@@ -885,7 +886,7 @@ impl X86Backend {
                                         // We can modify value in place.
 
                                         [a, Reg(Rcx)]
-                                    } else {
+                                    } else if dst.is_memory() && a.is_memory() {
                                         // We will use intermediate RAX register as a first
                                         // operand.
                                         result_reg = Some(Rax);
@@ -893,12 +894,20 @@ impl X86Backend {
                                         asm.mov(&[Reg(Rax), a]);
 
                                         [Reg(Rax), Reg(Rcx)]
+                                    } else {
+                                        // dst != a and b is cached.
+                                        // We can move `a` to `dst` and do the operation on
+                                        // `dst` in place.
+                                        asm.mov(&[dst, a]);
+
+                                        [dst, Reg(Rcx)]
                                     }
                                 }
                                 OpType::Divmod => {
                                     // First operand needs to be in the RAX,
                                     // second can be anywhere. Result register
-                                    // is RAX or RDX depending on operation. It will be set later.
+                                    // is RAX or RDX depending on operation.
+                                    // It will be set later.
                                     asm.mov(&[Reg(Rax), a]);
 
                                     // Whatever, these values won't be used anyway.
@@ -917,24 +926,23 @@ impl X86Backend {
                                         } else {
                                             [a, b]
                                         }
+                                    } else if (dst.is_memory() && a.is_memory()) ||
+                                              two_operands || dst == b {
+                                        // We will use intermediate RAX register as a first
+                                        // operand.
+                                        result_reg = Some(Rax);
+
+                                        asm.mov(&[Reg(Rax), a]);
+
+                                        [Reg(Rax), b]
                                     } else {
-                                        if (a.is_memory() && b.is_memory()) || dst == b {
-                                            // We will use intermediate RAX register as a first
-                                            // operand.
-                                            result_reg = Some(Rax);
+                                        // dst != a != b
+                                        // We can move `a` to `dst` and do the operation on
+                                        // `dst` in place.
 
-                                            asm.mov(&[Reg(Rax), a]);
+                                        asm.mov(&[dst, a]);
 
-                                            [Reg(Rax), b]
-                                        } else {
-                                            // dst != a != b
-                                            // We can move `a` to `dst` and do the operation on
-                                            // `dst` inplace.
-
-                                            asm.mov(&[dst, a]);
-
-                                            [dst, b]
-                                        }
+                                        [dst, b]
                                     }
                                 }
                             };
@@ -945,28 +953,28 @@ impl X86Backend {
                                 BinaryOp::Sub => asm.sub(&operands),
                                 BinaryOp::Mul => asm.imul(&operands),
                                 BinaryOp::ModU => {
-                                    // Zero extend value.
+                                    // Zero extend the value.
                                     asm.xor(&[Reg(Rdx), Reg(Rdx)]);
                                     asm.div(&[b]);
 
                                     result_reg = Some(Rdx);
                                 }
                                 BinaryOp::DivU => {
-                                    // Zero extend value.
+                                    // Zero extend the value.
                                     asm.xor(&[Reg(Rdx), Reg(Rdx)]);
                                     asm.div(&[b]);
 
                                     result_reg = Some(Rax);
                                 }
                                 BinaryOp::ModS => {
-                                    // Sign extend value.
+                                    // Sign extend the value.
                                     asm.cqo(&[]);
                                     asm.idiv(&[b]);
 
                                     result_reg = Some(Rdx);
                                 }
                                 BinaryOp::DivS => {
-                                    // Sign extend value.
+                                    // Sign extend the value.
                                     asm.cqo(&[]);
                                     asm.idiv(&[b]);
 
