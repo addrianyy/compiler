@@ -10,8 +10,9 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
     }
 
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
-        let consts   = function.constant_values();
-        let creators = function.value_creators();
+        let labels   = function.reachable_labels();
+        let consts   = function.constant_values_with_labels(&labels);
+        let creators = function.value_creators_with_labels(&labels);
 
         // Simplify operations with known outputs.
         //
@@ -38,7 +39,7 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
 
         let mut replacements = Vec::new();
 
-        function.for_each_instruction(|location, instruction| {
+        function.for_each_instruction_with_labels(&labels, |location, instruction| {
             let mut replacement = None;
 
             // Go through every instruction, match patterns with known results

@@ -190,6 +190,7 @@ impl FunctionData {
         result
     }
 
+    #[allow(unused)]
     pub(super) fn flow_graph_outgoing(&self) -> FlowGraph {
         let mut flow_graph = Map::new_with_capacity(self.blocks.len());
 

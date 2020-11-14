@@ -25,7 +25,6 @@ impl super::Pass for SimplifyCFGPass {
 
         'merge_loop: loop {
             let incoming = function.flow_graph_incoming();
-            let outgoing = function.flow_graph_outgoing();
 
             for (&target, predecessors) in &incoming {
                 // Don't do anything if it's entry block or if it has more than 1 entry point.
@@ -53,8 +52,8 @@ impl super::Pass for SimplifyCFGPass {
                 // All conditions met: we can merge target into dominator.
 
                 // Successors' PHI nodes should now refer to `dominator` instead of `target`.
-                for successor in &outgoing[&target] {
-                    function.replace_phi_incoming(*successor, target, dominator);
+                for successor in function.targets(target) {
+                    function.replace_phi_incoming(successor, target, dominator);
                 }
 
                 let mut target_insts = function.blocks.remove(&target).unwrap();

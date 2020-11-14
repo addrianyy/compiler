@@ -10,7 +10,9 @@ impl super::Pass for RemoveDeadCodePass {
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let mut did_something  = false;
         let mut used_values    = vec![false; function.value_count()];
-        let     creators       = function.value_creators();
+        let     labels         = function.reachable_labels();
+        let     creators       = function.value_creators_with_labels(&labels);
+
 
         // Remove instructions without side effects which results aren't used.
         //
@@ -20,7 +22,7 @@ impl super::Pass for RemoveDeadCodePass {
 
         // Go through every instruction every input value to determine which values are used
         // and which are not.
-        function.for_each_instruction(|_location, instruction| {
+        function.for_each_instruction_with_labels(&labels, |_location, instruction| {
             for value in instruction.read_values() {
                 // Handle self-referential PHI instructions.
                 if instruction.created_value() != Some(value) {

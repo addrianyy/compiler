@@ -8,8 +8,9 @@ impl super::Pass for SimplifyComparesPass {
     }
 
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
-        let creators = function.value_creators();
-        let consts   = function.constant_values();
+        let labels   = function.reachable_labels();
+        let creators = function.value_creators_with_labels(&labels);
+        let consts   = function.constant_values_with_labels(&labels);
 
         let mut replacements = Vec::new();
 
@@ -29,7 +30,7 @@ impl super::Pass for SimplifyComparesPass {
         // v4 = icmp eq u32 v0, v2
         // bcond u1 v4, label_2, label_3
 
-        function.for_each_instruction(|location, instruction| {
+        function.for_each_instruction_with_labels(&labels, |location, instruction| {
             // Try to match on SECOND `icmp` of `icmp`, `select`, `icmp` sequence.
             if let Instruction::IntCompare { dst, a, pred, b } = instruction {
                 let mut a = a;

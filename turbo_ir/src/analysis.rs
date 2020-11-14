@@ -218,7 +218,7 @@ impl FunctionData {
                 "Someone already added origin of this pointer?");
     }
 
-    fn pointer_safety(&self, processing_order: Vec<Value>) -> Map<Value, bool> {
+    fn pointer_safety(&self, processing_order: Vec<Value>, labels: &[Label]) -> Map<Value, bool> {
         // Reverse ordering so every value is used before being created.
         //
         // We are at point P in the processing order on which value V is created.
@@ -232,7 +232,7 @@ impl FunctionData {
             .rev()
             .collect();
 
-        let     users                            = self.pointer_users();
+        let     users                            = self.pointer_users_with_labels(labels);
         let mut pointer_safety: Map<Value, bool> = Map::default();
 
         macro_rules! is_safe {
@@ -296,12 +296,14 @@ impl FunctionData {
     }
 
     pub(super) fn analyse_pointers(&self) -> PointerAnalysis {
+        let labels = self.reachable_labels();
+
         let mut cx = PointerAnalysisContext {
             analysis: PointerAnalysis {
                 origins:     Map::default(),
                 stackallocs: Map::default(),
             },
-            creators: self.value_creators(),
+            creators: self.value_creators_with_labels(&labels),
         };
 
         let processing_order = self.value_processing_order();
@@ -314,10 +316,10 @@ impl FunctionData {
         }
 
         // Get safety of every pointer in the function.
-        let pointer_safety = self.pointer_safety(processing_order);
+        let pointer_safety = self.pointer_safety(processing_order, &labels);
 
         // Process `stackalloc`s to determine which ones are safely used.
-        self.for_each_instruction(|_location, instruction| {
+        self.for_each_instruction_with_labels(&labels, |_location, instruction| {
             if let Instruction::StackAlloc { dst, .. } = instruction {
                 // Get information about `stackalloc`: check if it's safely used and can't
                 // escape.
@@ -423,9 +425,15 @@ impl FunctionData {
     }
 
     pub(super) fn constant_values(&self) -> Map<Value, (Type, Const)> {
+        self.constant_values_with_labels(&self.reachable_labels())
+    }
+
+    pub(super) fn constant_values_with_labels(&self, labels: &[Label])
+        -> Map<Value, (Type, Const)>
+    {
         let mut consts = Map::default();
 
-        self.for_each_instruction(|_location, instruction| {
+        self.for_each_instruction_with_labels(labels, |_location, instruction| {
             match instruction {
                 Instruction::Const { dst, imm, ty } => {
                     let imm = *imm as Const;
@@ -699,6 +707,8 @@ impl FunctionData {
             });
 
             if let Some(blocks) = blocks {
+                labels.reserve(blocks.len());
+
                 // Queue traversal of additional blocks.
                 for block in blocks {
                     labels.insert(block);
@@ -729,6 +739,8 @@ impl FunctionData {
                     }
                 }
             }
+
+            labels.reserve(visited.len() - 1);
 
             for &label in &visited {
                 // Don't check `end_label` here because we will only go through part of it and
@@ -944,9 +956,13 @@ impl FunctionData {
     }
 
     pub(super) fn value_creators(&self) -> Map<Value, Location> {
+        self.value_creators_with_labels(&self.reachable_labels())
+    }
+
+    pub(super) fn value_creators_with_labels(&self, labels: &[Label]) -> Map<Value, Location> {
         let mut creators = Map::new_with_capacity(self.value_count() / VALUE_DIVIDER);
 
-        self.for_each_instruction(|location, instruction| {
+        self.for_each_instruction_with_labels(labels, |location, instruction| {
             if let Some(value) = instruction.created_value() {
                 creators.insert(value, location);
             }
@@ -1018,10 +1034,10 @@ impl FunctionData {
         users
     }
 
-    pub(super) fn pointer_users(&self) -> Users {
+    pub(super) fn pointer_users_with_labels(&self, labels: &[Label]) -> Users {
         let mut users = Map::new_with_capacity(self.value_count() / VALUE_DIVIDER);
 
-        for label in self.reachable_labels() {
+        for &label in labels {
             let body = &self.blocks[&label];
 
             for (inst_id, instruction) in body.iter().enumerate() {

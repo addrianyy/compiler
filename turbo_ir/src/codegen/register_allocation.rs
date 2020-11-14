@@ -3,7 +3,7 @@ use crate::{FunctionData, Value, Location, Label, Map, Set, ConstType,
 use super::Backend;
 
 const DEBUG_ALLOCATOR: bool = false;
-const ALLOCATOR_INFO:  bool = true;
+const ALLOCATOR_INFO:  bool = false;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Place {
