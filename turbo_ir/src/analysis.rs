@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use super::{FunctionData, Value, Location, Label, Dominators, Map, Set,
             Instruction, Type, CapacityExt};
 
-const VALUE_DIVIDER: usize = 8;
+const VALUE_DIVIDER: usize = 4;
 
 pub(super) type ValidationKey = (Label, Label, Option<KillTarget>);
 
@@ -299,7 +299,7 @@ impl FunctionData {
             creators: self.value_creators_with_labels(&labels),
         };
 
-        let processing_order = self.value_processing_order();
+        let processing_order = self.value_processing_order_with_labels(&labels);
         let mut pointers     = FastValueSet::new(self);
 
         // Get origin of all pointers used in the function.
@@ -1047,7 +1047,7 @@ impl FunctionData {
                     if pointers.contains(value) {
                         // Mark `value` as used by this instruction.
                         users.entry(value)
-                            .or_insert_with(Set::default)
+                            .or_insert_with(|| Set::new_with_capacity(2))
                             .insert(location);
                     }
                 }
@@ -1058,11 +1058,16 @@ impl FunctionData {
     }
 
     pub(super) fn value_processing_order(&self) -> Vec<Value> {
+        self.value_processing_order_with_labels(&self.reachable_labels())
+    }
+
+    pub(super) fn value_processing_order_with_labels(&self, labels: &[Label]) -> Vec<Value> {
         let mut users: Map<Value, Set<(Location, Value)>> =
             Map::new_with_capacity(self.value_count() / VALUE_DIVIDER);
 
-        let mut queue = VecDeque::new();
         let mut phis  = Vec::new();
+        let mut queue = VecDeque::with_capacity(self.argument_values.len() +
+                                                self.undefined_set.len());
 
         let mut expected_value_count = 0;
 
@@ -1083,7 +1088,7 @@ impl FunctionData {
         }
 
         // Handle all other values which were created in the IR.
-        for label in self.reachable_labels() {
+        for &label in labels {
             let body = &self.blocks[&label];
 
             for (inst_id, instruction) in body.iter().enumerate() {
@@ -1107,7 +1112,7 @@ impl FunctionData {
                     for value in read_values {
                         // Mark `value` as used by this instruction.
                         users.entry(value)
-                            .or_insert_with(Set::default)
+                            .or_insert_with(|| Set::new_with_capacity(2))
                             .insert((location, created_value));
                     }
 
@@ -1127,11 +1132,11 @@ impl FunctionData {
                 order.push(value);
                 done.insert(value);
 
-                if let Some(users) = users.get_mut(&value) {
+                if let Some(users) = users.get(&value) {
                     // Processing this value may have solved dependencies for some users
                     // of this value.
                     for &(location, output) in users.iter() {
-                        // Skip if output is already processed or queued to be processed.
+                        // Skip if output is already processed or is queued to be processed.
                         if done.contains(output) || ignore.contains(output) {
                             continue;
                         }
@@ -1149,21 +1154,17 @@ impl FunctionData {
                 }
             }
 
-            // Remove all processed PHIs.
-            phis.retain(|(value, _)| !done.contains(*value));
-
-            // No PHIs left to process, we are done.
-            if phis.is_empty() {
-                break;
-            }
-
-            // All values in `ignore` are now in `done` too.
-            ignore.clear();
-
-            let mut best_phi = None;
+            let mut best_phi        = None;
+            let mut unresolved_phis = false;
 
             // Find PHI which has smallest number of known inputs (but at least one).
             for &(phi_value, incoming) in &phis {
+                if done.contains(phi_value) {
+                    continue;
+                }
+
+                unresolved_phis = true;
+
                 let mut known_inputs = 0;
 
                 // Get amount of known inputs to PHI.
@@ -1189,8 +1190,14 @@ impl FunctionData {
                 }
             }
 
+            // No PHIs left to process, we are done.
+            if !unresolved_phis {
+                break;
+            }
+
             if let Some((phi_value, _)) = best_phi {
                 queue.push_back(phi_value);
+
                 continue 'main_loop;
             }
 
@@ -1249,11 +1256,6 @@ impl FastValueSet {
         Self {
             bitmap: vec![0; (function.value_count() + (BITS_PER_VALUE - 1)) / BITS_PER_VALUE],
         }
-    }
-
-    pub fn clear(&mut self) {
-        self.bitmap.iter_mut()
-            .for_each(|value| *value = 0);
     }
 
     pub fn contains(&self, value: Value) -> bool {
