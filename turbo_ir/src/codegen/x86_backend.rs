@@ -550,6 +550,10 @@ impl X86Backend {
 
         let instructions: &[&Instruction] = &filtered_instructions;
 
+        if instructions.is_empty() {
+            return 0;
+        }
+
         let generated = self.generate_complex_gep_access(cx, location, instructions);
         if  generated > 0 {
             return generated + get_skipped(generated);
