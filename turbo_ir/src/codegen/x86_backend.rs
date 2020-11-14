@@ -918,13 +918,23 @@ impl X86Backend {
                                             [a, b]
                                         }
                                     } else {
-                                        // We will use intermediate RAX register as a first
-                                        // operand.
-                                        result_reg = Some(Rax);
+                                        if (a.is_memory() && b.is_memory()) || dst == b {
+                                            // We will use intermediate RAX register as a first
+                                            // operand.
+                                            result_reg = Some(Rax);
 
-                                        asm.mov(&[Reg(Rax), a]);
+                                            asm.mov(&[Reg(Rax), a]);
 
-                                        [Reg(Rax), b]
+                                            [Reg(Rax), b]
+                                        } else {
+                                            // dst != a != b
+                                            // We can move `a` to `dst` and do the operation on
+                                            // `dst` inplace.
+
+                                            asm.mov(&[dst, a]);
+
+                                            [dst, b]
+                                        }
                                     }
                                 }
                             };

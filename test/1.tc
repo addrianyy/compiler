@@ -111,3 +111,13 @@ i32 abasdsa(i32 value) {
 
     return output;
 }
+
+i32 sum2(i32 count) {
+    i32 total = 0;
+
+    for (i32 i = 0; i < count; i += 1) {
+        total += i;
+    }
+
+    return total;
+}
