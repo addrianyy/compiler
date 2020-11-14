@@ -9,7 +9,8 @@ impl super::Pass for ConstPropagatePass {
     }
 
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
-        let mut consts      = function.constant_values();
+        let labels          = function.reachable_labels();
+        let mut consts      = function.constant_values_with_labels(&labels);
         let mut phi_updater = PhiUpdater::new();
 
         // Optimize instructions with constant operands.
@@ -119,7 +120,7 @@ impl super::Pass for ConstPropagatePass {
 
         let mut replacements = Vec::new();
 
-        function.for_each_instruction(|location, instruction| {
+        function.for_each_instruction_with_labels(&labels, |location, instruction| {
             let mut propagated = None;
 
             // Check all adequate instructions if they have constant operands. If they do,

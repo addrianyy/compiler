@@ -123,12 +123,6 @@ pub enum Instruction {
 }
 
 #[derive(PartialEq, Eq, Hash)]
-pub enum DirectedParam {
-    In (Param),
-    Out(Param),
-}
-
-#[derive(PartialEq, Eq, Hash)]
 pub enum Param {
     UnaryOp(UnaryOp),
     BinaryOp(BinaryOp),
@@ -143,144 +137,113 @@ pub enum Param {
 
 impl Instruction {
     pub fn input_parameters(&self) -> Vec<Param> {
-        self.parameters()
-            .into_iter()
-            .filter_map(|param| {
-                if let DirectedParam::In(param) = param {
-                    Some(param)
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
-
-    pub fn parameters(&self) -> Vec<DirectedParam> {
-        use DirectedParam::{In, Out};
-
         match *self {
-            Instruction::ArithmeticUnary { dst, op, value } => {
+            Instruction::ArithmeticUnary { op, value, .. } => {
                 vec![
-                    Out(Param::Value(dst)),
-                    In(Param::Value(value)),
-                    In(Param::UnaryOp(op)),
+                    Param::Value(value),
+                    Param::UnaryOp(op),
                 ]
             }
-            Instruction::ArithmeticBinary { dst, a, op, b } => {
+            Instruction::ArithmeticBinary { a, op, b, .. } => {
                 vec![
-                    Out(Param::Value(dst)),
-                    In(Param::Value(a)),
-                    In(Param::BinaryOp(op)),
-                    In(Param::Value(b)),
+                    Param::Value(a),
+                    Param::BinaryOp(op),
+                    Param::Value(b),
                 ]
             }
-            Instruction::IntCompare { dst, a, pred, b } => {
+            Instruction::IntCompare { a, pred, b, .. } => {
                 vec![
-                    Out(Param::Value(dst)),
-                    In(Param::Value(a)),
-                    In(Param::IntPredicate(pred)),
-                    In(Param::Value(b)),
+                    Param::Value(a),
+                    Param::IntPredicate(pred),
+                    Param::Value(b),
                 ]
             }
-            Instruction::Load { dst, ptr } => {
+            Instruction::Load { ptr, .. } => {
                 vec![
-                    Out(Param::Value(dst)),
-                    In(Param::Value(ptr)),
+                    Param::Value(ptr),
                 ]
             }
-            Instruction::Store { ptr, value } => {
+            Instruction::Store { ptr, value, .. } => {
                 vec![
-                    In(Param::Value(ptr)),
-                    In(Param::Value(value)),
+                    Param::Value(ptr),
+                    Param::Value(value),
                 ]
             }
-            Instruction::Call { dst, func, ref args } => {
-                let mut params = Vec::with_capacity(args.len() + 2);
+            Instruction::Call { func, ref args, .. } => {
+                let mut params = Vec::with_capacity(args.len() + 1);
 
-                if let Some(dst) = dst {
-                    params.push(Out(Param::Value(dst)));
-                }
-
-                params.push(In(Param::Function(func)));
+                params.push(Param::Function(func));
 
                 for arg in args {
-                    params.push(In(Param::Value(*arg)));
+                    params.push(Param::Value(*arg));
                 }
 
                 params
             }
             Instruction::Branch { target } => {
                 vec![
-                    In(Param::Label(target)),
+                    Param::Label(target),
                 ]
             }
             Instruction::BranchCond { on_true, on_false, cond } => {
                 vec![
-                    In(Param::Label(on_true)),
-                    In(Param::Label(on_false)),
-                    In(Param::Value(cond)),
+                    Param::Label(on_true),
+                    Param::Label(on_false),
+                    Param::Value(cond),
                 ]
             }
-            Instruction::StackAlloc { dst, ty, size } => {
+            Instruction::StackAlloc { ty, size, .. } => {
                 vec![
-                    Out(Param::Value(dst)),
-                    In(Param::Type(ty)),
-                    In(Param::Integer(size)),
+                    Param::Type(ty),
+                    Param::Integer(size),
                 ]
             }
             Instruction::Return { value } => {
                 if let Some(value) = value {
-                    vec![In(Param::Value(value))]
+                    vec![Param::Value(value)]
                 } else {
                     vec![]
                 }
             }
-            Instruction::Const { dst, ty, imm } => {
+            Instruction::Const { ty, imm, .. } => {
                 vec![
-                    Out(Param::Value(dst)),
-                    In(Param::Type(ty)),
-                    In(Param::Integer(imm as usize)),
+                    Param::Type(ty),
+                    Param::Integer(imm as usize),
                 ]
             }
-            Instruction::GetElementPtr { dst, source, index } => {
+            Instruction::GetElementPtr { source, index, .. } => {
                 vec![
-                    Out(Param::Value(dst)),
-                    In(Param::Value(source)),
-                    In(Param::Value(index)),
+                    Param::Value(source),
+                    Param::Value(index),
                 ]
             }
-            Instruction::Cast { dst, cast, value, ty } => {
+            Instruction::Cast { cast, value, ty, .. } => {
                 vec![
-                    Out(Param::Value(dst)),
-                    In(Param::Cast(cast)),
-                    In(Param::Value(value)),
-                    In(Param::Type(ty)),
+                    Param::Cast(cast),
+                    Param::Value(value),
+                    Param::Type(ty),
                 ]
             }
-            Instruction::Select { dst, cond, on_true, on_false } => {
+            Instruction::Select { cond, on_true, on_false, .. } => {
                 vec![
-                    Out(Param::Value(dst)),
-                    In(Param::Value(cond)),
-                    In(Param::Value(on_true)),
-                    In(Param::Value(on_false)),
+                    Param::Value(cond),
+                    Param::Value(on_true),
+                    Param::Value(on_false),
                 ]
             }
-            Instruction::Phi { dst, ref incoming } => {
-                let mut params = Vec::with_capacity(incoming.len() * 2 + 1);
-
-                params.push(Out(Param::Value(dst)));
+            Instruction::Phi { ref incoming, .. } => {
+                let mut params = Vec::with_capacity(incoming.len() * 2);
 
                 for (label, value) in incoming {
-                    params.push(In(Param::Label(*label)));
-                    params.push(In(Param::Value(*value)));
+                    params.push(Param::Label(*label));
+                    params.push(Param::Value(*value));
                 }
 
                 params
             }
-            Instruction::Alias { dst, value } => {
+            Instruction::Alias { value, .. } => {
                 vec![
-                    Out(Param::Value(dst)),
-                    In(Param::Value(value)),
+                    Param::Value(value),
                 ]
             }
             Instruction::Nop => {
