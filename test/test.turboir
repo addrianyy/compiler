@@ -1,68 +1,15 @@
-u32 sum(u32 v0) {
+u32 test(u32* ptr) {
 entry:
-  v1 = stackalloc u32
-  store u32* v1, u32 v0
-  v2 = stackalloc u32
-  v3 = u32 0
-  store u32* v2, u32 v3
-  v4 = stackalloc u32
-  v5 = u32 0
-  store u32* v4, u32 v5
-  branch block_1
+    val_1 = load u32, u32* ptr
+    one_1 = u32 1
+    res_1 = add u32 val_1, one_1
+    store u32* ptr, u32 res_1
 
-block_1:
-  v6 = load u32, u32* v1
-  v7 = load u32, u32* v4
-  v8 = icmp sgt u32 v6, v7
-  v9 = u8 0
-  v10 = u8 1
-  v11 = select u1 v8, u8 v10, v9
-  v12 = u8 0
-  v13 = icmp ne u8 v11, v12
-  bcond u1 v13, block_2, block_4
+    val_2 = load u32, u32* ptr
+    one_2 = u32 1
+    res_2 = add u32 val_2, one_2
+    store u32* ptr, u32 res_2
 
-block_2:
-  v14 = stackalloc u32
-  v15 = u32 0
-  store u32* v14, u32 v15
-  branch block_5
-
-block_4:
-  v33 = load u32, u32* v2
-  ret u32 v33
-
-block_5:
-  v16 = load u32, u32* v4
-  v17 = load u32, u32* v14
-  v18 = icmp sgt u32 v16, v17
-  v19 = u8 0
-  v20 = u8 1
-  v21 = select u1 v18, u8 v20, v19
-  v22 = u8 0
-  v23 = icmp ne u8 v21, v22
-  bcond u1 v23, block_6, block_8
-
-block_6:
-  v24 = load u32, u32* v2
-  v25 = load u32, u32* v14
-  v26 = add u32 v24, v25
-  store u32* v2, u32 v26
-  branch block_7
-
-block_8:
-  branch block_3
-
-block_7:
-  v27 = u32 1
-  v28 = load u32, u32* v14
-  v29 = add u32 v28, v27
-  store u32* v14, u32 v29
-  branch block_5
-
-block_3:
-  v30 = u32 1
-  v31 = load u32, u32* v4
-  v32 = add u32 v31, v30
-  store u32* v4, u32 v32
-  branch block_1
+    return_value = load u32, u32* ptr
+    ret u32 return_value
 }

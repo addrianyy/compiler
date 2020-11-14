@@ -963,7 +963,8 @@ impl FunctionData {
 
         self.for_each_instruction_with_labels(labels, |location, instruction| {
             if let Some(value) = instruction.created_value() {
-                creators.insert(value, location);
+                assert!(creators.insert(value, location).is_none(),
+                        "Value {} is defined multiple times.", value);
             }
         });
 
