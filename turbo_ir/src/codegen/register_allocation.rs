@@ -1002,6 +1002,7 @@ impl FunctionData {
                 });
             });
 
+            // TODO: Use LCA on dominator tree to find the best insertion point.
             let entry_body = self.blocks.get_mut(&self.entry()).unwrap();
 
             for (old, new) in aliases {
