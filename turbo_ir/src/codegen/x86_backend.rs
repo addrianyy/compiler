@@ -726,7 +726,7 @@ impl X86Backend {
 
     fn generate_function_body(&mut self, cx: &X86CodegenContext) {
         let function = cx.function;
-        let labels   = cx.function.reachable_labels();
+        let labels   = cx.function.reachable_labels_dfs();
 
         for (index, &label) in labels.iter().enumerate() {
             // Create local label for current block. This label will be used

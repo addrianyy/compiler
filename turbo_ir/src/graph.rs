@@ -223,4 +223,27 @@ impl FunctionData {
     pub(super) fn reachable_labels(&self) -> Vec<Label> {
         self.traverse_bfs(self.entry(), true)
     }
+
+    pub(super) fn reachable_labels_dfs(&self) -> Vec<Label> {
+        let mut visited = Set::new_with_capacity(self.blocks.len());
+        let mut stack   = Vec::with_capacity(self.blocks.len() / 4);
+        let mut labels  = Vec::with_capacity(self.blocks.len());
+
+        stack.push(self.entry());
+
+        while let Some(label) = stack.pop() {
+            if !visited.insert(label) {
+                continue;
+            }
+
+            labels.push(label);
+
+            // It is beneficial for codegen to fallthrough to the true label.
+            for target in self.targets(label).into_iter().rev() {
+                stack.push(target);
+            }
+        }
+
+        labels
+    }
 }
