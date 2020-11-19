@@ -6,3 +6,6 @@ edition = "2018"
 
 [dependencies]
 asm = { git = "https://github.com/addrianyy/assembler" }
+
+[features]
+self_profile = []
