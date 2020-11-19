@@ -15,6 +15,8 @@ impl FunctionData {
     }
 
     fn traverse_dfs_postorder(&self, start: Label) -> Vec<Label> {
+        time!(traverse_dfs_postorder);
+
         let capacity = self.preferred_capacity(start);
 
         let mut result   = Vec::with_capacity(capacity);
@@ -56,6 +58,8 @@ impl FunctionData {
     }
 
     pub(super) fn dominators(&self) -> Dominators {
+        time!(dominators);
+
         let root = self.entry();
 
         let postorder = self.traverse_dfs_postorder(root);
@@ -140,6 +144,8 @@ impl FunctionData {
         include_start: bool,
         mut callback:  impl FnMut(Label),
     ) {
+        time!(for_each_label_bfs);
+
         let capacity = self.preferred_capacity(start);
 
         let mut visited = Set::new_with_capacity(capacity);
@@ -192,6 +198,8 @@ impl FunctionData {
 
     #[allow(unused)]
     pub(super) fn flow_graph_outgoing(&self) -> FlowGraph {
+        time!(flow_graph_outgoing);
+
         let mut flow_graph = Map::new_with_capacity(self.blocks.len());
 
         self.for_each_label_bfs(self.entry(), true, |label| {
@@ -206,6 +214,8 @@ impl FunctionData {
     }
 
     pub(super) fn flow_graph_incoming(&self) -> FlowGraph {
+        time!(flow_graph_incoming);
+
         let mut flow_graph = Map::new_with_capacity(self.blocks.len());
 
         self.for_each_label_bfs(self.entry(), true, |label| {
@@ -226,6 +236,8 @@ impl FunctionData {
     }
 
     pub(super) fn reachable_labels_dfs(&self) -> Vec<Label> {
+        time!(reachable_labels_dfs);
+
         let mut visited = Set::new_with_capacity(self.blocks.len());
         let mut stack   = Vec::with_capacity(self.blocks.len() / 4);
         let mut labels  = Vec::with_capacity(self.blocks.len());

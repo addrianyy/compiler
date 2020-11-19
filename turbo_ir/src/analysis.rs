@@ -63,6 +63,8 @@ pub(super) enum KillTarget {
 
 impl PointerAnalysis {
     pub fn can_alias(&self, function: &FunctionData, p1: Value, p2: Value) -> bool {
+        time!(can_alias);
+
         // If two pointers are the same they always alias.
         if p1 == p2 {
             return true;
@@ -108,6 +110,8 @@ impl PointerAnalysis {
 impl FunctionData {
     pub(super) fn can_call_access_pointer(&self, pointer_analysis: &PointerAnalysis,
                                           call: &Instruction, pointer: Value) -> bool {
+        time!(can_call_access_pointer);
+
         if let Instruction::Call { args, .. } = call {
             if args.is_empty() {
                 // No pointer can be changed if this function doesn't take any parameters.
@@ -135,6 +139,8 @@ impl FunctionData {
     }
 
     fn get_pointer_origin(&self, pointer: Value, cx: &mut PointerAnalysisContext) {
+        time!(get_pointer_origin);
+
         // If pointer origin is unknown or it's at its primary origin this function will
         // return unmodified `pointer`.
 
@@ -216,6 +222,8 @@ impl FunctionData {
 
     fn safe_pointers(&self, processing_order: Vec<Value>, pointers: &FastValueSet,
                      labels: &[Label]) -> FastValueSet {
+        time!(safe_pointers);
+
         let mut safe_pointers = FastValueSet::new(self);
         let users             = self.pointer_users_with_labels(&pointers, labels);
 
@@ -289,6 +297,8 @@ impl FunctionData {
     }
 
     pub(super) fn analyse_pointers(&self) -> PointerAnalysis {
+        time!(analyse_pointers);
+
         let labels = self.reachable_labels();
 
         let mut cx = PointerAnalysisContext {
@@ -331,6 +341,8 @@ impl FunctionData {
     }
 
     pub(super) fn depends_on_predecessors(&self, label: Label, predecessors: &[Label]) -> bool {
+        time!(depends_on_predecessors);
+
         // Go through every PHI instruction in the block.
         for instruction in &self.blocks[&label] {
             if let Instruction::Phi { incoming, .. } = instruction {
@@ -369,6 +381,8 @@ impl FunctionData {
 
     pub(super) fn replace_phi_incoming(&mut self, label: Label, old_incoming: Label,
                                        new_incoming: Label) {
+        time!(replace_phi_incoming);
+
         // Go through every PHI instruction in the block.
         for instruction in self.blocks.get_mut(&label).unwrap() {
             if let Instruction::Phi { incoming, .. } = instruction {
@@ -411,6 +425,8 @@ impl FunctionData {
     }
 
     pub(super) fn block_contains_phi(&self, label: Label) -> bool {
+        time!(block_contains_phi);
+
         for instruction in &self.blocks[&label] {
             if instruction.is_phi() {
                 return true;
@@ -427,6 +443,8 @@ impl FunctionData {
     pub(super) fn constant_values_with_labels(&self, labels: &[Label])
         -> Map<Value, (Type, Const)>
     {
+        time!(constant_values);
+
         let mut consts = Map::default();
 
         self.for_each_instruction_with_labels(labels, |_location, instruction| {
@@ -463,6 +481,8 @@ impl FunctionData {
     /// Check if there is any path that goes from `from` to `to` without going through
     /// `without`.
     fn can_reach(&self, from: Label, to: Label, without: Label) -> bool {
+        time!(can_reach);
+
         // Make sure that start and end points are not blacklisted.
         assert!(from != without && to != without);
 
@@ -502,6 +522,8 @@ impl FunctionData {
     /// Check if `killee` can reach itself without hitting `killer`. If it can, this function
     /// will return all labels that take part in the cycle.
     fn escaping_cycle_blocks_internal(&self, killer: Label, killee: Label) -> Option<Set<Label>> {
+        time!(escaping_cycle_blocks_internal);
+
         let mut cycle_blocks = Set::default();
         let mut visited      = Set::default();
         let mut stack        = Vec::new();
@@ -544,6 +566,8 @@ impl FunctionData {
 
     fn escaping_cycle_blocks(&self, start_label: Label, end_label: Label,
                              memory_kill: KillTarget) -> Option<Set<Label>> {
+        time!(escaping_cycle_blocks);
+
         let (killer, killee) = match memory_kill {
             KillTarget::Start => (end_label, start_label),
             KillTarget::End   => (start_label, end_label),
@@ -588,6 +612,8 @@ impl FunctionData {
         labels:       &[Label],
         mut verifier: impl FnMut(&Instruction) -> bool,
     ) -> Option<usize> {
+        time!(validate_blocks);
+
         let start_label = start.label();
         let end_label   = end.label();
 
@@ -656,6 +682,8 @@ impl FunctionData {
         cache:        &mut ValidationCache,
         mut verifier: impl FnMut(&Instruction) -> bool,
     ) -> Option<usize> {
+        time!(validate_path_complex);
+
         let start_label = start.label();
         let end_label   = end.label();
 
@@ -787,6 +815,8 @@ impl FunctionData {
 
     pub(super) fn dominates(&self, dominators: &Dominators,
                             dominator: Label, target: Label) -> bool {
+        time!(dominates);
+
         let mut current = Some(target);
 
         while let Some(idom) = current {
@@ -803,6 +833,8 @@ impl FunctionData {
     pub(super) fn validate_path_cached(&self, dominators: &Dominators,
                                        start: Location, end: Location,
                                        cache: &mut DomCache) -> bool {
+        time!(validate_path);
+
         let start_label = start.label();
         let end_label   = end.label();
 
@@ -824,6 +856,8 @@ impl FunctionData {
     }
 
     pub(super) fn validate_ssa(&self) {
+        time!(validate_ssa);
+
         let dominators    = self.dominators();
         let creators      = self.value_creators();
         let flow_incoming = self.flow_graph_incoming();
@@ -834,20 +868,20 @@ impl FunctionData {
             let _    = self.targets(label);
             let body = &self.blocks[&label];
 
-            for inst in &body[..body.len() - 1] {
-                assert!(inst.targets().is_none(), "Terminator {:?} in the middle of block {}.",
-                        inst, label);
+            for instruction in &body[..body.len() - 1] {
+                assert!(instruction.targets().is_none(), "Terminator {:?} in the middle of block {}.",
+                        instruction, label);
             }
 
             let mut can_see_phi = true;
 
-            for (inst_id, inst) in body.iter().enumerate() {
-                if let Some(value) = inst.created_value() {
+            for (inst_id, instruction) in body.iter().enumerate() {
+                if let Some(value) = instruction.created_value() {
                     assert!(!self.is_value_undefined(value),
                             "Cannot return to undefined value {}.", value);
                 }
 
-                if let Instruction::Phi { incoming, .. } = inst {
+                if let Instruction::Phi { incoming, .. } = instruction {
                     assert!(can_see_phi, "PHI nodes are not at the function beginning.");
                     assert_ne!(label, self.entry(), "Entry labels cannot have PHI nodes.");
                     assert!(!incoming.is_empty(), "PHI nodes cannot be empty.");
@@ -882,11 +916,11 @@ impl FunctionData {
                     continue;
                 }
 
-                if !matches!(inst, Instruction::Nop) {
+                if !matches!(instruction, Instruction::Nop) {
                     can_see_phi = false;
                 }
 
-                for value in inst.read_values() {
+                for value in instruction.read_values() {
                     if self.is_value_special(value) {
                         continue;
                     }
@@ -943,6 +977,8 @@ impl FunctionData {
     }
 
     pub(super) fn usage_counts(&self) -> Vec<u32> {
+        time!(usage_counts);
+
         let mut usage_counts = vec![0; self.value_count()];
 
         self.for_each_instruction(|_location, instruction| {
@@ -959,6 +995,8 @@ impl FunctionData {
     }
 
     pub(super) fn value_creators_with_labels(&self, labels: &[Label]) -> Map<Value, Location> {
+        time!(value_creators);
+
         let mut creators = Map::new_with_capacity(self.value_count() / VALUE_DIVIDER);
 
         self.for_each_instruction_with_labels(labels, |location, instruction| {
@@ -972,6 +1010,8 @@ impl FunctionData {
     }
 
     pub(super) fn find_uses(&self, value: Value) -> Vec<Location> {
+        time!(find_uses);
+
         let mut uses = Vec::new();
 
         self.for_each_instruction(|location, instruction| {
@@ -986,6 +1026,8 @@ impl FunctionData {
     pub (super) fn find_stackallocs(&self, required_size: Option<usize>)
         -> Vec<(Value, Location)>
     {
+        time!(find_stackallocs);
+
         let mut results = Vec::new();
 
         self.for_each_instruction(|location, instruction| {
@@ -1000,6 +1042,8 @@ impl FunctionData {
     }
 
     pub(super) fn phi_used_values(&self, labels: &[Label]) -> FastValueSet {
+        time!(phi_used_values);
+
         let mut results = FastValueSet::new(self);
 
         self.for_each_instruction_with_labels(labels, |_location, instruction| {
@@ -1014,6 +1058,8 @@ impl FunctionData {
     }
 
     pub(super) fn users_with_labels(&self, labels: &[Label]) -> Users {
+        time!(users);
+
         let mut users = Map::new_with_capacity(self.value_count() / VALUE_DIVIDER);
 
         for &label in labels {
@@ -1036,6 +1082,8 @@ impl FunctionData {
 
     pub(super) fn pointer_users_with_labels(&self, pointers: &FastValueSet,
                                             labels: &[Label]) -> Users {
+        time!(pointer_users);
+
         let mut users = Map::new_with_capacity(self.value_count() / VALUE_DIVIDER);
 
         for &label in labels {
@@ -1063,6 +1111,8 @@ impl FunctionData {
     }
 
     pub(super) fn value_processing_order_with_labels(&self, labels: &[Label]) -> Vec<Value> {
+        time!(value_processing_order);
+
         let mut users: Map<Value, Set<(Location, Value)>> =
             Map::new_with_capacity(self.value_count() / VALUE_DIVIDER);
 
@@ -1072,52 +1122,56 @@ impl FunctionData {
 
         let mut expected_value_count = 0;
 
-        // Handle all function arguments.
-        for &value in &self.argument_values {
-            // Function arguments can be processed immediately.
-            queue.push_back(value);
+        {
+            time!(processing_order_presolve);
 
-            expected_value_count += 1;
-        }
+            // Handle all function arguments.
+            for &value in &self.argument_values {
+                // Function arguments can be processed immediately.
+                queue.push_back(value);
 
-        // Handle all undefined values.
-        for &value in &self.undefined_set {
-            // Undefined values can be processed immediately.
-            queue.push_back(value);
+                expected_value_count += 1;
+            }
 
-            expected_value_count += 1;
-        }
+            // Handle all undefined values.
+            for &value in &self.undefined_set {
+                // Undefined values can be processed immediately.
+                queue.push_back(value);
 
-        // Handle all other values which were created in the IR.
-        for &label in labels {
-            let body = &self.blocks[&label];
+                expected_value_count += 1;
+            }
 
-            for (inst_id, instruction) in body.iter().enumerate() {
-                let location = Location::new(label, inst_id);
+            // Handle all other values which were created in the IR.
+            for &label in labels {
+                let body = &self.blocks[&label];
 
-                // We only care about instructions which create new values.
-                if let Some(created_value) = instruction.created_value() {
-                    let read_values = instruction.read_values();
+                for (inst_id, instruction) in body.iter().enumerate() {
+                    let location = Location::new(label, inst_id);
 
-                    // If this instruction doesn't depend on any value then it can be
-                    // processed immediately.
-                    if read_values.is_empty() {
-                        queue.push_back(created_value);
+                    // We only care about instructions which create new values.
+                    if let Some(created_value) = instruction.created_value() {
+                        let read_values = instruction.read_values();
+
+                        // If this instruction doesn't depend on any value then it can be
+                        // processed immediately.
+                        if read_values.is_empty() {
+                            queue.push_back(created_value);
+                        }
+
+                        // PHIs can have cycles and they need to be handled specially.
+                        if let Instruction::Phi { dst, incoming } = instruction {
+                            phis.push((*dst, incoming));
+                        }
+
+                        for value in read_values {
+                            // Mark `value` as used by this instruction.
+                            users.entry(value)
+                                .or_insert_with(|| Set::new_with_capacity(2))
+                                .insert((location, created_value));
+                        }
+
+                        expected_value_count += 1;
                     }
-
-                    // PHIs can have cycles and they need to be handled specially.
-                    if let Instruction::Phi { dst, incoming } = instruction {
-                        phis.push((*dst, incoming));
-                    }
-
-                    for value in read_values {
-                        // Mark `value` as used by this instruction.
-                        users.entry(value)
-                            .or_insert_with(|| Set::new_with_capacity(2))
-                            .insert((location, created_value));
-                    }
-
-                    expected_value_count += 1;
                 }
             }
         }
@@ -1254,6 +1308,8 @@ pub struct FastValueSet {
 
 impl FastValueSet {
     pub(super) fn new(function: &FunctionData) -> Self {
+        time!(fvs_new);
+
         Self {
             bitmap: vec![0; (function.value_count() + (BITS_PER_VALUE - 1)) / BITS_PER_VALUE],
         }

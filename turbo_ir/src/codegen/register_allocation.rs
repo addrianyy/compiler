@@ -148,6 +148,8 @@ impl ValueLiveness {
     }
 
     fn add_usage(&mut self, location: Location, cx: &LivenessContext, cache: &mut DomCache) {
+        time!(add_value_usage);
+
         // Mark value as used at `location`. If this is the first time value is used
         // in `location.block()` we need to also mark value as used in every predecessor.
 
@@ -173,6 +175,8 @@ impl ValueLiveness {
     }
 
     fn value_dies(&self, location: Location) -> bool {
+        time!(value_dies);
+
         // This code assumes that if value is used in block successors, it's `end` usage index is
         // equal to block size.
 
@@ -237,6 +241,8 @@ impl VirtualRegisters {
     }
 
     fn uniquely_map_rest(&mut self, function: &FunctionData) {
+        time!(uniquely_map_rest);
+
         for value in 0..function.value_count() {
             let value = Value(value as u32);
 
@@ -264,6 +270,8 @@ struct Coloring {
 
 impl Coloring {
     fn pick_color(&mut self, unusable: Set<Color>) -> Color {
+        time!(pick_color);
+
         // Try to use already known color if possible.
         for &color in &self.color_list {
             // Return first usable color from the list.
@@ -313,6 +321,8 @@ impl InterferenceGraph {
     }
 
     fn unique_edges(&self) -> Set<(Entity, Entity)> {
+        time!(unique_edges);
+
         let mut result = Set::default();
 
         for (&entity, links) in &self.edges {
@@ -339,6 +349,8 @@ impl InterferenceGraph {
     }
 
     fn coloring_order(&self) -> Vec<Entity> {
+        time!(coloring_order);
+
         // https://staame.wordpress.com/2014/12/17/simple-chordal-graph-coloring/
 
         let mut max_index = 0;
@@ -396,6 +408,8 @@ impl InterferenceGraph {
     }
 
     fn color(&self) -> Coloring {
+        time!(color);
+
         // Get optimal ordering for greedy coloring algorithm.
         let order = self.coloring_order();
 
@@ -436,6 +450,8 @@ impl InterferenceGraph {
 
 impl FunctionData {
     fn liveness(&self, dominators: &Dominators, labels: &[Label]) -> Liveness {
+        time!(liveness);
+
         let mut liveness = Liveness::default();
         let mut cache    = Set::default();
 
@@ -620,6 +636,8 @@ impl FunctionData {
         dominators:         &Dominators,
         constants:          &Map<Value, i64>,
     ) -> InterferenceGraph {
+        time!(interference_graph);
+
         // State of used values for each block.
         let mut block_alloc_state: Map<Label, Vec<Value>> =
             Map::new_with_capacity(self.blocks.len());
@@ -721,6 +739,8 @@ impl FunctionData {
         dominators: &Dominators,
         constants:  &Map<Value, i64>,
     ) -> VirtualRegisters {
+        time!(map_virtual_registers);
+
         let mut virtual_registers = VirtualRegisters::default();
 
         // Given a PHI instruction, every input must be mapped to the same
@@ -762,6 +782,7 @@ impl FunctionData {
         let mut virtual_registers      = phi_registers;
 
         let mut coalesce_values = |v1: Value, v2: Value| {
+            time!(coalesce_values);
             // Try to assign the same VirtualRegister to both Values.
 
             let v1_vr = virtual_registers.get(v1).ok_or(v1);
@@ -859,6 +880,8 @@ impl FunctionData {
     }
 
     fn rewrite_phis(&mut self, labels: &[Label]) {
+        time!(rewrite_phis);
+
         // label_0:
         //   v1 = u32 0
         //   branch label_1
@@ -979,6 +1002,8 @@ impl FunctionData {
     }
 
     fn rewrite_arguments(&mut self, labels: &[Label]) {
+        time!(rewrite_arguments);
+
         let usage_counts = self.usage_counts();
         let arguments    = self.argument_values.clone();
 
@@ -1017,6 +1042,8 @@ impl FunctionData {
     fn constants_and_skips(&self, backend: &dyn Backend, labels: &[Label])
         -> (Map<Value, i64>, Set<Location>)
     {
+        time!(constants_and_skips);
+
         let mut constants = Map::default();
         let mut skips     = Set::default();
 
@@ -1051,6 +1078,8 @@ impl FunctionData {
     }
 
     pub(super) fn allocate_registers(&mut self, backend: &dyn Backend) -> RegisterAllocation {
+        time!(allocate_registers);
+
         let hardware_registers = backend.hardware_registers();
         let labels             = self.reachable_labels();
 

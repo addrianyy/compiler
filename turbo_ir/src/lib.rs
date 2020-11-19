@@ -1,3 +1,5 @@
+#[macro_use] mod timing;
+
 mod instruction_builders;
 mod type_inference;
 mod instruction;
@@ -260,6 +262,8 @@ impl FunctionData {
     }
 
     fn optimize(&mut self, passes: &[passes::IRPass], show_statistics: bool) {
+        time!(optimize);
+
         #[derive(Debug, Default, Clone)]
         struct PassStatistics {
             time:      f64,
@@ -308,8 +312,12 @@ impl FunctionData {
                 statistics.index      = index;
             }
 
-            for pass in default_passes {
-                did_something |= pass.run_on_function(self);
+            {
+                time!(default_passes);
+
+                for pass in default_passes {
+                    did_something |= pass.run_on_function(self);
+                }
             }
 
             iterations += 1;
@@ -371,9 +379,13 @@ impl FunctionData {
 
         self.validate_ssa();
 
-        // Rewrite IR values for cleaner look.
-        // TODO: Maybe we should do this only in debug mode.
-        passes::RewriteValuesPass.run_on_function(self);
+        {
+            time!(rewrite_values);
+
+            // Rewrite IR values for cleaner look.
+            // TODO: Maybe we should do this only in debug mode.
+            passes::RewriteValuesPass.run_on_function(self);
+        }
     }
 
     fn value_count(&self) -> usize {
@@ -448,6 +460,8 @@ impl Default for Module {
 
 impl Module {
     pub fn new() -> Self {
+        timing::register_exit_callback();
+
         Self {
             functions:     Map::default(),
             active_point:  None,
@@ -542,6 +556,8 @@ impl Module {
     }
 
     pub fn finalize(&mut self) {
+        time!(finalize);
+
         assert!(!self.finalized, "Cannot finalize module multiple times.");
 
         let mut function_info = Map::default();
@@ -599,11 +615,15 @@ impl Module {
 
         let (buffer, functions) = backend.finalize();
 
-        // Run passes that will remove `alias` instructions created by register allocator.
-        for internal in self.functions.values_mut() {
-            if let FunctionInternal::Local(data) = internal {
-                passes::RemoveAliasesPass.run_on_function(data);
-                passes::RemoveNopsPass.run_on_function(data);
+        {
+            time!(codegen_cleanup);
+
+            // Run passes that will remove `alias` instructions created by register allocator.
+            for internal in self.functions.values_mut() {
+                if let FunctionInternal::Local(data) = internal {
+                    passes::RemoveAliasesPass.run_on_function(data);
+                    passes::RemoveNopsPass.run_on_function(data);
+                }
             }
         }
 

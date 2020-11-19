@@ -13,7 +13,6 @@ impl super::Pass for RemoveDeadCodePass {
         let     labels         = function.reachable_labels();
         let     creators       = function.value_creators_with_labels(&labels);
 
-
         // Remove instructions without side effects which results aren't used.
         //
         // v3 = add u32 v1, v2

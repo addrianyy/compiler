@@ -729,6 +729,8 @@ impl X86Backend {
     }
 
     fn generate_function_body(&mut self, cx: &X86CodegenContext, labels: &[crate::Label]) {
+        time!(generate_function_body);
+
         let function = cx.function;
 
         for (index, &label) in labels.iter().enumerate() {
@@ -1510,6 +1512,8 @@ impl super::Backend for X86Backend {
 
     fn generate_function(&mut self, function_id: Function, function: &FunctionData,
                          register_allocation: RegisterAllocation) {
+        time!(generate_function);
+
         let function_offset = self.asm.current_offset();
         let labels          = function.reachable_labels_dfs();
         let x86_data        = Self::x86_function_data(function, register_allocation, &labels);

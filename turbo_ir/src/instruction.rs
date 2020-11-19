@@ -137,6 +137,8 @@ pub enum Param {
 
 impl Instruction {
     pub fn input_parameters(&self) -> Vec<Param> {
+        time!(input_parameters);
+
         match *self {
             Instruction::ArithmeticUnary { op, value, .. } => {
                 vec![
