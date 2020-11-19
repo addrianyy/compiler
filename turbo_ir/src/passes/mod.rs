@@ -1,6 +1,13 @@
 pub(super) trait Pass {
     fn name(&self) -> &str;
+    fn time(&self) -> crate::timing::TimedBlock;
     fn run_on_function(&self, function: &mut crate::FunctionData) -> bool;
+
+    fn run_on_function_timed(&self, function: &mut crate::FunctionData) -> bool {
+        let _time = self.time();
+
+        self.run_on_function(function)
+    }
 }
 
 #[derive(Copy, Clone)]

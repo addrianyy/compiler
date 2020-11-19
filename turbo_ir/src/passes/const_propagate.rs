@@ -8,6 +8,10 @@ impl super::Pass for ConstPropagatePass {
         "constant propagation"
     }
 
+    fn time(&self) -> crate::timing::TimedBlock {
+        crate::timing::const_propagate()
+    }
+
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let labels          = function.reachable_labels();
         let mut consts      = function.constant_values_with_labels(&labels);

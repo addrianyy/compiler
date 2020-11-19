@@ -159,6 +159,10 @@ impl super::Pass for RemoveKnownLoadsFastPass {
         "fast known load elimination"
     }
 
+    fn time(&self) -> crate::timing::TimedBlock {
+        crate::timing::remove_known_loads()
+    }
+
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         remove_known_loads_fast(function)
     }
@@ -169,6 +173,10 @@ pub struct RemoveKnownLoadsPrecisePass;
 impl super::Pass for RemoveKnownLoadsPrecisePass {
     fn name(&self) -> &str {
         "precise known load elimination"
+    }
+
+    fn time(&self) -> crate::timing::TimedBlock {
+        crate::timing::remove_known_loads()
     }
 
     fn run_on_function(&self, function: &mut FunctionData) -> bool {

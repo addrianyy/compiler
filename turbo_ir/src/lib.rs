@@ -255,6 +255,8 @@ impl FunctionData {
     }
 
     fn finalize(&mut self) {
+        time!(finalize);
+
         self.phi_locations.clear();
 
         self.validate_ssa();
@@ -300,7 +302,7 @@ impl FunctionData {
 
             for (index, pass) in passes.iter().enumerate() {
                 let start   = Instant::now();
-                let success = pass.inner.run_on_function(self);
+                let success = pass.inner.run_on_function_timed(self);
                 let elapsed = start.elapsed().as_secs_f64();
 
                 did_something |= success;
@@ -316,7 +318,7 @@ impl FunctionData {
                 time!(default_passes);
 
                 for pass in default_passes {
-                    did_something |= pass.run_on_function(self);
+                    did_something |= pass.run_on_function_timed(self);
                 }
             }
 
@@ -379,13 +381,9 @@ impl FunctionData {
 
         self.validate_ssa();
 
-        {
-            time!(rewrite_values);
-
-            // Rewrite IR values for cleaner look.
-            // TODO: Maybe we should do this only in debug mode.
-            passes::RewriteValuesPass.run_on_function(self);
-        }
+        // Rewrite IR values for cleaner look.
+        // TODO: Maybe we should do this only in debug mode.
+        passes::RewriteValuesPass.run_on_function_timed(self);
     }
 
     fn value_count(&self) -> usize {
@@ -532,14 +530,20 @@ impl Module {
     }
 
     pub fn dump_function_graph(&self, function: Function, path: &str) {
+        let _runtime = timing::runtime_block();
+
         self.function(function).dump_graph(path)
     }
 
     pub fn dump_function_text<W: Write>(&self, function: Function, w: &mut W) -> io::Result<()> {
+        let _runtime = timing::runtime_block();
+
         self.function(function).dump_text(w)
     }
 
     pub fn dump_function_text_stdout(&self, function: Function) {
+        let _runtime = timing::runtime_block();
+
         self.function(function).dump_text_stdout()
     }
 
@@ -556,7 +560,7 @@ impl Module {
     }
 
     pub fn finalize(&mut self) {
-        time!(finalize);
+        let _runtime = timing::runtime_block();
 
         assert!(!self.finalized, "Cannot finalize module multiple times.");
 
@@ -589,6 +593,8 @@ impl Module {
     }
 
     pub fn optimize(&mut self, passes: &[passes::IRPass], show_statistics: bool) {
+        let _runtime = timing::runtime_block();
+
         assert!(self.finalized, "Cannot optimize before finalization.");
 
         for internal in self.functions.values_mut() {
@@ -599,6 +605,8 @@ impl Module {
     }
 
     pub fn generate_machine_code(&mut self, backend: &dyn backends::IRBackend) -> MachineCode {
+        let _runtime = timing::runtime_block();
+
         assert!(self.finalized, "Cannot generate machine code before finalization.");
 
         let mut backend = backend.create(self);
@@ -610,22 +618,14 @@ impl Module {
                 let register_allocation = codegen::allocate_registers(data, backend.get());
 
                 backend.get_mut().generate_function(*function, data, register_allocation);
+
+                // Run passes that will remove `alias` instructions created by register allocator.
+                passes::RemoveAliasesPass.run_on_function_timed(data);
+                passes::RemoveNopsPass.run_on_function_timed(data);
             }
         }
 
         let (buffer, functions) = backend.finalize();
-
-        {
-            time!(codegen_cleanup);
-
-            // Run passes that will remove `alias` instructions created by register allocator.
-            for internal in self.functions.values_mut() {
-                if let FunctionInternal::Local(data) = internal {
-                    passes::RemoveAliasesPass.run_on_function(data);
-                    passes::RemoveNopsPass.run_on_function(data);
-                }
-            }
-        }
 
         MachineCode::new(&buffer, functions)
     }

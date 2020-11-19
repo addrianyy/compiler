@@ -7,6 +7,10 @@ impl super::Pass for RemoveNopsPass {
         "nop elimination"
     }
 
+    fn time(&self) -> crate::timing::TimedBlock {
+        crate::timing::remove_nops()
+    }
+
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         // Nops are created by optimization passes to eliminate unneeded instructions.
         // This pass will go through every block and remove nops from it.

@@ -116,6 +116,10 @@ impl super::Pass for MemoryToSsaPass {
         "memory to SSA"
     }
 
+    fn time(&self) -> crate::timing::TimedBlock {
+        crate::timing::memory_to_ssa()
+    }
+
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let mut did_something = false;
 

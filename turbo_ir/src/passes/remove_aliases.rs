@@ -7,6 +7,10 @@ impl super::Pass for RemoveAliasesPass {
         "alias elimination"
     }
 
+    fn time(&self) -> crate::timing::TimedBlock {
+        crate::timing::remove_aliases()
+    }
+
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let mut did_something = false;
         let     labels        = function.reachable_labels();

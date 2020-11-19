@@ -7,6 +7,10 @@ impl super::Pass for SimplifyCFGPass {
         "CFG simplification"
     }
 
+    fn time(&self) -> crate::timing::TimedBlock {
+        crate::timing::simplify_cfg()
+    }
+
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let mut did_something = false;
 

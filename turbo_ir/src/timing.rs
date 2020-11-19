@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicU64, AtomicBool, Ordering};
+use std::sync::atomic::{AtomicUsize, AtomicU64, AtomicBool, Ordering};
 use std::time::{Instant, Duration};
 use std::convert::TryInto;
 use std::cell::RefCell;
@@ -10,12 +10,14 @@ struct TimingEntry {
     name:       &'static str,
     total_time: AtomicTime,
     exact_time: AtomicTime,
+    calls:      AtomicUsize,
 }
 
 struct CollectedTimingEntry {
     name:       &'static str,
     total_time: f64,
     exact_time: f64,
+    calls:      usize,
 }
 
 pub struct TimedBlock {
@@ -23,8 +25,20 @@ pub struct TimedBlock {
     start: Instant,
 }
 
+pub struct RuntimeBlock {
+    start: Instant,
+}
+
 thread_local! {
     static TIME_STACK: RefCell<Vec<Time>> = RefCell::new(Vec::with_capacity(8));
+}
+
+static TOTAL_RUNTIME: AtomicTime = AtomicTime::new(0);
+
+pub fn runtime_block() -> RuntimeBlock {
+    RuntimeBlock {
+        start: Instant::now(),
+    }
 }
 
 fn time_from_duration(duration: Duration) -> Time {
@@ -34,6 +48,14 @@ fn time_from_duration(duration: Duration) -> Time {
 
 fn time_to_seconds(time: Time) -> f64 {
     time as f64 / 1_000_000.0
+}
+
+impl Drop for RuntimeBlock {
+    fn drop(&mut self) {
+        let elapsed = time_from_duration(self.start.elapsed());
+
+        TOTAL_RUNTIME.fetch_add(elapsed, Ordering::Relaxed);
+    }
 }
 
 impl Drop for TimedBlock {
@@ -56,6 +78,8 @@ impl Drop for TimedBlock {
 
         assert!(elapsed >= inside, "Full time is smaller than exact time.");
 
+        self.entry.calls.fetch_add(1, Ordering::Relaxed);
+
         self.entry.total_time.fetch_add(elapsed, Ordering::Relaxed);
         self.entry.exact_time.fetch_add(elapsed - inside, Ordering::Relaxed);
     }
@@ -77,6 +101,7 @@ macro_rules! timing {
                             name:       stringify!($name),
                             total_time: AtomicTime::new(0),
                             exact_time: AtomicTime::new(0),
+                            calls:      AtomicUsize::new(0),
                         },
                     )*
                 }
@@ -111,6 +136,7 @@ macro_rules! timing {
                         name: entry.name,
                         total_time,
                         exact_time,
+                        calls: entry.calls.load(Ordering::Relaxed),
                     });
                 }
             )*
@@ -131,19 +157,32 @@ timing!(value_processing_order, pointer_users, users, phi_used_values, find_stac
         validate_path_complex, validate_blocks, escaping_cycle_blocks,
         escaping_cycle_blocks_internal, can_reach, constant_values, replace_phi_incoming,
         depends_on_predecessors, analyse_pointers, safe_pointers, get_pointer_origin,
-        can_call_access_pointer, can_alias, block_contains_phi, finalize, codegen_cleanup,
-        optimize, default_passes, rewrite_values, add_value_usage, value_dies, uniquely_map_rest,
+        can_call_access_pointer, can_alias, block_contains_phi, finalize,
+        optimize, default_passes, add_value_usage, value_dies, uniquely_map_rest,
         pick_color, unique_edges, coloring_order, color, liveness, interference_graph,
         coalesce_values, map_virtual_registers, rewrite_phis, rewrite_arguments,
         constants_and_skips, allocate_registers, generate_function, generate_function_body,
         traverse_dfs_postorder, dominators, for_each_label_bfs, flow_graph_outgoing,
         flow_graph_incoming, reachable_labels_dfs, fvs_new, processing_order_presolve,
-        input_parameters);
+        input_parameters, branch_to_select, const_propagate, deduplicate, memory_to_ssa,
+        minimize_phis, remove_aliases, remove_dead_code, remove_dead_stores,
+        remove_ineffective_operations, remove_known_loads, remove_nops, reorder,
+        rewrite_values, simplify_cfg, simplify_compares, simplify_expressions,
+        undefined_propagate, x86_reorder, infer_value_type, typecheck, build_type_info,
+        build_expression_chains);
 
 pub fn show_timings() {
-    let mut timings  = collect_timings();
-    let total        = timings.iter().fold(0.0, |value, x| value + x.exact_time);
-    let longest_name = timings.iter().fold(0,   |value, x| value.max(x.name.len()));
+    let mut timings   = collect_timings();
+    let longest_name  = timings.iter().fold(0,   |value, x| value.max(x.name.len()));
+    let total_time    = timings.iter().fold(0.0, |value, x| value + x.exact_time);
+    let total_calls   = timings.iter().fold(0,   |value, x| value + x.calls);
+    let total_runtime = time_to_seconds(TOTAL_RUNTIME.load(Ordering::Relaxed));
+
+    println!();
+    println!(" ------------ Profiler results ------------");
+    println!("Collected {:.4}s of data ({:.2}% of total runtime) and {} calls.",
+             total_time, (total_time / total_runtime) * 100.0, total_calls);
+    println!();
     
     timings.sort_by(|a, b| b.exact_time.partial_cmp(&a.exact_time).unwrap());
 
@@ -154,9 +193,10 @@ pub fn show_timings() {
             print!(" ");
         }
 
-        println!(" | exact {:>3.5} [{:0>1.2}] | total {:>3.5} [{:0>1.2}]",
-                 timing.exact_time, timing.exact_time / total,
-                 timing.total_time, timing.total_time / total);
+        println!(" | exact {:>3.5} [{:>6.2}%] | total {:>3.5} [{:>6.2}%] | calls {}",
+                 timing.exact_time, (timing.exact_time / total_time) * 100.0,
+                 timing.total_time, (timing.total_time / total_time) * 100.0,
+                 timing.calls);
     }
 }
 

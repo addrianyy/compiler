@@ -7,6 +7,10 @@ impl super::Pass for SimplifyComparesPass {
         "compare simplification"
     }
 
+    fn time(&self) -> crate::timing::TimedBlock {
+        crate::timing::simplify_compares()
+    }
+
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let labels   = function.reachable_labels();
         let creators = function.value_creators_with_labels(&labels);

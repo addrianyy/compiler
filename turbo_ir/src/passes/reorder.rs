@@ -7,6 +7,10 @@ impl super::Pass for ReorderPass {
         "reordering"
     }
 
+    fn time(&self) -> crate::timing::TimedBlock {
+        crate::timing::reorder()
+    }
+
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let mut did_something = false;
         let mut vcache        = ValidationCache::default();

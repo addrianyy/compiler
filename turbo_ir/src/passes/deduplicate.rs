@@ -225,6 +225,10 @@ impl super::Pass for DeduplicateFastPass {
         "fast deduplication"
     }
 
+    fn time(&self) -> crate::timing::TimedBlock {
+        crate::timing::deduplicate()
+    }
+
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         deduplicate_fast(function)
     }
@@ -235,6 +239,10 @@ pub struct DeduplicatePrecisePass;
 impl super::Pass for DeduplicatePrecisePass {
     fn name(&self) -> &str {
         "precise deduplication"
+    }
+
+    fn time(&self) -> crate::timing::TimedBlock {
+        crate::timing::deduplicate()
     }
 
     fn run_on_function(&self, function: &mut FunctionData) -> bool {

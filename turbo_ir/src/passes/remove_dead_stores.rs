@@ -142,6 +142,10 @@ impl super::Pass for RemoveDeadStoresFastPass {
         "fast dead store elimination"
     }
 
+    fn time(&self) -> crate::timing::TimedBlock {
+        crate::timing::remove_dead_stores()
+    }
+
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         remove_dead_stores_fast(function)
     }
@@ -152,6 +156,10 @@ pub struct RemoveDeadStoresPrecisePass;
 impl super::Pass for RemoveDeadStoresPrecisePass {
     fn name(&self) -> &str {
         "precise dead store elimination"
+    }
+
+    fn time(&self) -> crate::timing::TimedBlock {
+        crate::timing::remove_dead_stores()
     }
 
     fn run_on_function(&self, function: &mut FunctionData) -> bool {

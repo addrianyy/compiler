@@ -26,6 +26,10 @@ impl super::Pass for SimplifyExpressionsPass {
         "expression simplification"
     }
 
+    fn time(&self) -> crate::timing::TimedBlock {
+        crate::timing::simplify_expressions()
+    }
+
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let mut did_something             = false;
         let mut chains: Map<Value, Chain> = Map::default();
@@ -80,70 +84,74 @@ impl super::Pass for SimplifyExpressionsPass {
                 }}
             }
 
-            function.for_each_instruction_with_labels(&labels, |_, instruction| {
-                // We only simplify binary expressions for now.
-                if let Instruction::ArithmeticBinary { dst, a, op, b } = instruction {
-                    // If operator is commulative then (a op b) op c == a op (a b).
-                    let commulative = match op {
-                        BinaryOp::Add | BinaryOp::Mul | BinaryOp::And |
-                        BinaryOp::Or  | BinaryOp::Xor => {
-                            true
-                        }
-                        _ => false,
-                    };
+            {
+                time!(build_expression_chains);
 
-                    // We cannot chain non-commulative operations.
-                    if !commulative {
-                        return;
-                    }
-
-                    // Get 1 unknown value, 1 constant value and return type.
-                    let result = match (consts.get(a), consts.get(b)) {
-                        (Some(&a), None) => Some((*b, a.1, ConstType::new(a.0))),
-                        (None, Some(&b)) => Some((*a, b.1, ConstType::new(b.0))),
-                        _                => None,
-                    };
-
-                    // If there are 2 constant values or 2 unknown values we can't do anything.
-                    if let Some((value, constant, ty)) = result {
-                        let chain = match chains.get(&value) {
-                            Some(chain) => {
-                                // This is next part of previously calculated chain.
-                                // We cannot chain both operations if they have different
-                                // binary operator.
-                                if chain.op != *op {
-                                    None
-                                } else {
-                                    // Join current operation and previous chain into one.
-                                    // Previous chain has only one use and after simplification
-                                    // it will have no uses. Therefore DCE will remove it
-                                    // and there is no point in evaluating it. Remove it.
-
-                                    let mut chain = chains.remove(&value).unwrap();
-                                    chain.consts.push(constant);
-
-                                    Some(chain)
-                                }
+                function.for_each_instruction_with_labels(&labels, |_, instruction| {
+                    // We only simplify binary expressions for now.
+                    if let Instruction::ArithmeticBinary { dst, a, op, b } = instruction {
+                        // If operator is commulative then (a op b) op c == a op (a b).
+                        let commulative = match op {
+                            BinaryOp::Add | BinaryOp::Mul | BinaryOp::And |
+                            BinaryOp::Or  | BinaryOp::Xor => {
+                                true
                             }
-                            None => {
-                                // Beginning of the chain, with one value and one constant.
-                                Some(Chain {
-                                    value,
-                                    consts: vec![constant],
-                                    op:     *op,
-                                    ty,
-                                })
-                            }
+                            _ => false,
                         };
 
-                        if let Some(chain) = chain {
-                            // This value has a valid expression chain, add it to the list.
-                            assert!(chains.insert(*dst, chain).is_none(),
-                                    "Multiple chains from the same value?");
+                        // We cannot chain non-commulative operations.
+                        if !commulative {
+                            return;
+                        }
+
+                        // Get 1 unknown value, 1 constant value and return type.
+                        let result = match (consts.get(a), consts.get(b)) {
+                            (Some(&a), None) => Some((*b, a.1, ConstType::new(a.0))),
+                            (None, Some(&b)) => Some((*a, b.1, ConstType::new(b.0))),
+                            _                => None,
+                        };
+
+                        // If there are 2 constant values or 2 unknown values we can't do anything.
+                        if let Some((value, constant, ty)) = result {
+                            let chain = match chains.get(&value) {
+                                Some(chain) => {
+                                    // This is next part of previously calculated chain.
+                                    // We cannot chain both operations if they have different
+                                    // binary operator.
+                                    if chain.op != *op {
+                                        None
+                                    } else {
+                                        // Join current operation and previous chain into one.
+                                        // Previous chain has only one use and after simplification
+                                        // it will have no uses. Therefore DCE will remove it
+                                        // and there is no point in evaluating it. Remove it.
+
+                                        let mut chain = chains.remove(&value).unwrap();
+                                        chain.consts.push(constant);
+
+                                        Some(chain)
+                                    }
+                                }
+                                None => {
+                                    // Beginning of the chain, with one value and one constant.
+                                    Some(Chain {
+                                        value,
+                                        consts: vec![constant],
+                                        op:     *op,
+                                        ty,
+                                    })
+                                }
+                            };
+
+                            if let Some(chain) = chain {
+                                // This value has a valid expression chain, add it to the list.
+                                assert!(chains.insert(*dst, chain).is_none(),
+                                        "Multiple chains from the same value?");
+                            }
                         }
                     }
-                }
-            });
+                });
+            }
 
             // Evaluate all chain and replace instructions.
             for (output_value, chain) in &chains {

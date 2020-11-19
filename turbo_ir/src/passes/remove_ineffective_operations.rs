@@ -9,6 +9,10 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
         "ineffective operation elimination"
     }
 
+    fn time(&self) -> crate::timing::TimedBlock {
+        crate::timing::remove_ineffective_operations()
+    }
+
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let labels   = function.reachable_labels();
         let consts   = function.constant_values_with_labels(&labels);

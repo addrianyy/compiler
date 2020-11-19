@@ -14,6 +14,10 @@ impl super::Pass for UndefinedPropagatePass {
         "undefined propagation"
     }
 
+    fn time(&self) -> crate::timing::TimedBlock {
+        crate::timing::undefined_propagate()
+    }
+
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let mut did_something = false;
         let mut undefined     = Set::default();

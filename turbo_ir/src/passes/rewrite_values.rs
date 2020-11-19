@@ -26,6 +26,10 @@ impl super::Pass for RewriteValuesPass {
         "rewrite values"
     }
 
+    fn time(&self) -> crate::timing::TimedBlock {
+        crate::timing::rewrite_values()
+    }
+
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         // This is not an optimization pass. We need to be careful here because `validate_ssa`
         // won't be called after this pass is run.

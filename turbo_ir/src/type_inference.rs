@@ -13,6 +13,8 @@ impl TypeContext {
 
 impl FunctionData {
     fn infer_value_type(&self, value: Value, cx: &mut TypeContext) {
+        time!(infer_value_type);
+
         let creator = cx.creators.get(&value).map(|location| {
             self.instruction(*location)
         }).expect("Value is used without being created.");
@@ -87,6 +89,8 @@ impl FunctionData {
     }
 
     fn typecheck(&self, instruction: &Instruction, cx: &mut TypeContext) {
+        time!(typecheck);
+
         match instruction {
             Instruction::ArithmeticUnary { dst, value, .. } => {
                 let dst   = cx.get_type(*dst);
@@ -248,6 +252,8 @@ impl FunctionData {
     }
 
     pub(super) fn build_type_info(&mut self) {
+        time!(build_type_info);
+
         let mut cx = TypeContext {
             type_info: Map::default(),
             creators:  self.value_creators(),

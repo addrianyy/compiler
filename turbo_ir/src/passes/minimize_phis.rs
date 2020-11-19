@@ -247,6 +247,10 @@ impl super::Pass for MinimizePhisPass {
         "phi minimization"
     }
 
+    fn time(&self) -> crate::timing::TimedBlock {
+        crate::timing::minimize_phis()
+    }
+
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let mut phis_data = Map::default();
         let mut phis      = Set::default();

@@ -105,6 +105,10 @@ impl super::Pass for BranchToSelectPass {
         "branch to select"
     }
 
+    fn time(&self) -> crate::timing::TimedBlock {
+        crate::timing::branch_to_select()
+    }
+
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let mut did_something = false;
 

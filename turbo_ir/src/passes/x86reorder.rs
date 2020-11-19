@@ -7,6 +7,10 @@ impl super::Pass for X86ReorderPass {
         "x86 reordering"
     }
 
+    fn time(&self) -> crate::timing::TimedBlock {
+        crate::timing::x86_reorder()
+    }
+
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let mut did_something = false;
 
