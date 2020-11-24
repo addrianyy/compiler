@@ -190,7 +190,7 @@ mod inner {
         println!("Collected {:.4}s of data ({:.2}% of total runtime) and {} calls.",
                 total_time, (total_time / total_runtime) * 100.0, total_calls);
         println!();
-        
+
         timings.sort_by(|a, b| b.exact_time.partial_cmp(&a.exact_time).unwrap());
 
         for timing in timings {
@@ -235,7 +235,7 @@ macro_rules! time {
 }
 
 timing!(value_processing_order, pointer_users, users, phi_used_values, find_stackallocs,
-        find_uses, value_creators, usage_counts, validate_ssa, validate_path, dominates, 
+        find_uses, value_creators, usage_counts, validate_ssa, validate_path, dominates,
         validate_path_complex, validate_blocks, escaping_cycle_blocks,
         escaping_cycle_blocks_internal, can_reach, constant_values, replace_phi_incoming,
         depends_on_predecessors, analyse_pointers, safe_pointers, get_pointer_origin,

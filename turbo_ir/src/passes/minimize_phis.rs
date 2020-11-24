@@ -38,7 +38,7 @@ impl PhisGraph {
 
     fn scc(&self) -> Vec<Vec<Value>> {
         let mut indices = Map::default();
-        
+
         // Assign index to every vertex.
         for (index, vertex) in self.vertices.iter().enumerate() {
             indices.insert(*vertex, index);

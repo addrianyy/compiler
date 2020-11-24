@@ -484,7 +484,7 @@ impl FunctionData {
         time!(can_reach);
 
         // Make sure that start and end points are not blacklisted.
-        assert!(from != without && to != without);
+        assert!(from != without && to != without, "Invalid input to `can_reach`.");
 
         // We can always reach ourselves.
         if from == to {

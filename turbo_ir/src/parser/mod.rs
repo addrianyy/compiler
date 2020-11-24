@@ -103,7 +103,7 @@ impl FunctionContext {
             let label = ir.entry_label();
 
             self.labels.insert(label_name.to_string(), label);
-            
+
             label
         } else {
             self.label(label_name, ir)
@@ -435,7 +435,7 @@ impl Parser {
             }
             Keyword::Load => {
                 let dst_ty = self.parse_type();
-                
+
                 self.comma();
 
                 let ptr_ty = self.parse_type();
