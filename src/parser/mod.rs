@@ -1,3 +1,6 @@
+// Workaround for clippy bug.
+#![allow(clippy::unnecessary_wraps)]
+
 mod print;
 mod lexer;
 mod ast;

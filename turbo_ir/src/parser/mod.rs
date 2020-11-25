@@ -1,3 +1,6 @@
+// Workaround for clippy bug.
+#![allow(clippy::unnecessary_wraps)]
+
 mod lexer;
 
 use lexer::{Lexer, Token, Keyword};
