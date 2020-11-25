@@ -44,13 +44,6 @@ fn remove_known_loads_precise(function: &mut FunctionData) -> bool {
                 let start = store_location;
                 let end   = load_location;
 
-                // If both locations are in different blocks and value
-                // is used in PHI then `validate_path_memory` cannot reason about
-                // it. TODO: Fix this.
-                if start.label() != end.label() && phi_used.contains(load_ptr) {
-                    continue;
-                }
-
                 // Check if we actually can source load from this store.
                 let result = function.validate_path_memory(&dominators, start, end,
                                                            KillTarget::End, &mut vcache,

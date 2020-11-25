@@ -106,13 +106,6 @@ fn deduplicate_precise(function: &mut FunctionData) -> bool {
                     let result = if let Instruction::Load { ptr, .. } = instruction {
                         let load_ptr = *ptr;
 
-                        // If both locations are in different blocks and value
-                        // is used in PHI then `validate_path_memory` cannot reason about
-                        // it. TODO: Fix this.
-                        if source.label() != location.label() && phi_used.contains(load_ptr) {
-                            continue;
-                        }
-
                         // Special care needs to be taken if we want to deduplicate
                         // load. Something inbetween two instructions may have
                         // modified loaded ptr and output value will be different.

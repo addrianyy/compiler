@@ -116,13 +116,6 @@ fn remove_dead_stores_precise(function: &mut FunctionData) -> bool {
                     let start = to_remove;
                     let end   = other_location;
 
-                    // If both locations are in different blocks and value
-                    // is used in PHI then `validate_path_memory` cannot reason about
-                    // it. TODO: Fix this.
-                    if start.label() != end.label() && phi_used.contains(pointer) {
-                        continue;
-                    }
-
                     // Path will go from `to_remove` to `other_location`. Make
                     // sure that there is nothing inbetween that can load our pointer.
                     // If there is something, we can't eliminate the store.
