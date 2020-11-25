@@ -91,9 +91,6 @@ fn deduplicate_precise(function: &mut FunctionData) -> bool {
 
             // Try to get possible instructions which we can deduplicate this instruction from.
             if let Some(sources) = fast_dedup.get(&location) {
-                // Recalculate `phi_used` here because added aliases may have changed it.
-                let phi_used = function.phi_used_values(&labels);
-
                 // Find the best source for deduplication.
                 for &source in *sources {
                     if location == source {

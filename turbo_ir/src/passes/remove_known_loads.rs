@@ -32,10 +32,6 @@ fn remove_known_loads_precise(function: &mut FunctionData) -> bool {
     for (load_location, load_dst, load_ptr) in loads {
         // Get all stores to a given pointer.
         if let Some(stores) = stores.get(&load_ptr) {
-            // Recalculate `phi_used` here because added aliases may have changed it.
-            // We may have sourced loaded pointer from store.
-            let phi_used = function.phi_used_values(&labels);
-
             let mut best_replacement = None;
             let mut best_icount      = None;
 

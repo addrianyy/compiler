@@ -234,7 +234,7 @@ macro_rules! time {
     }
 }
 
-timing!(value_processing_order, pointer_users, users, phi_used_values, find_stackallocs,
+timing!(value_processing_order, pointer_users, users, find_stackallocs,
         find_uses, value_creators, usage_counts, validate_ssa, validate_path, dominates,
         validate_path_complex, validate_blocks, escaping_cycle_blocks,
         escaping_cycle_blocks_internal, can_reach, constant_values, replace_phi_incoming,

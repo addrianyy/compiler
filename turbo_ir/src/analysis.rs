@@ -1042,22 +1042,6 @@ impl FunctionData {
         results
     }
 
-    pub(super) fn phi_used_values(&self, labels: &[Label]) -> FastValueSet {
-        time!(phi_used_values);
-
-        let mut results = FastValueSet::new(self);
-
-        self.for_each_instruction_with_labels(labels, |_location, instruction| {
-            if let Instruction::Phi { incoming, .. } = instruction {
-                for (_, value) in incoming {
-                    results.insert(*value);
-                }
-            }
-        });
-
-        results
-    }
-
     pub(super) fn users_with_labels(&self, labels: &[Label]) -> Users {
         time!(users);
 

@@ -79,8 +79,6 @@ fn remove_dead_stores_precise(function: &mut FunctionData) -> bool {
     let dominators       = function.dominators();
     let pointer_analysis = function.analyse_pointers();
     let labels           = function.reachable_labels();
-    let phi_used         = function.phi_used_values(&labels);
-
     let mut vcache        = ValidationCache::default();
     let mut stores        = Map::default();
     let mut did_something = false;
