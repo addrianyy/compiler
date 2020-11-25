@@ -1,4 +1,79 @@
-use crate::{FunctionData, Instruction, Map, Location, ValidationCache, analysis::KillTarget};
+use crate::{FunctionData, Instruction, Map, Location, ValidationCache,
+            analysis::PointerAnalysis, Set, Value, Label, analysis::KillTarget};
+
+enum BlockCheckResult {
+    Invalid,
+    CheckTargets,
+    Ok,
+}
+
+fn check_block(function: &FunctionData, label: Label, pointer: Value,
+               pointer_analysis: &PointerAnalysis) -> BlockCheckResult {
+    for instruction in &function.blocks[&label] {
+        // If there is another store to this pointer than no successors can observe old value.
+        if let Instruction::Store { ptr, .. } = instruction {
+            if *ptr == pointer {
+                return BlockCheckResult::Ok;
+            }
+        }
+
+        // This value can be observed.
+        if function.can_load_pointer(instruction, &pointer_analysis, pointer) {
+            return BlockCheckResult::Invalid;
+        }
+    }
+
+    // Nothing here can observe pointer but block's successors may.
+    BlockCheckResult::CheckTargets
+}
+
+fn can_remove_store(function: &FunctionData, to_remove: Label, other_location: Label,
+                    pointer: Value, pointer_analysis: &PointerAnalysis) -> bool {
+    if to_remove == other_location {
+        return true;
+    }
+
+    let mut stack   = Vec::new();
+    let mut visited = Set::default();
+
+    // Start from `to_remove` and traverse down.
+    stack.push(to_remove);
+
+    while let Some(label) = stack.pop() {
+        if !visited.insert(label) {
+            continue;
+        }
+
+        // Stop going down if we hit `other_location`.
+        if label == other_location {
+            continue;
+        }
+
+        // Check block if it's not the one that we are removing.
+        if label != to_remove {
+            match check_block(function, label, pointer, pointer_analysis) {
+                BlockCheckResult::Ok           => continue,
+                BlockCheckResult::Invalid      => return false,
+                BlockCheckResult::CheckTargets => {}
+            }
+        }
+
+        // We need to check successors.
+        let targets = function.targets(label);
+
+        // If block ends with `ret` and `pointer` is not coming from stackalloc than `store`
+        // can be observed by caller.
+        if targets.is_empty() && !pointer_analysis.is_stackalloc(pointer) {
+            return false;
+        }
+
+        for target in targets {
+            stack.push(target);
+        }
+    }
+
+    true
+}
 
 fn remove_dead_stores_precise(function: &mut FunctionData) -> bool {
     let dominators       = function.dominators();
@@ -58,6 +133,12 @@ fn remove_dead_stores_precise(function: &mut FunctionData) -> bool {
                     });
 
                     if result.is_some() {
+                        // Make sure that removing this store won't have any side effects.
+                        if !can_remove_store(function, to_remove.label(), other_location.label(),
+                                             pointer, &pointer_analysis) {
+                            continue;
+                        }
+
                         // We have found a store to remove. Replace it with a nop.
                         *function.instruction_mut(to_remove) = Instruction::Nop;
 

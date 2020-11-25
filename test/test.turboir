@@ -1,15 +1,19 @@
-u32 test(u32* ptr) {
+u32 test(u32* ptr, u1 cond) {
 entry:
-    val_1 = load u32, u32* ptr
-    one_1 = u32 1
-    res_1 = add u32 val_1, one_1
-    store u32* ptr, u32 res_1
+    one   = u32 1
+    two   = u32 2
+    three = u32 3
 
-    val_2 = load u32, u32* ptr
-    one_2 = u32 1
-    res_2 = add u32 val_2, one_2
-    store u32* ptr, u32 res_2
+    store u32* ptr, u32 one
+    bcond u1 cond, on_true, on_false
 
-    return_value = load u32, u32* ptr
-    ret u32 return_value
+on_true:
+    store u32* ptr, u32 two
+    branch exit
+
+on_false:
+    branch exit
+
+exit:
+    ret u32 three
 }

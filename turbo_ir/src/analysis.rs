@@ -105,6 +105,10 @@ impl PointerAnalysis {
             _ => true,
         }
     }
+
+    pub fn is_stackalloc(&self, pointer: Value) -> bool {
+        self.stackallocs.get(&self.origins[&pointer]).is_some()
+    }
 }
 
 impl FunctionData {
@@ -767,12 +771,9 @@ impl FunctionData {
             labels.reserve(visited.len() - 1);
 
             for &label in &visited {
-                // Don't check `end_label` here because we will only go through part of it and
-                // it was already checked before.
-                if label != end_label {
-                    // `start_label` should never be here.
-                    assert_ne!(label, start_label);
-
+                // Don't check `end_label` or `start_label` here because we will only go
+                // through part of it and it was already checked before.
+                if label != end_label && label != start_label {
                     labels.insert(label);
                 }
             }
