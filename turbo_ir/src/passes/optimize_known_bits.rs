@@ -330,9 +330,9 @@ impl super::Pass for OptimizeKnownBitsPass {
                         }
                     }
                     &mut Instruction::IntCompare { dst, a, pred, b, .. } => {
-                        let ty = function.value_type(a);
-                        let a  = known_bits[&a];
-                        let b  = known_bits[&b];
+                        let ty    = function.value_type(a);
+                        let mut a = known_bits[&a];
+                        let mut b = known_bits[&b];
 
                         // Try to resolve `icmp` result using known bits.
                         let result = match pred {
@@ -364,9 +364,12 @@ impl super::Pass for OptimizeKnownBitsPass {
                                         // Compare positive integers.
                                         bit_compare_greater(&a, &b, ty)
                                     } else {
-                                        // TODO: Make `bit_compare_greater` work for negative
-                                        // values.
-                                        None
+                                        // Fake positive integers. Because of how
+                                        // `bit_comapre_greator` works it shouldn't affect results.
+                                        a.known = !a.known & a.mask;
+                                        b.known = !b.known & b.mask;
+
+                                        bit_compare_greater(&a, &b, ty)
                                     }
                                 } else {
                                     // We cannot reason about this compare because we don't know

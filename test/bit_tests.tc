@@ -23,12 +23,12 @@ u32 test(i32 x, i32 y) {
     return 33;
 }
 
-u32 test2(u32 x, u32 y) {
-    x &= ~0xFF000000u32;
-    y &= ~0xFF000000u32;
+u32 test2(i32 x, i32 y) {
+    x &= ~0xFF000000i32;
+    y &= ~0xFF000000i32;
 
-    x |= 0xF0000000u32;
-    y |= 0xFF000000u32;
+    x |= 0xF0000000i32;
+    y |= 0xFF000000i32;
 
     if (x < y) {
         return 22;
