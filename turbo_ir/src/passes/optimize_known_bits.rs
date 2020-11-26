@@ -1,4 +1,4 @@
-use crate::{FunctionData, Instruction, Map, BinaryOp, UnaryOp, Type, Cast, IntPredicate};
+use crate::{FunctionData, Instruction, Map, BinaryOp, UnaryOp, Type, Cast, IntPredicate, Value};
 
 #[derive(Default, Copy, Clone, Debug)]
 struct KnownBits {
@@ -59,6 +59,41 @@ fn bit_compare_greater(a_bits: &KnownBits, b_bits: &KnownBits, ty: Type) -> Opti
     }
 
     None
+}
+
+#[allow(unused)]
+fn dump_known_bits(function: &FunctionData, known_bits: &Map<Value, KnownBits>) {
+    println!("Known bits for {}:", function.prototype.name);
+
+    for (value, known_bits) in known_bits {
+        if known_bits.mask == 0 {
+            continue;
+        }
+
+        print!("{}", value);
+
+        if value.0 < 10 {
+            print!(" ");
+        }
+
+        print!(": ");
+
+        let size = function.value_type(*value).size_bits();
+
+        for idx in (0..size).rev() {
+            let mask = 1 << idx;
+
+            if known_bits.mask & mask == 0 {
+                print!("_");
+            } else {
+                print!("{}", (known_bits.known >> idx) & 1);
+            }
+        }
+
+        println!();
+    }
+
+    println!();
 }
 
 pub struct OptimizeKnownBitsPass;
@@ -479,6 +514,8 @@ impl super::Pass for OptimizeKnownBitsPass {
 
             known_bits.insert(value, computed);
         }
+
+        //dump_known_bits(function, &known_bits);
 
         did_something
     }
