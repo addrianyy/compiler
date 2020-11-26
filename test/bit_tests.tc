@@ -1,0 +1,38 @@
+u32 x(i8 x, i8 y) {
+    i8 r = 0;
+
+    if (x == 0i8) {
+        r = x | 0x80i8;
+    } else {
+        r = y | 0x80i8;
+    }
+
+    i32 zz = r;
+
+    return zz & 0x8000i32;
+}
+
+u32 test(i32 x, i32 y) {
+    x &= ~0x80000000i32;
+    y &= ~0x80000000i32;
+
+    if (-x < y) {
+        return 22;
+    }
+
+    return 33;
+}
+
+u32 test2(u32 x, u32 y) {
+    x &= ~0xFF000000u32;
+    y &= ~0xFF000000u32;
+
+    x |= 0xF0000000u32;
+    y |= 0xFF000000u32;
+
+    if (x < y) {
+        return 22;
+    }
+
+    return 33;
+}

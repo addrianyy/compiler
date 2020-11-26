@@ -11,7 +11,7 @@ fn recreate_directory(path: &str) {
 }
 
 fn main() {
-    let source       = std::fs::read_to_string("test/1.tc").unwrap();
+    let source       = std::fs::read_to_string("test/bit_tests.tc").unwrap();
     let parsed       = parser::parse(&source);
     let mut compiled = compiler::compile(&parsed);
 
@@ -28,6 +28,7 @@ fn main() {
         turbo_ir::passes::remove_dead_stores_precise(),
         turbo_ir::passes::undefined_propagate(),
         turbo_ir::passes::minimize_phis(),
+        turbo_ir::passes::optimize_known_bits(),
         turbo_ir::passes::branch_to_select(),
         turbo_ir::passes::reorder(),
         turbo_ir::passes::x86reorder(),

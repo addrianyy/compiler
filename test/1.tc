@@ -121,3 +121,17 @@ i32 sum2(i32 count) {
 
     return total;
 }
+
+i32 range_analysis() {
+    i32 total = 0;
+
+    for (i32 i = 0; i < 7; i += 1) {
+        total += 1;
+
+        if (i > 10) {
+            return 123;
+        }
+    }
+
+    return total;
+}

@@ -54,6 +54,7 @@ macro_rules! passes {
 pass!(pub remove_ineffective_operations, RemoveIneffectiveOperationsPass);
 pass!(pub simplify_expressions, SimplifyExpressionsPass);
 pass!(pub undefined_propagate, UndefinedPropagatePass);
+pass!(pub optimize_known_bits, OptimizeKnownBitsPass);
 pass!(pub simplify_compares, SimplifyComparesPass);
 pass!(pub branch_to_select, BranchToSelectPass);
 pass!(pub remove_dead_code, RemoveDeadCodePass);

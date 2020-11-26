@@ -62,4 +62,32 @@ impl Type {
             TypeKind::U64 => 8,
         }
     }
+
+    pub fn size_bits(&self) -> usize {
+        if self.is_pointer() {
+            return 64;
+        }
+
+        match self.kind {
+            TypeKind::U1  => 1,
+            TypeKind::U8  => 8,
+            TypeKind::U16 => 16,
+            TypeKind::U32 => 32,
+            TypeKind::U64 => 64,
+        }
+    }
+
+    pub fn bitmask(&self) -> u64 {
+        if self.is_pointer() {
+            return 0xffff_ffff_ffff_ffff;
+        }
+
+        match self.kind {
+            TypeKind::U1  => 1,
+            TypeKind::U8  => 0xff,
+            TypeKind::U16 => 0xffff,
+            TypeKind::U32 => 0xffffffff,
+            TypeKind::U64 => 0xffff_ffff_ffff_ffff,
+        }
+    }
 }
