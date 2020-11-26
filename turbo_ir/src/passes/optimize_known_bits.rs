@@ -61,6 +61,69 @@ fn bit_compare_greater(a_bits: &KnownBits, b_bits: &KnownBits, ty: Type) -> Opti
     None
 }
 
+fn bit_add(a: &KnownBits, b: &KnownBits, ty: Type) -> KnownBits {
+    let mut computed = KnownBits::default();
+
+    if a.mask != 0 && b.mask != 0 {
+        let mut carry = 0;
+
+        for idx in 0..ty.size_bits() {
+            let m = 1 << idx;
+
+            // We cannot continue addition if not both operands are known.
+            if (a.mask & m) == 0 || (b.mask & m) == 0 {
+                break;
+            }
+
+            let a = (a.known >> idx) & 1;
+            let b = (b.known >> idx) & 1;
+            let v = a + b + carry;
+
+            // Set this bit as known.
+            computed.known |= (v % 2) << idx;
+            computed.mask  |= m;
+
+            carry = v / 2;
+        }
+    }
+
+    computed
+}
+
+fn bit_neg(bits: &KnownBits, ty: Type) -> KnownBits {
+    // -a = !a + 1
+
+    // Invert all known bits.
+    let mut computed = *bits;
+    computed.known   = !computed.known & computed.mask;
+
+    let is_zero = computed.known == 0 || computed.mask == 0;
+
+    let mut new_computed = bit_add(&computed, &KnownBits {
+        mask:  ty.bitmask(),
+        known: 1,
+    }, ty);
+
+    if !is_zero {
+        // If the value is not zero than change sign bit independently.
+        // TODO: This is not correct if overflow happens. Is it OK?
+        if let Some(sign) = computed.sign(ty) {
+            let mask = 1 << (ty.size_bits() - 1);
+
+            new_computed.mask |= mask;
+
+            // Sign is already properly inverted.
+            if sign {
+                new_computed.known |= mask;
+            } else {
+                new_computed.known &= !mask;
+            }
+        }
+    }
+
+    new_computed
+}
+
 #[allow(unused)]
 fn dump_known_bits(function: &FunctionData, known_bits: &Map<Value, KnownBits>) {
     println!("Known bits for {}:", function.prototype.name);
@@ -143,16 +206,7 @@ impl super::Pass for OptimizeKnownBitsPass {
                                 computed.known = !computed.known & computed.mask;
                             }
                             UnaryOp::Neg => {
-                                // TODO: Don't just invert the sign bit.
-                                if let Some(sign) = known_bits[value].sign(ty) {
-                                    let mask = 1 << (ty_size - 1);
-
-                                    computed.mask |= mask;
-
-                                    if !sign {
-                                        computed.known |= mask;
-                                    }
-                                }
+                                computed = bit_neg(&known_bits[value], ty);
                             }
                         }
                     }
@@ -161,8 +215,8 @@ impl super::Pass for OptimizeKnownBitsPass {
                         let a_value = *a;
                         let b_value = *b;
 
-                        let a = known_bits[a];
-                        let b = known_bits[b];
+                        let a     = known_bits[a];
+                        let mut b = known_bits[b];
 
                         match op {
                             BinaryOp::Or | BinaryOp::And | BinaryOp::Xor => {
@@ -335,6 +389,14 @@ impl super::Pass for OptimizeKnownBitsPass {
                                         did_something = true;
                                     }
                                 }
+                            }
+                            BinaryOp::Add | BinaryOp::Sub => {
+                                if *op == BinaryOp::Sub {
+                                    // x - y => x + (-y)
+                                    b = bit_neg(&b, ty);
+                                }
+
+                                computed = bit_add(&a, &b, ty);
                             }
                             _ => {}
                         }
