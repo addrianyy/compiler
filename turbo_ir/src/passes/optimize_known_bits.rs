@@ -104,12 +104,12 @@ fn bit_neg(bits: &KnownBits, ty: Type) -> KnownBits {
         known: 1,
     }, ty);
 
-    if !is_zero {
-        // If the value is not zero than change sign bit independently.
+    let mask = 1 << (ty.size_bits() - 1);
+
+    if !is_zero && new_computed.mask & mask == 0 {
+        // If the value is not zero than change sign bit independently (if its not known).
         // TODO: This is not correct if overflow happens. Is it OK?
         if let Some(sign) = computed.sign(ty) {
-            let mask = 1 << (ty.size_bits() - 1);
-
             new_computed.mask |= mask;
 
             // Sign is already properly inverted.
@@ -122,41 +122,6 @@ fn bit_neg(bits: &KnownBits, ty: Type) -> KnownBits {
     }
 
     new_computed
-}
-
-#[allow(unused)]
-fn dump_known_bits(function: &FunctionData, known_bits: &Map<Value, KnownBits>) {
-    println!("Known bits for {}:", function.prototype.name);
-
-    for (value, known_bits) in known_bits {
-        if known_bits.mask == 0 {
-            continue;
-        }
-
-        print!("{}", value);
-
-        if value.0 < 10 {
-            print!(" ");
-        }
-
-        print!(": ");
-
-        let size = function.value_type(*value).size_bits();
-
-        for idx in (0..size).rev() {
-            let mask = 1 << idx;
-
-            if known_bits.mask & mask == 0 {
-                print!("_");
-            } else {
-                print!("{}", (known_bits.known >> idx) & 1);
-            }
-        }
-
-        println!();
-    }
-
-    println!();
 }
 
 pub struct OptimizeKnownBitsPass;
@@ -172,6 +137,14 @@ impl super::Pass for OptimizeKnownBitsPass {
 
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let mut did_something = false;
+
+        // Compute known bits for every value and optimize some operations
+        // based on gathered information.
+        //
+        // 1. Change `sar` to `shr` if sign bit is known to be zero.
+        // 2. Remove useless &, | operations.
+        // 3. Prove comparisons return value.
+        // 4. Constant propagate extracted partially known values.
 
         let labels           = function.reachable_labels();
         let processing_order = function.value_processing_order_with_labels(&labels);
@@ -192,6 +165,7 @@ impl super::Pass for OptimizeKnownBitsPass {
 
                 match instruction {
                     Instruction::Const { imm, .. } => {
+                        // For constant all bits are known.
                         computed.mask  = ty_bitmask;
                         computed.known = *imm;
                     }
@@ -332,6 +306,10 @@ impl super::Pass for OptimizeKnownBitsPass {
                                         _ => unreachable!(),
                                     };
 
+                                    // Clear out of bounds bits.
+                                    mask  &= ty_bitmask;
+                                    known &= ty_bitmask;
+
                                     if amount != 0 {
                                         // Some bits after shifting may become known.
                                         // Calculate mask of shifted out bits.
@@ -366,10 +344,10 @@ impl super::Pass for OptimizeKnownBitsPass {
 
                                                     mask |= amount_mask;
 
-                                                    if !sign {
-                                                        known &= !amount_mask;
-                                                    } else {
+                                                    if sign {
                                                         known |= amount_mask;
+                                                    } else {
+                                                        known &= !amount_mask;
                                                     }
                                                 }
                                             }
@@ -497,6 +475,7 @@ impl super::Pass for OptimizeKnownBitsPass {
                             Cast::Truncate | Cast::Bitcast => {
                                 // Just carry over previous known value and mask off truncated
                                 // part.
+                                computed        = value;
                                 computed.mask  &= ty_bitmask;
                                 computed.known &= ty_bitmask;
                             }
@@ -572,7 +551,9 @@ impl super::Pass for OptimizeKnownBitsPass {
                 }
             }
 
-            assert!(!computed.mask & computed.known == 0, "Computed invalid known bits.");
+            assert!(!computed.mask & computed.known == 0 &&
+                    computed.mask  & !ty_bitmask == 0 &&
+                    computed.known & !ty_bitmask == 0, "Computed invalid known bits.");
 
             known_bits.insert(value, computed);
         }
@@ -581,4 +562,39 @@ impl super::Pass for OptimizeKnownBitsPass {
 
         did_something
     }
+}
+
+#[allow(unused)]
+fn dump_known_bits(function: &FunctionData, known_bits: &Map<Value, KnownBits>) {
+    println!("Known bits for {}:", function.prototype.name);
+
+    for (value, known_bits) in known_bits {
+        if known_bits.mask == 0 {
+            continue;
+        }
+
+        print!("{}", value);
+
+        if value.0 < 10 {
+            print!(" ");
+        }
+
+        print!(": ");
+
+        let size = function.value_type(*value).size_bits();
+
+        for idx in (0..size).rev() {
+            let mask = 1 << idx;
+
+            if known_bits.mask & mask == 0 {
+                print!("_");
+            } else {
+                print!("{}", (known_bits.known >> idx) & 1);
+            }
+        }
+
+        println!();
+    }
+
+    println!();
 }
