@@ -83,14 +83,57 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
                         });
                     }
                 }
-                Instruction::Select { dst, on_true, on_false, .. } => {
-                    // If both values of the select instruction are the same we can
-                    // alias output value to one of the values.
+                Instruction::Select { dst, cond, on_true, on_false } => {
                     if values_equal(on_true, on_false) {
+                        // If both values of the select instruction are the same we can
+                        // alias output value to one of the values.
                         replacement = Some(Instruction::Alias {
                             dst,
                             value: on_true,
                         });
+                    } else {
+                        // Some optimization passes combined can create sequences like this:
+                        // v3 = icmp eq u32 v0, v2
+                        // v4 = select u1 v3, u32 v2, v0
+                        //
+                        // In this case we can optimize this to:
+                        // v4 = alias u32 v0
+
+                        let creator = creators.get(&cond).map(|location| {
+                            function.instruction(*location)
+                        });
+
+                        if let Some(Instruction::IntCompare { a, pred, b, .. }) = creator {
+                            // Get static result.
+                            let result = match pred {
+                                IntPredicate::Equal => {
+                                    if on_true == *a && on_false == *b {
+                                        Some(*b)
+                                    } else if on_true == *b && on_false == *a {
+                                        Some(*a)
+                                    } else {
+                                        None
+                                    }
+                                }
+                                IntPredicate::NotEqual => {
+                                    if on_true == *a && on_false == *b {
+                                        Some(*a)
+                                    } else if on_true == *b && on_false == *a {
+                                        Some(*b)
+                                    } else {
+                                        None
+                                    }
+                                }
+                                _ => None,
+                            };
+
+                            if let Some(result) = result {
+                                replacement = Some(Instruction::Alias {
+                                    dst,
+                                    value: result,
+                                });
+                            }
+                        }
                     }
                 }
                 Instruction::IntCompare { dst, a, pred, b } => {

@@ -52,6 +52,7 @@ macro_rules! passes {
 }
 
 pass!(pub remove_ineffective_operations, RemoveIneffectiveOperationsPass);
+pass!(pub propagate_block_invariants, PropagateBlockInvariantsPass);
 pass!(pub simplify_expressions, SimplifyExpressionsPass);
 pass!(pub undefined_propagate, UndefinedPropagatePass);
 pass!(pub optimize_known_bits, OptimizeKnownBitsPass);

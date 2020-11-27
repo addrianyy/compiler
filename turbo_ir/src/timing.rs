@@ -251,4 +251,4 @@ timing!(value_processing_order, pointer_users, users, find_stackallocs,
         remove_ineffective_operations, remove_known_loads, remove_nops, reorder,
         rewrite_values, simplify_cfg, simplify_compares, simplify_expressions,
         undefined_propagate, x86_reorder, infer_value_type, typecheck, build_type_info,
-        build_expression_chains, optimize_known_bits);
+        build_expression_chains, optimize_known_bits, propagate_block_invariants);

@@ -235,6 +235,10 @@ impl FunctionData {
         self.traverse_bfs(self.entry(), true)
     }
 
+    pub(super) fn reachable_labels_bfs(&self) -> Vec<Label> {
+        self.traverse_bfs(self.entry(), true)
+    }
+
     pub(super) fn reachable_labels_dfs(&self) -> Vec<Label> {
         time!(reachable_labels_dfs);
 

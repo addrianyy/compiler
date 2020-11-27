@@ -29,6 +29,7 @@ fn main() {
         turbo_ir::passes::undefined_propagate(),
         turbo_ir::passes::minimize_phis(),
         turbo_ir::passes::optimize_known_bits(),
+        turbo_ir::passes::propagate_block_invariants(),
         turbo_ir::passes::branch_to_select(),
         turbo_ir::passes::reorder(),
         turbo_ir::passes::x86reorder(),

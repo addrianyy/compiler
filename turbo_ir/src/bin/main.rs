@@ -20,6 +20,7 @@ impl PassRegistry {
             ("dse",           ir::passes::remove_dead_stores_precise()),
             ("rle",           ir::passes::remove_known_loads_precise()),
             ("cmp-simplify",  ir::passes::simplify_compares()),
+            ("invprop",       ir::passes::propagate_block_invariants()),
             ("select",        ir::passes::branch_to_select()),
             ("dce",           ir::passes::remove_dead_code()),
             ("constprop",     ir::passes::const_propagate()),

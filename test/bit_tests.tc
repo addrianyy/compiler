@@ -60,3 +60,13 @@ u32 addtest(i32 x, i32 y) {
 
     return (x + y) & 0xff;
 }
+
+u32 invariant(u32 x, u32 y) {
+    if (x == 5u32) {
+        if (x == 33u32) {
+            x = x + y;
+        }
+    }
+
+    return x;
+}
