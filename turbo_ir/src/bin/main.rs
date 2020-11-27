@@ -28,7 +28,7 @@ impl PassRegistry {
             ("phimin",        ir::passes::minimize_phis()),
             ("cfg-simplify",  ir::passes::simplify_cfg()),
             ("dedup",         ir::passes::deduplicate_precise()),
-            ("bitop",         ir::passes::optimize_known_bits()),
+            ("bitopt",        ir::passes::optimize_known_bits()),
             ("reorder",       ir::passes::reorder()),
             ("x86reorder",    ir::passes::x86reorder()),
         ];

@@ -1,28 +1,106 @@
-u32 invariant(u32 v0) {
+u32 invariant(u32 v0, u32 v1) {
 entry:
-  v1 = stackalloc u32
-  store u32* v1, u32 v0
-  v2 = u32 5
-  v3 = load u32, u32* v1
-  v4 = icmp eq u32 v3, v2
-  v5 = u8 0
-  v6 = u8 1
-  v7 = select u1 v4, u8 v6, v5
-  v8 = u8 0
-  v9 = icmp ne u8 v7, v8
-  bcond u1 v9, block_2, block_3
+  v2 = stackalloc u32
+  store u32* v2, u32 v0
+  v3 = stackalloc u32
+  store u32* v3, u32 v1
+  v4 = u32 3
+  v5 = u32 1
+  v6 = u32 2
+  v7 = mul u32 v5, v6
+  v8 = add u32 v4, v7
+  v9 = load u32, u32* v2
+  v10 = icmp eq u32 v9, v8
+  v11 = u8 0
+  v12 = u8 1
+  v13 = select u1 v10, u8 v12, v11
+  v14 = u8 0
+  v15 = icmp ne u8 v13, v14
+  bcond u1 v15, block_2, block_3
 
 block_2:
-  v10 = u32 10
-  v11 = load u32, u32* v1
-  v12 = add u32 v11, v10
-  store u32* v1, u32 v12
-  branch block_1
+  v16 = u32 33
+  v17 = load u32, u32* v2
+  v18 = icmp eq u32 v17, v16
+  v19 = u8 0
+  v20 = u8 1
+  v21 = select u1 v18, u8 v20, v19
+  v22 = u8 0
+  v23 = icmp ne u8 v21, v22
+  bcond u1 v23, block_5, block_6
 
 block_3:
+  v37 = u32 0
+  v38 = load u32, u32* v2
+  v39 = and u32 v38, v37
+  store u32* v2, u32 v39
+  v40 = stackalloc u64
+  v41 = load u32, u32* v3
+  v42 = zext u32 v41 to u64
+  store u64* v40, u64 v42
+  v43 = u32 5
+  v44 = neg u32 v43
+  v45 = sext u32 v44 to u64
+  v46 = load u64, u64* v40
+  v47 = icmp sgt u64 v46, v45
+  v48 = u8 0
+  v49 = u8 1
+  v50 = select u1 v47, u8 v49, v48
+  v51 = u8 0
+  v52 = icmp ne u8 v50, v51
+  bcond u1 v52, block_8, block_9
+
+block_5:
+  v24 = load u32, u32* v2
+  v25 = load u32, u32* v3
+  v26 = add u32 v24, v25
+  store u32* v2, u32 v26
+  branch block_4
+
+block_6:
+  v27 = u32 0
+  store u32* v2, u32 v27
+  v28 = u32 1
+  v29 = load u32, u32* v2
+  v30 = add u32 v29, v28
+  store u32* v2, u32 v30
+  v31 = u32 1
+  v32 = load u32, u32* v2
+  v33 = add u32 v32, v31
+  store u32* v2, u32 v33
+  v34 = u32 1
+  v35 = load u32, u32* v2
+  v36 = sub u32 v35, v34
+  store u32* v2, u32 v36
+  branch block_4
+
+block_8:
+  v53 = u32 1
+  v54 = load u32, u32* v2
+  v55 = xor u32 v54, v53
+  store u32* v2, u32 v55
+  branch block_7
+
+block_9:
+  branch block_7
+
+block_4:
+  branch block_1
+
+block_7:
   branch block_1
 
 block_1:
-  v13 = load u32, u32* v1
-  ret u32 v13
+  v56 = u32 2
+  v57 = not u32 v56
+  v58 = load u32, u32* v2
+  v59 = and u32 v58, v57
+  store u32* v2, u32 v59
+  v60 = load u32, u32* v2
+  v61 = trunc u32 v60 to u8
+  v62 = u8 33
+  v63 = add u8 v61, v62
+  v64 = zext u8 v63 to u32
+  ret u32 v64
 }
+
