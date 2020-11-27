@@ -874,8 +874,6 @@ impl FunctionData {
                         instruction, label);
             }
 
-            let mut can_see_phi = true;
-
             for (inst_id, instruction) in body.iter().enumerate() {
                 if let Some(value) = instruction.created_value() {
                     assert!(!self.is_value_undefined(value),
@@ -883,7 +881,6 @@ impl FunctionData {
                 }
 
                 if let Instruction::Phi { incoming, .. } = instruction {
-                    assert!(can_see_phi, "PHI nodes are not at the function beginning.");
                     assert_ne!(label, self.entry(), "Entry labels cannot have PHI nodes.");
                     assert!(!incoming.is_empty(), "PHI nodes cannot be empty.");
 
@@ -915,10 +912,6 @@ impl FunctionData {
                     }
 
                     continue;
-                }
-
-                if !matches!(instruction, Instruction::Nop | Instruction::Alias { .. }) {
-                    can_see_phi = false;
                 }
 
                 for value in instruction.read_values() {

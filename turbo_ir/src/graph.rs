@@ -180,6 +180,7 @@ impl FunctionData {
 
             is_first = false;
 
+            // Process true label before false label.
             for target in self.targets(label) {
                 queue.push_back(target);
             }
@@ -255,7 +256,7 @@ impl FunctionData {
 
             labels.push(label);
 
-            // It is beneficial for codegen to fallthrough to the true label.
+            // Process true label before false label.
             for target in self.targets(label).into_iter().rev() {
                 stack.push(target);
             }
