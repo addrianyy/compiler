@@ -917,7 +917,7 @@ impl FunctionData {
                     continue;
                 }
 
-                if !matches!(instruction, Instruction::Nop) {
+                if !matches!(instruction, Instruction::Nop | Instruction::Alias { .. }) {
                     can_see_phi = false;
                 }
 

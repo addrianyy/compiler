@@ -305,6 +305,9 @@ impl FunctionData {
                 let success = pass.inner.run_on_function_timed(self);
                 let elapsed = start.elapsed().as_secs_f64();
 
+                // TODO: Don't do this on release build maybe.
+                self.validate_ssa();
+
                 did_something |= success;
 
                 let statistics = &mut statistics[index];

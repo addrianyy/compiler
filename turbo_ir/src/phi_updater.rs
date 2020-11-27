@@ -1,4 +1,4 @@
-use super::{FunctionData, Label, Instruction, Set};
+use super::{FunctionData, Label, Instruction};
 
 #[derive(Default)]
 pub(super) struct PhiUpdater {
@@ -16,14 +16,14 @@ impl PhiUpdater {
 
     pub fn apply(self, function: &mut FunctionData) {
         // TODO: Actually use the removed data.
-        let labels: Set<Label> = function.reachable_labels()
-            .into_iter()
-            .collect();
+        let flow_incoming = function.flow_graph_incoming();
 
-        function.for_each_instruction_mut(|_location, instruction| {
+        function.for_each_instruction_mut(|location, instruction| {
             if let Instruction::Phi { incoming, .. } = instruction {
-                // Remove all incoming value with unreachable labels.
-                incoming.retain(|(label, _)| labels.contains(label));
+                let predecessors = &flow_incoming[&location.label()];
+
+                // Remove all incoming values with labels which are not predecessors.
+                incoming.retain(|(label, _)| predecessors.contains(label));
             }
         });
     }
