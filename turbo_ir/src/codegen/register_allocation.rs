@@ -342,6 +342,10 @@ impl InterferenceGraph {
 
         // https://staame.wordpress.com/2014/12/17/simple-chordal-graph-coloring/
 
+        if self.vertices.is_empty() {
+            return Vec::new();
+        }
+
         let last_vertex = self.vertices.iter().max_by_key(|vertex| vertex.0)
             .expect("Failed to find last vertex.");
 
