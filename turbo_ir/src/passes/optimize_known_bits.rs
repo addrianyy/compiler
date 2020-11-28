@@ -558,13 +558,14 @@ impl super::Pass for OptimizeKnownBitsPass {
             known_bits.insert(value, computed);
         }
 
-        //dump_known_bits(function, &known_bits);
+        if false {
+            dump_known_bits(function, &known_bits);
+        }
 
         did_something
     }
 }
 
-#[allow(unused)]
 fn dump_known_bits(function: &FunctionData, known_bits: &Map<Value, KnownBits>) {
     println!("Known bits for {}:", function.prototype.name);
 
