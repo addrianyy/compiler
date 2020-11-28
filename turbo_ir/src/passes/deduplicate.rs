@@ -1,7 +1,9 @@
 use crate::{FunctionData, Instruction, Location, LargeKeyMap, Map,
-            ValidationCache, analysis::KillTarget};
+            ValidationCache, analysis::KillTarget, CapacityExt};
 
-type DeduplicationKey = (std::mem::Discriminant<Instruction>, Vec<crate::instruction::Param>);
+type InstructionType     = std::mem::Discriminant<Instruction>;
+type DeduplicationKey    = (InstructionType, Vec<crate::instruction::Param>);
+type DeduplicationMap<V> = Map<InstructionType, LargeKeyMap<Vec<crate::instruction::Param>, V>>;
 
 fn can_be_deduplicated(instruction: &Instruction) -> bool {
     match instruction {
@@ -143,12 +145,27 @@ fn deduplicate_precise(function: &mut FunctionData) -> bool {
     did_something
 }
 
+fn get_deduplication_entry<'a, V>(map: &'a DeduplicationMap<V>,
+                                  key: &DeduplicationKey) -> Option<&'a V> {
+    if let Some(param_dedup_map) = map.get(&key.0) {
+        return param_dedup_map.get(&key.1);
+    }
+
+    None
+}
+
 /// Fast deduplication that can only deduplicate values within one block.
 fn deduplicate_fast(function: &mut FunctionData) -> bool {
-    let mut did_something                     = false;
-    let mut dedup_list: LargeKeyMap<_, usize> = LargeKeyMap::default();
+    let mut did_something                       = false;
+    let mut dedup_list: DeduplicationMap<usize> = DeduplicationMap::default();
 
     let pointer_analysis = function.analyse_pointers();
+
+    let insert = |map: &mut DeduplicationMap<usize>, key: DeduplicationKey, index: usize| {
+        map.entry(key.0)
+            .or_insert_with(|| LargeKeyMap::new_with_capacity(1))
+            .insert(key.1, index);
+    };
 
     for label in function.reachable_labels() {
         dedup_list.clear();
@@ -167,14 +184,14 @@ fn deduplicate_fast(function: &mut FunctionData) -> bool {
             let key = deduplication_key(instruction);
 
             // Try to get instruction which we can deduplicate this instruction from.
-            if let Some(&source_id) = dedup_list.get(&key) {
+            if let Some(&source_id) = get_deduplication_entry(&dedup_list, &key) {
                 if let Instruction::Load { ptr, .. } = &body[source_id] {
                     // Go through every instruction inbetween and make sure
                     // that nothing affected value of this pointer.
                     for instruction in &body[source_id + 1..inst_id] {
                         if function.can_store_pointer(instruction, &pointer_analysis, *ptr) {
                             // Make this `load` source for another deduplication.
-                            dedup_list.insert(key, inst_id);
+                            insert(&mut dedup_list, key, inst_id);
 
                             continue 'next_instruction;
                         }
@@ -189,7 +206,7 @@ fn deduplicate_fast(function: &mut FunctionData) -> bool {
                 did_something = true;
             } else {
                 // We haven't seen this instruction before, add it to the deduplication list.
-                dedup_list.insert(key, inst_id);
+                insert(&mut dedup_list, key, inst_id);
             }
         }
     }

@@ -1,6 +1,7 @@
 use crate::Set;
 use crate::passes;
 
+// All optimization passes here must be in correct order.
 const USER_PASSES: &[&dyn passes::Pass] = &[
     &passes::ConstPropagatePass,
     &passes::RemoveIneffectiveOperationsPass,
