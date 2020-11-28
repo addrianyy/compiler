@@ -168,7 +168,10 @@ fn deduplicate_fast(function: &mut FunctionData) -> bool {
     };
 
     for label in function.reachable_labels() {
-        dedup_list.clear();
+        // Clear deduplication list.
+        for param_map in dedup_list.values_mut() {
+            param_map.clear();
+        }
 
         let mut body = &function.blocks[&label];
         let body_len = body.len();
