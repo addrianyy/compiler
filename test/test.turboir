@@ -1,11 +1,20 @@
 u32 invariant(u32 v0, u32 v1) {
 entry:
-    one = u32 1
-    two = u32 2
-    three = u32 3
-    four = u32 4
-    x = add u32 one, two
-    y = mul u32 x, three
-    z = sub u32 y, four
-    ret u32 one
+    zero = u32 0
+    cond = icmp eq u32 v0, zero
+    bcond u1 cond, lbl1, lbl2
+
+lbl1:
+    x = u32 5
+    branch exit
+
+lbl2:
+    y = u32 7
+    branch exit
+
+exit:
+    d = phi u32 [lbl1: x, lbl2: y]
+    z = add u32 v0, v1
+    f = phi u32 [lbl1: x, lbl2: y]
+    ret u32 d
 }

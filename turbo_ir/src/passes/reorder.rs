@@ -15,6 +15,7 @@ impl super::Pass for ReorderPass {
         let mut did_something = false;
         let mut vcache        = ValidationCache::default();
         let dominators        = function.dominators();
+        let labels            = function.reachable_labels();
 
         // Reorder instructions so they are executed just before first
         // instruction that needs them. This reduces register pressure and makes
@@ -30,7 +31,7 @@ impl super::Pass for ReorderPass {
         //    In this case v10 and v11 will be swapped each pass and optimization will never
         //    finish.
 
-        for label in function.reachable_labels() {
+        for &label in &labels {
             let size = function.blocks[&label].len();
 
             for inst_id in 0..size {
@@ -122,6 +123,27 @@ impl super::Pass for ReorderPass {
 
                         did_something = true;
                     }
+                }
+            }
+        }
+
+        for label in labels {
+            let mut phi_index = 0;
+            let mut body      = function.blocks.get_mut(&label).unwrap();
+            let size          = body.len();
+
+            // Move all PHIs to the top of the block.
+            for inst_id in 0..size {
+                if body[inst_id].is_phi() {
+                    // If there is non-PHI instruction inbetween PHIs than move PHI up.
+                    if inst_id != phi_index {
+                        let instruction = body.remove(inst_id);
+                        body.insert(phi_index, instruction);
+
+                        // There is no point in setting `did_something` here.
+                    }
+
+                    phi_index += 1;
                 }
             }
         }
