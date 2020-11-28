@@ -57,6 +57,7 @@ impl PassRegistry {
     }
 }
 
+#[derive(PartialEq, Eq)]
 enum Request {
     Add,
     Remove,
@@ -90,6 +91,8 @@ fn main() -> io::Result<()> {
             }}
         }
 
+        let mut stats = false;
+
         for argument in &args[1..] {
             let request = if argument.starts_with('+') {
                 Request::Add
@@ -110,15 +113,19 @@ fn main() -> io::Result<()> {
                     }
                 }
                 name => {
-                    let pass = registry.pass_by_name(name).unwrap_or_else(|| {
-                        println!("Unrecognised IR pass: {}.", name);
-                        std::process::exit(-1);
-                    });
+                    if name == "stats" {
+                        stats = request == Request::Add;
+                    } else {
+                        let pass = registry.pass_by_name(name).unwrap_or_else(|| {
+                            println!("Unrecognised IR pass: {}.", name);
+                            std::process::exit(-1);
+                        });
 
-                    match request {
-                        Request::Add    => add_pass!(pass),
-                        Request::Remove => remove_pass!(pass),
-                    };
+                        match request {
+                            Request::Add    => add_pass!(pass),
+                            Request::Remove => remove_pass!(pass),
+                        };
+                    }
                 }
             }
         }
@@ -127,7 +134,7 @@ fn main() -> io::Result<()> {
             .map(|pass| registry.pass(pass))
             .collect();
 
-        module.optimize(&passes, false);
+        module.optimize(&passes, stats);
 
         module.for_each_local_function(|_prototype, function| {
             module.dump_function_text_stdout(function);

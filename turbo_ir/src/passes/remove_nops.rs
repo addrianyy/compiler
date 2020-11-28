@@ -1,4 +1,4 @@
-use crate::{FunctionData, Instruction};
+use crate::FunctionData;
 
 pub struct RemoveNopsPass;
 
@@ -18,7 +18,7 @@ impl super::Pass for RemoveNopsPass {
         for label in function.reachable_labels() {
             function.blocks.get_mut(&label)
                 .unwrap()
-                .retain(|instruction| !matches!(instruction, Instruction::Nop));
+                .retain(|instruction| !instruction.is_nop());
         }
 
         // This optimization pass shouldn't change anything so just return false.
