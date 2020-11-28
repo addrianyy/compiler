@@ -11,7 +11,7 @@ extern "win64" fn print_char(_ch: u8) {
 }
 
 fn main() {
-    let program = std::fs::read_to_string("mandel.bf").unwrap();
+    let program = std::fs::read_to_string("hanoi.bf").unwrap();
     let mut ir  = ir::Module::new();
 
     let input = unsafe {
@@ -158,7 +158,7 @@ fn main() {
 
     let start = Instant::now();
 
-    ir.optimize(passes, false);
+    ir.optimize(passes, true);
 
     let optimize_time = start.elapsed().as_secs_f64();
 
@@ -194,7 +194,7 @@ fn main() {
     let start = Instant::now();
 
     unsafe {
-        function_ptr(buffer.as_mut_ptr());
+        //function_ptr(buffer.as_mut_ptr());
     }
 
     let running_time = start.elapsed().as_secs_f64();

@@ -128,9 +128,10 @@ impl super::Pass for ReorderPass {
         }
 
         for label in labels {
+            let body = function.blocks.get_mut(&label).unwrap();
+            let size = body.len();
+
             let mut phi_index = 0;
-            let mut body      = function.blocks.get_mut(&label).unwrap();
-            let size          = body.len();
 
             // Move all PHIs to the top of the block.
             for inst_id in 0..size {

@@ -92,7 +92,7 @@ impl super::Pass for PropagateBlockInvariantsPass {
                 // Get known invariants for this predecessor. If we don't know them just
                 // create an empty invariant list.
                 let mut invariants = invariants.get(&predecessor).cloned()
-                    .unwrap_or_else(|| Map::default());
+                    .unwrap_or_else(Map::default);
 
                 // Get new invariant that we may know thanks to the conditional branch result.
                 let invariant = get_invariant_value(function, predecessor, label,

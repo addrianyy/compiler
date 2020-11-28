@@ -86,7 +86,7 @@ impl super::Pass for RemoveDeadCodePass {
         });
 
         // Remove all instructions that return value that is not used.
-        for (_, &creator) in &creators {
+        for &creator in creators.values() {
             did_something |= try_to_dce(function, creator, &creators, &mut value_uses,
                                         &mut work_list);
         }

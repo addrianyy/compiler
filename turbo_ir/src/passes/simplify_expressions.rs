@@ -122,11 +122,8 @@ impl super::Pass for SimplifyExpressionsPass {
                                         None
                                     } else {
                                         // Join current operation and previous chain into one.
-                                        // Previous chain has only one use and after simplification
-                                        // it will have no uses. Therefore DCE will remove it
-                                        // and there is no point in evaluating it. Remove it.
 
-                                        let mut chain = chains.remove(&value).unwrap();
+                                        let mut chain = chain.clone();
                                         chain.consts.push(constant);
 
                                         Some(chain)

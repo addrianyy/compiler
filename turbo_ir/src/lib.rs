@@ -306,7 +306,7 @@ impl FunctionData {
                 let elapsed = start.elapsed().as_secs_f64();
 
                 // TODO: Don't do this on release build maybe.
-                self.validate_ssa();
+                //self.validate_ssa();
 
                 did_something |= success;
 
