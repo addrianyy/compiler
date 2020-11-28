@@ -440,6 +440,7 @@ impl FunctionData {
         false
     }
 
+    #[allow(unused)]
     pub(super) fn constant_values(&self) -> Map<Value, (Type, Const)> {
         self.constant_values_with_labels(&self.reachable_labels())
     }
