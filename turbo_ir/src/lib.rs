@@ -33,6 +33,8 @@ use graph::FlowGraph;
 use passes::Pass;
 use collections::{Map, Set, LargeKeyMap, CapacityExt};
 
+const VALIDATE_AFTER_EVERY_PASS: bool = false;
+
 #[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct Value(u32);
 
@@ -296,11 +298,11 @@ impl FunctionData {
                 let success = pass.run_on_function_timed(self);
                 let elapsed = start.elapsed().as_secs_f64();
 
-                if false {
+                did_something |= success;
+
+                if VALIDATE_AFTER_EVERY_PASS && success {
                     self.validate_ssa();
                 }
-
-                did_something |= success;
 
                 let statistics = &mut statistics[index];
 
