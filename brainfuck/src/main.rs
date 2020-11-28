@@ -158,7 +158,9 @@ fn main() {
 
     let start = Instant::now();
 
-    ir.optimize(passes, true);
+    let pass_manager = turbo_ir::PassManager::with_passes(passes);
+
+    ir.optimize(&pass_manager, true);
 
     let optimize_time = start.elapsed().as_secs_f64();
 
@@ -193,8 +195,10 @@ fn main() {
 
     let start = Instant::now();
 
-    unsafe {
-        //function_ptr(buffer.as_mut_ptr());
+    if false {
+        unsafe {
+            function_ptr(buffer.as_mut_ptr());
+        }
     }
 
     let running_time = start.elapsed().as_secs_f64();

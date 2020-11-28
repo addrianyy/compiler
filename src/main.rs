@@ -35,7 +35,9 @@ fn main() {
         turbo_ir::passes::x86reorder(),
     ];
 
-    compiled.ir.optimize(passes, false);
+    let pass_manager = turbo_ir::PassManager::with_passes(passes);
+
+    compiled.ir.optimize(&pass_manager, false);
 
     recreate_directory("mcode");
     recreate_directory("graphs");

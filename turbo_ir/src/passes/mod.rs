@@ -15,6 +15,12 @@ pub struct IRPass {
     pub(super) inner: &'static dyn Pass,
 }
 
+impl IRPass {
+    pub(super) fn name(&self) -> &str {
+        self.inner.name()
+    }
+}
+
 macro_rules! pass {
     (pub $module: ident, $pass: ident) => {
         mod $module;

@@ -2,6 +2,7 @@
 
 mod instruction_builders;
 mod type_inference;
+mod pass_manager;
 mod instruction;
 mod collections;
 mod phi_updater;
@@ -22,8 +23,8 @@ use std::rc::Rc;
 
 pub use ty::Type;
 pub use instruction::{UnaryOp, BinaryOp, IntPredicate, Cast};
-pub use codegen::MachineCode;
-pub use codegen::backends;
+pub use codegen::{MachineCode, backends};
+pub use pass_manager::PassManager;
 use instruction::Instruction;
 use phi_updater::PhiUpdater;
 use analysis::{ConstType, ValidationCache};
@@ -263,7 +264,7 @@ impl FunctionData {
         self.build_type_info();
     }
 
-    fn optimize(&mut self, passes: &[passes::IRPass], show_statistics: bool) {
+    fn optimize(&mut self, passes: &[&dyn passes::Pass], show_statistics: bool) {
         time!(optimize);
 
         #[derive(Debug, Default, Clone)]
@@ -275,16 +276,6 @@ impl FunctionData {
 
         if passes.is_empty() {
             return;
-        }
-
-        {
-            // Make sure that there are not duplicate passes.
-            let mut pass_names = Set::new_with_capacity(passes.len());
-
-            for pass in passes {
-                assert!(pass_names.insert(pass.inner.name()), "Multiple {} passes.",
-                        pass.inner.name());
-            }
         }
 
         let default_passes: &[&dyn Pass] = &[
@@ -302,7 +293,7 @@ impl FunctionData {
 
             for (index, pass) in passes.iter().enumerate() {
                 let start   = Instant::now();
-                let success = pass.inner.run_on_function_timed(self);
+                let success = pass.run_on_function_timed(self);
                 let elapsed = start.elapsed().as_secs_f64();
 
                 // TODO: Don't do this on release build maybe.
@@ -344,7 +335,7 @@ impl FunctionData {
             let mut total_passes_time = 0.0;
 
             for statistics in &statistics {
-                let name = passes[statistics.index].inner.name();
+                let name = passes[statistics.index].name();
 
                 let is_longer = match longest_pass_name {
                     Some(other) => name.len() > other,
@@ -361,7 +352,7 @@ impl FunctionData {
             let longest_pass_name = longest_pass_name.expect("Failed to get longest pass name.");
 
             for statistics in &statistics {
-                let name = passes[statistics.index].inner.name();
+                let name = passes[statistics.index].name();
 
                 print!("{} ", name);
 
@@ -595,14 +586,16 @@ impl Module {
         self.finalized = true;
     }
 
-    pub fn optimize(&mut self, passes: &[passes::IRPass], show_statistics: bool) {
+    pub fn optimize(&mut self, pass_manager: &PassManager, show_statistics: bool) {
         let _runtime = timing::runtime_block();
 
         assert!(self.finalized, "Cannot optimize before finalization.");
 
+        let pass_list = pass_manager.build_pass_list();
+
         for internal in self.functions.values_mut() {
             if let FunctionInternal::Local(data) = internal {
-                data.optimize(passes, show_statistics);
+                data.optimize(&pass_list, show_statistics);
             }
         }
     }

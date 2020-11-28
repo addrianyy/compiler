@@ -19,6 +19,8 @@ impl PassRegistry {
             ("undefprop",     ir::passes::undefined_propagate()),
             ("dse",           ir::passes::remove_dead_stores_precise()),
             ("rle",           ir::passes::remove_known_loads_precise()),
+            ("dse-fast",      ir::passes::remove_dead_stores_fast()),
+            ("rle-fast",      ir::passes::remove_known_loads_fast()),
             ("cmp-simplify",  ir::passes::simplify_compares()),
             ("invprop",       ir::passes::propagate_block_invariants()),
             ("select",        ir::passes::branch_to_select()),
@@ -28,6 +30,7 @@ impl PassRegistry {
             ("phimin",        ir::passes::minimize_phis()),
             ("cfg-simplify",  ir::passes::simplify_cfg()),
             ("dedup",         ir::passes::deduplicate_precise()),
+            ("dedup-fast",    ir::passes::deduplicate_fast()),
             ("bitopt",        ir::passes::optimize_known_bits()),
             ("reorder",       ir::passes::reorder()),
             ("x86reorder",    ir::passes::x86reorder()),
@@ -134,7 +137,9 @@ fn main() -> io::Result<()> {
             .map(|pass| registry.pass(pass))
             .collect();
 
-        module.optimize(&passes, stats);
+        let pass_manager = ir::PassManager::with_passes(&passes);
+
+        module.optimize(&pass_manager, stats);
 
         module.for_each_local_function(|_prototype, function| {
             module.dump_function_text_stdout(function);

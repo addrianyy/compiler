@@ -487,8 +487,7 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
             }
 
             // Remove aliases because this function doesn't work well with aliases.
-            crate::passes::RemoveAliasesPass.run_on_function_timed(function);
-
+            did_something |= crate::passes::RemoveAliasesPass.run_on_function_timed(function);
         }
 
         did_something
