@@ -342,55 +342,35 @@ impl InterferenceGraph {
 
         // https://staame.wordpress.com/2014/12/17/simple-chordal-graph-coloring/
 
-        let mut max_index = 0;
-
-        for &vertex in &self.vertices {
-            if vertex.0 > max_index {
-                max_index = vertex.0;
-            }
-        }
+        let last_vertex = self.vertices.iter().max_by_key(|vertex| vertex.0)
+            .expect("Failed to find last vertex.");
 
         // Assign weight of 0 for all vertices.
-        let mut weights = vec![0; max_index as usize + 1];
+        let mut weights = vec![0; last_vertex.0 as usize + 1];
 
-        // Empty elimination order.
+        // Start with empty elimination order.
         let mut elimination_ordering = Vec::with_capacity(self.vertices.len());
 
         // Start with all vertices queued for processing.
-        let mut queue: Vec<_> = self.vertices.iter()
+        let mut to_process: Vec<_> = self.vertices.iter()
             .copied()
             .collect();
 
-        while !queue.is_empty() {
-            let mut heaviest = None;
-
-            // Find vertex in the queue with highest weight.
-            for (index, &vertex) in queue.iter().enumerate() {
-                let weight  = weights[vertex.0 as usize];
-                let heavier = match heaviest {
-                    Some((_, _, other_weight)) => weight > other_weight,
-                    None                       => true,
-                };
-
-                if heavier {
-                    heaviest = Some((index, vertex, weight));
-                }
-            }
-
-            // Get vertex from the queue with maximum weight.
-            let heaviest = heaviest.expect("Failed to find heaviest vertex.");
-
+        // Remove heaviest element from `to_process`.
+        while let Some(heaviest) = to_process.pop() {
             // Get all neighbours of the vertex with maximum weight.
-            let adjacent = &self.edges[&heaviest.1];
+            let adjacent = &self.edges[&heaviest];
 
-            // Remove vertex from the queue and append it to perfect elimination order.
-            queue.remove(heaviest.0);
-            elimination_ordering.push(heaviest.1);
+            // Append vertex to perfect elimination order.
+            elimination_ordering.push(heaviest);
 
             // Increase weights of all neighbour vertices.
             for vertex in adjacent {
                 weights[vertex.0 as usize] += 1;
             }
+
+            // Sort to make heaviest vertex last element in the `to_process` array.
+            to_process.sort_unstable_by_key(|vertex| weights[vertex.0 as usize]);
         }
 
         elimination_ordering
