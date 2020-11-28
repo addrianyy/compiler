@@ -8,9 +8,10 @@ struct Chain {
     op:     BinaryOp,
 }
 
-fn rebuild_creators_in_block(function: &FunctionData,
-                             creators: &mut Map<Value, Location>, label: Label) {
-    for (inst_id, instruction) in function.blocks[&label].iter().enumerate() {
+fn rebuild_creators_in_block(function: &FunctionData, creators: &mut Map<Value, Location>,
+                             label: Label, start_index: usize) {
+    for (inst_id, instruction) in function.blocks[&label][start_index..].iter().enumerate() {
+        let inst_id  = inst_id + start_index;
         let location = Location::new(label, inst_id);
 
         if let Some(value) = instruction.created_value() {
@@ -193,7 +194,7 @@ impl super::Pass for SimplifyExpressionsPass {
             }
 
             // We have modified `creator.label()` so we need to rebuild creators for it.
-            rebuild_creators_in_block(function, &mut creators, creator.label());
+            rebuild_creators_in_block(function, &mut creators, creator.label(), creator.index());
 
             did_something = true;
         }

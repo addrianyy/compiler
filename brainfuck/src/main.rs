@@ -7,7 +7,7 @@ extern "win64" fn read_char() -> u8 {
 }
 
 extern "win64" fn print_char(_ch: u8) {
-    //print!("{}", _ch as char);
+    print!("{}", _ch as char);
 }
 
 fn main() {
