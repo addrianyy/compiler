@@ -108,12 +108,15 @@ impl super::Pass for SimplifyCFGPass {
         for &label in &labels {
             let body = &function.blocks[&label];
 
+            let nops  = body.iter().filter(|instruction| instruction.is_nop()).count();
+            let count = body.len() - nops;
+
             // Only 1 instruction is allowed.
-            if body.len() != 1 {
+            if count != 1 {
                 continue;
             }
 
-            if let Instruction::Branch { target } = body[0] {
+            if let Instruction::Branch { target } = body[body.len() - 1] {
                 // If we have found an infinite loop then ignore it.
                 if target != label {
                     // Insert a candidate block for flattening CFG.

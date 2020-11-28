@@ -396,4 +396,8 @@ impl Instruction {
     pub fn is_phi(&self) -> bool {
         matches!(self, Instruction::Phi { .. })
     }
+
+    pub fn is_nop(&self) -> bool {
+        matches!(self, Instruction::Nop)
+    }
 }

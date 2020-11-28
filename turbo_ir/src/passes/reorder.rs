@@ -36,8 +36,9 @@ impl super::Pass for ReorderPass {
             for inst_id in 0..size {
                 let instruction = &function.blocks[&label][inst_id];
 
-                // Loads, PHIs and volatile instructions cannot be reordered.
-                if !instruction.can_be_reordered() {
+                // Loads, PHIs, volatile instructions, `nop`s and `alias`es cannot be reordered.
+                if !instruction.can_be_reordered() || instruction.is_nop() ||
+                    matches!(instruction, Instruction::Alias { .. }) {
                     continue;
                 }
 

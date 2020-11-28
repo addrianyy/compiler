@@ -29,9 +29,11 @@ fn move_instructions(function: &mut FunctionData, treshold: usize,
             if !instruction.can_be_reordered() {
                 return false;
             }
-        }
 
-        total_instructions += size - 1;
+            if !instruction.is_nop() {
+                total_instructions += 1;
+            }
+        }
     }
 
     if total_instructions > treshold {

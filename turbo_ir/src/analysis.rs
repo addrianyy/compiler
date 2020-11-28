@@ -642,6 +642,10 @@ impl FunctionData {
                     continue;
                 }
 
+                if instruction.is_nop() {
+                    continue;
+                }
+
                 if !verifier(instruction) {
                     return None;
                 }
@@ -654,6 +658,10 @@ impl FunctionData {
         if !included_start {
             // Make sure there is no invalid instruction in the remaining part of start block.
             for instruction in &self.blocks[&start_label][start.index() + 1..] {
+                if instruction.is_nop() {
+                    continue;
+                }
+
                 if !verifier(instruction) {
                     return None;
                 }
@@ -666,6 +674,10 @@ impl FunctionData {
         if !included_end {
             // Make sure there is no invalid instruction in the initial part of end block.
             for instruction in &self.blocks[&end_label][..end.index()] {
+                if instruction.is_nop() {
+                    continue;
+                }
+
                 if !verifier(instruction) {
                     return None;
                 }
