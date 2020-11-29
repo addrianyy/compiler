@@ -11,7 +11,7 @@ extern "win64" fn print_char(_ch: u8) {
 }
 
 fn main() {
-    let program = std::fs::read_to_string("hanoi.bf").unwrap();
+    let program = std::fs::read_to_string("test.bf").unwrap();
     let mut ir  = ir::Module::new();
 
     let input = unsafe {
@@ -160,14 +160,14 @@ fn main() {
 
     let pass_manager = turbo_ir::PassManager::with_passes(passes);
 
-    ir.optimize(&pass_manager, true);
+    //ir.optimize(&pass_manager, true);
 
     let optimize_time = start.elapsed().as_secs_f64();
 
-    /*
-    use std::fs::File;
-    ir.dump_function_text(function, &mut File::create("result.turboir").unwrap()).unwrap();
-    */
+    if true {
+        use std::fs::File;
+        ir.dump_function_text(function, &mut File::create("result.turboir").unwrap()).unwrap();
+    }
 
     type Func = unsafe extern "win64" fn(*mut u8);
 

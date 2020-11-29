@@ -167,7 +167,7 @@ impl super::Pass for OptimizeKnownBitsPass {
                     Instruction::Const { imm, .. } => {
                         // For constant all bits are known.
                         computed.mask  = ty_bitmask;
-                        computed.known = *imm;
+                        computed.known = *imm & ty_bitmask;
                     }
                     Instruction::Alias { value, .. } => {
                         computed = known_bits[value];
