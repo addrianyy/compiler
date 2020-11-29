@@ -1,4 +1,5 @@
 use super::{Value, Function, Label, Type};
+use smallvec::{SmallVec, smallvec};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum UnaryOp {
@@ -276,28 +277,28 @@ impl Instruction {
         }
     }
 
-    pub fn read_values(&self) -> Vec<Value> {
+    pub fn read_values(&self) -> SmallVec<[Value; 4]> {
         // Keep these values in proper order so register allocator can reuse some registers.
         // For example in %5 = add %0 %1, %5 and %0 may get allocated in the same register.
 
         match *self {
-            Instruction::ArithmeticUnary  { value, ..         } => vec![value],
-            Instruction::ArithmeticBinary { a, b, ..          } => vec![a, b],
-            Instruction::IntCompare       { a, b, ..          } => vec![a, b],
-            Instruction::Load             { ptr, ..           } => vec![ptr],
-            Instruction::Store            { ptr, value        } => vec![ptr, value],
-            Instruction::Call             { ref args, ..      } => args.clone(),
-            Instruction::Branch           { ..                } => vec![],
-            Instruction::BranchCond       { cond, ..          } => vec![cond],
-            Instruction::StackAlloc       { ..                } => vec![],
+            Instruction::ArithmeticUnary  { value, ..         } => smallvec![value],
+            Instruction::ArithmeticBinary { a, b, ..          } => smallvec![a, b],
+            Instruction::IntCompare       { a, b, ..          } => smallvec![a, b],
+            Instruction::Load             { ptr, ..           } => smallvec![ptr],
+            Instruction::Store            { ptr, value        } => smallvec![ptr, value],
+            Instruction::Call             { ref args, ..      } => args.clone().into(),
+            Instruction::Branch           { ..                } => smallvec![],
+            Instruction::BranchCond       { cond, ..          } => smallvec![cond],
+            Instruction::StackAlloc       { ..                } => smallvec![],
             Instruction::Return           { value, ..         } => value.into_iter().collect(),
-            Instruction::Const            { ..                } => vec![],
-            Instruction::GetElementPtr    { source, index, .. } => vec![source, index],
-            Instruction::Cast             { value, ..         } => vec![value],
-            Instruction::Alias            { value, ..         } => vec![value],
-            Instruction::Nop                                    => vec![],
+            Instruction::Const            { ..                } => smallvec![],
+            Instruction::GetElementPtr    { source, index, .. } => smallvec![source, index],
+            Instruction::Cast             { value, ..         } => smallvec![value],
+            Instruction::Alias            { value, ..         } => smallvec![value],
+            Instruction::Nop                                    => smallvec![],
             Instruction::Select { cond, on_true, on_false, .. } => {
-                vec![cond, on_true, on_false]
+                smallvec![cond, on_true, on_false]
             }
             Instruction::Phi { ref incoming, .. } => {
                 incoming.iter()
