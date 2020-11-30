@@ -369,7 +369,7 @@ impl X86Backend {
     }
 
     fn generate_gep_access(&mut self, cx: &X86CodegenContext, location: Location,
-                           instructions: &[&Instruction]) -> usize {
+                           instructions: &[Instruction]) -> usize {
         let r        = cx.resolver(location);
         let function = &cx.function;
 
@@ -411,7 +411,7 @@ impl X86Backend {
     }
 
     fn generate_complex_gep_access(&mut self, cx: &X86CodegenContext, location: Location,
-                                   mut instructions: &[&Instruction]) -> usize {
+                                   mut instructions: &[Instruction]) -> usize {
         let r        = cx.resolver(location);
         let function = &cx.function;
 
@@ -505,63 +505,18 @@ impl X86Backend {
     fn generate_from_patterns(&mut self, cx: &X86CodegenContext, location: Location,
                               instructions: &[Instruction],
                               next_label:   Option<crate::Label>) -> usize {
-        const MAX_INSTRUCTIONS: usize = 10;
-
-        let     instruction_count     = MAX_INSTRUCTIONS.min(instructions.len());
-        let mut filtered_instructions = Vec::with_capacity(instruction_count);
-
-        for (index, instruction) in instructions[..instruction_count].iter().enumerate() {
-            let location = Location::new(location.label(), location.index() + index);
-
-            // Skip instructions which create constants and are removable.
-            if cx.x86_data.register_allocation.skips.contains(&location) {
-                continue;
-            }
-
-            filtered_instructions.push(instruction);
-        }
-
-        let get_skipped = |generated: usize| {
-            let mut skipped  = 0;
-            let mut iterator = 0;
-
-            if generated == 0 {
-                return 0;
-            }
-
-            for (index, _instruction) in instructions.iter().enumerate() {
-                let location = Location::new(location.label(), location.index() + index);
-
-                // Skip instructions which create constants and are removable.
-                if cx.x86_data.register_allocation.skips.contains(&location) {
-                    skipped += 1;
-                    continue;
-                }
-
-                iterator += 1;
-
-                if generated == iterator {
-                    return skipped;
-                }
-            }
-
-            panic!("Failed to get amount if skipped instructions.");
-        };
-
-        let instructions: &[&Instruction] = &filtered_instructions;
-
         if instructions.is_empty() {
             return 0;
         }
 
         let generated = self.generate_complex_gep_access(cx, location, instructions);
         if  generated > 0 {
-            return generated + get_skipped(generated);
+            return generated;
         }
 
         let generated = self.generate_gep_access(cx, location, instructions);
         if  generated > 0 {
-            return generated + get_skipped(generated);
+            return generated;
         }
 
         let function = cx.function;
@@ -725,7 +680,7 @@ impl X86Backend {
             _ => 0,
         };
 
-        generated + get_skipped(generated)
+        generated
     }
 
     fn generate_function_body(&mut self, cx: &X86CodegenContext, labels: &[crate::Label]) {
@@ -769,11 +724,6 @@ impl X86Backend {
                 // Calculate values for next iteration.
                 inst_id      += 1;
                 instructions = &instructions[1..];
-
-                // Skip instructions which create constants and are removable.
-                if cx.x86_data.register_allocation.skips.contains(&location) {
-                    continue;
-                }
 
                 let asm = &mut self.asm;
 

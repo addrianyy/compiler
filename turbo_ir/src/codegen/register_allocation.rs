@@ -16,7 +16,6 @@ pub enum Place {
 pub struct RegisterAllocation {
     pub allocation:     Map<Value, Place>,
     pub used_registers: Set<usize>,
-    pub skips:          Set<Location>,
     pub slots:          usize,
 }
 
@@ -1060,6 +1059,7 @@ impl FunctionData {
             let ty    = self.value_type(value);
             let alias = self.allocate_typed_value(ty);
 
+            // TODO: Use LCA on dominator tree to find the best insertion point.
             self.blocks.get_mut(&self.entry()).unwrap().insert(0, Instruction::Alias {
                 dst: alias,
                 value,
@@ -1254,7 +1254,6 @@ impl FunctionData {
             allocation: value_to_place,
             slots:      stack_slots,
             used_registers,
-            skips: Set::default(),
         }
     }
 }
