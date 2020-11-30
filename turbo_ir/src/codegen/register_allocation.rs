@@ -601,7 +601,7 @@ impl FunctionData {
 
     fn interference_graph(
         &self,
-        bfs_labels:         &[Label],
+        labels:             &[Label],
         virtual_registers:  &VirtualRegisters,
         liveness:           &Liveness,
         dominators:         &Dominators,
@@ -626,7 +626,7 @@ impl FunctionData {
         let mut interference = InterferenceGraph::default();
         let mut to_free: Vec<Value> = Vec::new();
 
-        for &label in bfs_labels {
+        for &label in labels {
             // If there is no register usage state for this block then take one
             // from immediate dominator (as we can only use values originating from it).
             #[allow(clippy::map_entry)]
@@ -705,7 +705,7 @@ impl FunctionData {
 
     fn map_virtual_registers(
         &self,
-        bfs_labels: &[Label],
+        labels:     &[Label],
         liveness:   &Liveness,
         dominators: &Dominators,
         constants:  &Map<Value, i64>,
@@ -736,7 +736,7 @@ impl FunctionData {
 
         // Build interference graph which is required for coalescing.
         let interference = self.interference_graph(
-            bfs_labels,
+            labels,
             &virtual_registers,
             liveness,
             dominators,
@@ -1010,18 +1010,17 @@ impl FunctionData {
         }
     }
 
-    fn constants_and_skips(&self, backend: &dyn Backend, labels: &[Label])
-        -> (Map<Value, i64>, Set<Location>)
+    fn process_constants(&self, backend: &dyn Backend, labels: &[Label])
+        -> (Map<Value, i64>, Set<Value>)
     {
-        time!(constants_and_skips);
+        time!(process_constants);
 
-        let mut constants = Map::default();
-        let mut skips     = Set::default();
+        let mut constants    = Map::default();
+        let mut uninlineable = Set::default();
 
-        let creators = self.value_creators_with_labels(labels);
-        let users    = self.users_with_labels(labels);
+        let users = self.users_with_labels(labels);
 
-        for (value, (ty, constant)) in self.constant_values_with_labels(labels) {
+        for (&value, &(ty, constant)) in &self.constants {
             // Sign extend constant to 64 bit value.
             let constant = match ConstType::new(ty) {
                 ConstType::U1  => (constant & 1) as i64,
@@ -1038,14 +1037,50 @@ impl FunctionData {
                     .collect()
             }).unwrap_or_else(Vec::new);
 
-            if backend.can_inline_constant(self, value, constant, &users) {
-                // This is optimizable constant, add it to the list.
-                constants.insert(value, constant);
-                skips.insert(creators[&value]);
+            if users.is_empty() {
+                continue;
+            }
+
+            // This is used constant, add it to the list.
+            constants.insert(value, constant);
+
+            if !backend.can_inline_constant(self, value, constant, &users) {
+                // This is uninlineable constant, add it to the list.
+                uninlineable.insert(value);
             }
         }
 
-        (constants, skips)
+        (constants, uninlineable)
+    }
+
+    fn rewrite_constants(&mut self, labels: &[Label], uninlineable: Set<Value>) {
+        let mut rewritten = Map::default();
+
+        for value in uninlineable {
+            let ty    = self.value_type(value);
+            let alias = self.allocate_typed_value(ty);
+
+            self.blocks.get_mut(&self.entry()).unwrap().insert(0, Instruction::Alias {
+                dst: alias,
+                value,
+            });
+
+            rewritten.insert(value, alias);
+        }
+
+        self.for_each_instruction_with_labels_mut(labels, |_location, instruction| {
+            if matches!(instruction, Instruction::Alias { .. }) {
+                return;
+            }
+
+            instruction.transform_inputs(|input| {
+                if let Some(alias) = rewritten.get(input) {
+                    *input = *alias;
+                }
+            });
+        });
+
+        self.validate_ssa();
     }
 
     pub(super) fn allocate_registers(&mut self, backend: &dyn Backend) -> RegisterAllocation {
@@ -1057,8 +1092,9 @@ impl FunctionData {
         self.rewrite_phis(&labels);
         self.rewrite_arguments(&labels);
 
-        // Get all constant values and all `iconst` instructions that we can skip.
-        let (constants, skips) = self.constants_and_skips(backend, &labels);
+        let (constants, uninlineable) = self.process_constants(backend, &labels);
+
+        self.rewrite_constants(&labels, uninlineable);
 
         let dominators = self.dominators();
         let liveness   = self.liveness(&dominators, &labels);
@@ -1218,7 +1254,7 @@ impl FunctionData {
             allocation: value_to_place,
             slots:      stack_slots,
             used_registers,
-            skips,
+            skips: Set::default(),
         }
     }
 }

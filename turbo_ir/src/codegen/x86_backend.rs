@@ -799,34 +799,6 @@ impl X86Backend {
                             });
                         }
                     }
-                    /*
-                    Instruction::Const { dst, ty, imm } => {
-                        let size = type_to_operand_size(*ty, true);
-
-                        // Make sure that U1 (bool) has correct constant value.
-                        if *ty == Type::U1 {
-                            assert!(*imm == 0 || *imm == 1, "Invalid U1 constant {}.", imm);
-                        }
-
-                        asm.with_size(size, |asm| {
-                            let dst = r.resolve(*dst);
-
-                            // Properly sign-extend value as required by x86.
-                            let imm = signextend(*imm, size);
-
-                            if imm > i32::MAX as i64 || imm < i32::MIN as i64 {
-                                // We must use different instructions sequence
-                                // for values which don't fit in imm32.
-                                asm.mov(&[Reg(Rax), Imm(imm)]);
-                                asm.mov(&[dst, Reg(Rax)]);
-                            } else if imm != 0 || dst.is_memory() {
-                                asm.mov(&[dst, Imm(imm)]);
-                            } else {
-                                asm.xor(&[dst, dst]);
-                            }
-                        });
-                    }
-                    */
                     Instruction::ArithmeticUnary  { dst, op, value, .. } => {
                         let ty    = function.value_type(*value);
                         let size  = type_to_operand_size(ty, false);
@@ -1432,7 +1404,28 @@ impl X86Backend {
                         let dst   = r.resolve(*dst);
                         let value = r.resolve(*value);
 
-                        if dst != value {
+                        if let Operand::Imm(imm) = value {
+                            // Make sure that U1 (bool) has correct constant value.
+                            if ty == Type::U1 {
+                                assert!(imm == 0 || imm == 1, "Invalid U1 constant {}.", imm);
+                            }
+
+                            asm.with_size(size, |asm| {
+                                // Properly sign-extend value as required by x86.
+                                let imm = signextend(imm as u64, size);
+
+                                if imm > i32::MAX as i64 || imm < i32::MIN as i64 {
+                                    // We must use different instructions sequence
+                                    // for values which don't fit in imm32.
+                                    asm.mov(&[Reg(Rax), Imm(imm)]);
+                                    asm.mov(&[dst, Reg(Rax)]);
+                                } else if imm != 0 || dst.is_memory() {
+                                    asm.mov(&[dst, Imm(imm)]);
+                                } else {
+                                    asm.xor(&[dst, dst]);
+                                }
+                            });
+                        } else if dst != value {
                             asm.with_size(size, |asm| {
                                 if dst.is_memory() && value.is_memory() {
                                     // Use intermediate register for memory-memory mov.

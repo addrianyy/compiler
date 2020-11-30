@@ -361,10 +361,10 @@ impl Parser {
         let dst = cx.value(&output, ir);
 
         if keyword.to_type().is_some() {
+            /*
             let ty       = self.parse_type_keyword(keyword);
             let constant = self.parse_constant(ty);
 
-            /*
             return Instruction::Const {
                 dst,
                 ty,
