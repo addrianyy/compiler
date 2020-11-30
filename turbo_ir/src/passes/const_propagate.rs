@@ -1,5 +1,10 @@
 use crate::{FunctionData, Instruction, Type, BinaryOp, UnaryOp, Cast,
-            IntPredicate, ConstType, PhiUpdater};
+            IntPredicate, ConstType, PhiUpdater, Const, Value};
+
+enum Replacement {
+    Instruction(Instruction),
+    Constant(Value, Type, Const),
+}
 
 pub struct ConstPropagatePass;
 
@@ -186,9 +191,9 @@ impl super::Pass for ConstPropagatePass {
                             _ => panic!("Invalid U1 constant {}.", cond),
                         };
 
-                        replacements.push((location, Instruction::Branch {
+                        replacements.push((location, Replacement::Instruction(Instruction::Branch {
                             target,
-                        }));
+                        })));
 
                         // We have modified the control flow. Queue update of PHI instructions.
                         phi_updater.removed_branch(location.label(), removed);
@@ -223,10 +228,10 @@ impl super::Pass for ConstPropagatePass {
                             _ => panic!("Invalid U1 constant {}.", cond),
                         };
 
-                        replacements.push((location, Instruction::Alias {
+                        replacements.push((location, Replacement::Instruction(Instruction::Alias {
                             dst: *dst,
                             value,
-                        }));
+                        })));
                     }
                 }
                 _ => {}
@@ -245,16 +250,12 @@ impl super::Pass for ConstPropagatePass {
                             "Invalid propagated U1 constant {}.", propagated);
                 }
 
+                // Replace propagated instruction with computed constant.
+                replacements.push((location, Replacement::Constant(dst, ty, propagated)));
+
                 // Add propagated value to known constants database.
                 assert!(consts.insert(dst, (ty, propagated)).is_none(),
                         "Propagated already constant value?");
-
-                // Replace propagated instruction with computed constant.
-                replacements.push((location, Instruction::Const {
-                    dst,
-                    ty,
-                    imm: propagated,
-                }));
             }
         });
 
@@ -262,6 +263,18 @@ impl super::Pass for ConstPropagatePass {
 
         // Actually perform the replacements.
         for (location, replacement) in replacements {
+            let replacement = match replacement {
+                Replacement::Instruction(i) => i,
+                Replacement::Constant(dst, ty, constant) => {
+                    let value = function.add_constant(ty, constant);
+
+                    Instruction::Alias {
+                        dst,
+                        value,
+                    }
+                }
+            };
+
             *function.instruction_mut(location) = replacement;
         }
 

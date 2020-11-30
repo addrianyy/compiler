@@ -156,6 +156,7 @@ impl super::Pass for OptimizeKnownBitsPass {
         for value in processing_order {
             let mut computed    = KnownBits::default();
             let mut replacement = None;
+            let mut constant    = None;
             let ty              = function.value_type(value);
             let ty_size         = ty.size_bits();
             let ty_bitmask      = ty.bitmask();
@@ -164,11 +165,6 @@ impl super::Pass for OptimizeKnownBitsPass {
                 let instruction = function.instruction_mut(creator);
 
                 match instruction {
-                    Instruction::Const { imm, .. } => {
-                        // For constant all bits are known.
-                        computed.mask  = ty_bitmask;
-                        computed.known = *imm & ty_bitmask;
-                    }
                     Instruction::Alias { value, .. } => {
                         computed = known_bits[value];
                     }
@@ -404,7 +400,7 @@ impl super::Pass for OptimizeKnownBitsPass {
                             }
                         }
                     }
-                    &mut Instruction::IntCompare { dst, a, pred, b, .. } => {
+                    &mut Instruction::IntCompare { a, pred, b, .. } => {
                         let ty    = function.value_type(a);
                         let mut a = known_bits[&a];
                         let mut b = known_bits[&b];
@@ -459,11 +455,7 @@ impl super::Pass for OptimizeKnownBitsPass {
 
                         // If comparison result is constant than replace `icmp` with that constant.
                         if let Some(result) = result {
-                            replacement = Some(Instruction::Const {
-                                dst,
-                                ty:  Type::U1,
-                                imm: result as u64,
-                            });
+                            constant = Some(result as u64);
                         }
                     }
                     &mut Instruction::Cast { cast, value, .. } => {
@@ -511,11 +503,18 @@ impl super::Pass for OptimizeKnownBitsPass {
                     _ => {}
                 }
 
-                if let Some(replacement) = replacement {
-                    let instruction = function.instruction_mut(creator);
+                if let Some(constant) = constant {
+                    assert!(replacement.is_none(), "Both replacement and constant are Some.");
 
-                    *instruction  = replacement;
-                    did_something = true;
+                    replacement = Some(Instruction::Alias {
+                        dst:   value,
+                        value: function.add_constant(ty, constant),
+                    });
+                } 
+
+                if let Some(replacement) = replacement {
+                    *function.instruction_mut(creator)  = replacement;
+                    did_something                       = true;
                 } else if computed.mask == ty_bitmask {
                     // If all bits are known and this value isn't a constant than replace
                     // instruction with a constant.
@@ -536,20 +535,22 @@ impl super::Pass for OptimizeKnownBitsPass {
                     }
 
                     if let Some(creator) = creators.get(&stripped) {
+                        let constant    = function.add_constant(ty, computed.known);
                         let instruction = function.instruction_mut(*creator);
 
-                        if !matches!(instruction, Instruction::Const { .. }) {
-                            *instruction = Instruction::Const {
-                                dst: instruction.created_value().unwrap(),
-                                imm: computed.known,
-                                ty,
-                            };
+                        *instruction = Instruction::Alias {
+                            dst:   instruction.created_value().unwrap(),
+                            value: constant,
+                        };
 
-                            did_something = true;
-                        }
+                        did_something = true;
                     }
                 }
-            }
+            } else if let Some((_, value)) = function.constant(value) {
+                // For constant all bits are known.
+                computed.mask  = ty_bitmask;
+                computed.known = value & ty_bitmask;
+            };
 
             assert!(!computed.mask & computed.known == 0 &&
                     computed.mask  & !ty_bitmask == 0 &&

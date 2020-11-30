@@ -154,7 +154,6 @@ impl FunctionData {
                 // Instructions which can create pointers but for which we don't know the origin.
                 Instruction::Load  { .. } => pointer,
                 Instruction::Call  { .. } => pointer,
-                Instruction::Const { .. } => pointer,
 
                 // Casted pointers can alias, we cannot get their origin.
                 Instruction::Cast { .. } => pointer,
@@ -445,38 +444,19 @@ impl FunctionData {
         self.constant_values_with_labels(&self.reachable_labels())
     }
 
-    pub(super) fn constant_values_with_labels(&self, labels: &[Label])
+    pub(super) fn constant_values_with_labels(&self, labels: &[Label]) 
         -> Map<Value, (Type, Const)>
     {
         time!(constant_values);
 
-        let mut consts = Map::default();
+        let mut consts = self.constants.clone();
 
         self.for_each_instruction_with_labels(labels, |_location, instruction| {
-            match instruction {
-                Instruction::Const { dst, imm, ty } => {
-                    let imm = *imm as Const;
-                    let imm = match ConstType::new(*ty) {
-                        ConstType::U1 => {
-                            assert!(imm == 0 || imm == 1, "U1 has invalid value {}.", imm);
-                            imm
-                        }
-                        ConstType::U8  => imm as u8  as u64,
-                        ConstType::U16 => imm as u16 as u64,
-                        ConstType::U32 => imm as u32 as u64,
-                        ConstType::U64 => imm as u64 as u64,
-                    };
-
-                    assert!(consts.insert(*dst, (*ty, imm)).is_none(),
+            if let Instruction::Alias { dst, value } = instruction {
+                if let Some(&(ty, value)) = consts.get(value) {
+                    assert!(consts.insert(*dst, (ty, value)).is_none(),
                             "Multiple constant value creators.");
                 }
-                Instruction::Alias { dst, value } => {
-                    if let Some(&(ty, value)) = consts.get(value) {
-                        assert!(consts.insert(*dst, (ty, value)).is_none(),
-                                "Multiple constant value creators.");
-                    }
-                }
-                _ => {}
             }
         });
 
@@ -1127,6 +1107,14 @@ impl FunctionData {
             // Handle all undefined values.
             for &value in &self.undefined_set {
                 // Undefined values can be processed immediately.
+                queue.push_back(value);
+
+                expected_value_count += 1;
+            }
+
+            // Handle all constant values.
+            for (&value, _) in &self.constants {
+                // Constant values can be processed immediately.
                 queue.push_back(value);
 
                 expected_value_count += 1;

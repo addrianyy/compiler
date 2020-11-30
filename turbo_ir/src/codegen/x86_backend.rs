@@ -799,6 +799,7 @@ impl X86Backend {
                             });
                         }
                     }
+                    /*
                     Instruction::Const { dst, ty, imm } => {
                         let size = type_to_operand_size(*ty, true);
 
@@ -825,6 +826,7 @@ impl X86Backend {
                             }
                         });
                     }
+                    */
                     Instruction::ArithmeticUnary  { dst, op, value, .. } => {
                         let ty    = function.value_type(*value);
                         let size  = type_to_operand_size(ty, false);

@@ -75,7 +75,6 @@ impl FunctionData {
                 result.expect("Failed to get PHI output value.")
             }
             Instruction::StackAlloc    { ty, ..       } => ty.ptr(),
-            Instruction::Const         { ty, ..       } => *ty,
             Instruction::GetElementPtr { source, ..   } => cx.get_type(*source),
             Instruction::Cast          { ty, ..       } => *ty,
             Instruction::Alias         { value, ..    } => cx.get_type(*value),
@@ -181,15 +180,6 @@ impl FunctionData {
                 assert_eq!(value, self.prototype.return_type, "Return instruction operand type \
                            must be the same function as function return type.");
             }
-            Instruction::Const { dst, ty, imm, .. } => {
-                let dst = cx.get_type(*dst);
-
-                if *ty == Type::U1 {
-                    assert!(*imm == 0 || *imm == 1, "Invalid U1 constant {}.", imm);
-                }
-
-                assert_eq!(dst, *ty, "Const value instruction operand types must be the same.");
-            }
             Instruction::GetElementPtr { dst, source, index } => {
                 let dst    = cx.get_type(*dst);
                 let source = cx.get_type(*source);
@@ -267,6 +257,11 @@ impl FunctionData {
         for (ty, value) in &self.undefined {
             assert!(cx.type_info.insert(*value, *ty).is_none(),
                     "Undefined values defined multiple times.");
+        }
+
+        for (value, (ty, _)) in &self.constants {
+            assert!(cx.type_info.insert(*value, *ty).is_none(),
+                    "Constant values defined multiple times.");
         }
 
         for value in self.value_processing_order() {

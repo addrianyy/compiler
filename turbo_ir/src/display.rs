@@ -135,6 +135,38 @@ impl FunctionData {
             ($value: expr) => {
                 if self.is_value_undefined($value) {
                     formatter.fmt_literal(String::from("undefined"))
+                } else if let Some((ty, constant)) = self.constant($value) {
+                    match ty {
+                        Type::U1 => {
+                            let literal = match constant {
+                                0 => "false",
+                                1 => "true",
+                                _ => panic!("Invalid U1 constant {}.", constant),
+                            };
+
+                            fmt_literal!(literal)
+                        }
+                        _ => {
+                            let value = match ty {
+                                Type::U8  => constant as u8  as i8  as i64,
+                                Type::U16 => constant as u16 as i16 as i64,
+                                Type::U32 => constant as u32 as i32 as i64,
+                                Type::U64 => constant as i64,
+                                _         => constant as i64,
+                            };
+
+                            if ty.is_pointer() {
+                                let literal = match value {
+                                    0 => fmt_literal!("null"),
+                                    _ => fmt_literal!(format!("0x{:x}", value)),
+                                };
+
+                                literal
+                            } else {
+                                fmt_literal!(value)
+                            }
+                        }
+                    }
                 } else {
                     formatter.fmt_value($value)
                 }
@@ -222,42 +254,6 @@ impl FunctionData {
                     Some(value) => write!(w, "{} {} {}", fmt_inst!("ret"), fmt_type!(*value),
                                           fmt_value!(*value))?,
                     None => write!(w, "{} {}", fmt_inst!("ret"), fmt_raw_type!("void"))?,
-                }
-            }
-            Instruction::Const { dst, ty, imm } => {
-                match *ty {
-                    Type::U1 => {
-                        let value = match imm {
-                            0 => "false",
-                            1 => "true",
-                            _ => panic!("Invalid U1 constant {}.", imm),
-                        };
-
-                        write!(w, "{} = {} {}", fmt_value!(*dst), fmt_raw_type!(ty),
-                               fmt_literal!(value))?
-                    }
-                    _ => {
-                        let value = match *ty {
-                            Type::U8  => *imm as u8  as i8  as i64,
-                            Type::U16 => *imm as u16 as i16 as i64,
-                            Type::U32 => *imm as u32 as i32 as i64,
-                            Type::U64 => *imm as i64,
-                            _         => *imm as i64,
-                        };
-
-                        if ty.is_pointer() {
-                            let literal = match value {
-                                0 => fmt_literal!("null"),
-                                _ => fmt_literal!(format!("0x{:x}", value)),
-                            };
-
-                            write!(w, "{} = {} {}", fmt_value!(*dst), fmt_raw_type!(*ty),
-                                   literal)?;
-                        } else {
-                            write!(w, "{} = {} {}", fmt_value!(*dst), fmt_raw_type!(*ty),
-                                   fmt_literal!(value))?;
-                        }
-                    }
                 }
             }
             Instruction::GetElementPtr { dst, source, index } => {

@@ -155,23 +155,18 @@ impl super::Pass for SimplifyExpressionsPass {
 
             // Create instructions which will create RHS constant and calculate simplified
             // expression.
-            let temp_constant = function.allocate_typed_value(ir_type);
+            let constant = function.add_constant(ir_type, chain_value);
             let simplified    = vec![
-                Instruction::Const {
-                    dst: temp_constant,
-                    ty:  ir_type,
-                    imm: chain_value,
-                },
                 Instruction::ArithmeticBinary {
                     dst: *output_value,
                     a:   chain.value,
                     op:  chain.op,
-                    b:   temp_constant,
+                    b:   constant,
                 },
             ];
 
             // Add new constant to the list.
-            consts.insert(temp_constant, (ir_type, chain_value));
+            consts.insert(constant, (ir_type, chain_value));
 
             // Get the block which created expression which we are going to simplify.
             let creator = creators[&output_value];

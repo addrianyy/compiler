@@ -218,8 +218,7 @@ impl FunctionData {
 
     fn is_terminated(&self, label: Label) -> bool {
         let block = &self.blocks[&label];
-
-        if block.is_empty() {
+        if  block.is_empty() {
             return false;
         }
 
@@ -248,7 +247,8 @@ impl FunctionData {
     }
 
     fn add_constant(&mut self, ty: Type, value: Const) -> Value {
-        let key = (ty, value);
+        let value = value & ty.bitmask();
+        let key   = (ty, value);
 
         if let Some(value) = self.constant_to_value.get(&key) {
             *value
@@ -404,7 +404,7 @@ impl FunctionData {
 
         // Rewrite IR values for cleaner look.
         // TODO: Maybe we should do this only in debug mode.
-        //passes::RewriteValuesPass.run_on_function_timed(self);
+        passes::RewriteValuesPass.run_on_function_timed(self);
     }
 
     fn value_count(&self) -> usize {

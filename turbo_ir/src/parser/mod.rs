@@ -364,11 +364,15 @@ impl Parser {
             let ty       = self.parse_type_keyword(keyword);
             let constant = self.parse_constant(ty);
 
+            /*
             return Instruction::Const {
                 dst,
                 ty,
                 imm: constant,
             };
+            */
+
+            panic!()
         }
 
         if let Some(op) = keyword.to_unary_operator() {

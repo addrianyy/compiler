@@ -142,7 +142,7 @@ impl Module {
     }
 
     pub fn iconst(&mut self, value: impl Into<u64>, ty: Type) -> Value {
-        self.with_output(|dst| Instruction::Const { dst, imm: value.into(), ty })
+        self.function_mut(self.active_point().function).add_constant(ty, value.into())
     }
 
     pub fn get_element_ptr(&mut self, source: Value, index: Value) -> Value {

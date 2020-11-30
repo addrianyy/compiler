@@ -56,6 +56,11 @@ impl super::Pass for RewriteValuesPass {
             values.allocate(undefined);
         }
 
+        // Allocate new values for constant values.
+        for (&constant, _) in &function.constants {
+            values.allocate(constant);
+        }
+
         // We have now allocated and assigned all required values.
         let values = values;
 
@@ -85,6 +90,22 @@ impl super::Pass for RewriteValuesPass {
             }
 
             function.undefined_set = undefined_set;
+        }
+
+        // Update constant values.
+        {
+            let mut constants = Map::default();
+
+            for (&(ty, constant), value) in &mut function.constant_to_value {
+                let new_value = values.map[value];
+
+                *value = new_value;
+
+                assert!(constants.insert(new_value, (ty, constant)).is_none(), "Multiple entries \
+                        in constants map for the same value.");
+            }
+
+            function.constants = constants;
         }
 
         // Update next value index.

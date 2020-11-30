@@ -90,11 +90,6 @@ pub enum Instruction {
     Return {
         value: Option<Value>,
     },
-    Const {
-        dst: Value,
-        ty:  Type,
-        imm: u64,
-    },
     GetElementPtr {
         dst:    Value,
         source: Value,
@@ -237,12 +232,6 @@ impl Instruction {
                     vec![]
                 }
             }
-            Instruction::Const { ty, imm, .. } => {
-                vec![
-                    Param::Type(ty),
-                    Param::Integer(imm as usize),
-                ]
-            }
             Instruction::GetElementPtr { source, index, .. } => {
                 vec![
                     Param::Value(source),
@@ -296,7 +285,6 @@ impl Instruction {
             Instruction::BranchCond       { ..      } => None,
             Instruction::StackAlloc       { dst, .. } => Some(dst),
             Instruction::Return           { ..      } => None,
-            Instruction::Const            { dst, .. } => Some(dst),
             Instruction::GetElementPtr    { dst, .. } => Some(dst),
             Instruction::Cast             { dst, .. } => Some(dst),
             Instruction::Select           { dst, .. } => Some(dst),
@@ -321,7 +309,6 @@ impl Instruction {
             Instruction::BranchCond       { cond, ..          } => smallvec![cond],
             Instruction::StackAlloc       { ..                } => smallvec![],
             Instruction::Return           { value, ..         } => value.into_iter().collect(),
-            Instruction::Const            { ..                } => smallvec![],
             Instruction::GetElementPtr    { source, index, .. } => smallvec![source, index],
             Instruction::Cast             { value, ..         } => smallvec![value],
             Instruction::Alias            { value, ..         } => smallvec![value],
@@ -353,7 +340,6 @@ impl Instruction {
             Instruction::BranchCond       { ..      } => {}
             Instruction::StackAlloc       { dst, .. } => f(dst),
             Instruction::Return           { ..      } => {}
-            Instruction::Const            { dst, .. } => f(dst),
             Instruction::GetElementPtr    { dst, .. } => f(dst),
             Instruction::Cast             { dst, .. } => f(dst),
             Instruction::Select           { dst, .. } => f(dst),
@@ -383,7 +369,6 @@ impl Instruction {
                     f(value);
                 }
             }
-            Instruction::Const            { ..                } => {},
             Instruction::GetElementPtr    { source, index, .. } => { f(source); f(index); }
             Instruction::Cast             { value, ..         } => f(value),
             Instruction::Alias            { value, ..         } => f(value),

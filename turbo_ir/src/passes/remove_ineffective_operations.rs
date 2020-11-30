@@ -2,6 +2,11 @@ use std::cmp::Ordering;
 use crate::{FunctionData, Instruction, Cast, Value, ConstType, IntPredicate, Type,
             BinaryOp, UnaryOp, Map, analysis::Const};
 
+enum Replacement {
+    Instruction(Instruction),
+    Constant(Value, Type, Const),
+}
+
 pub struct RemoveIneffectiveOperationsPass;
 
 impl super::Pass for RemoveIneffectiveOperationsPass {
@@ -48,6 +53,7 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
 
             function.for_each_instruction_with_labels(&labels, |location, instruction| {
                 let mut replacement = None;
+                let mut constant    = None;
 
                 // Go through every instruction, match patterns with known results
                 // to simplify the instruction.
@@ -139,7 +145,7 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
                             }
                         }
                     }
-                    Instruction::IntCompare { dst, a, pred, b } => {
+                    Instruction::IntCompare { a, pred, b, .. } => {
                         // If both operands to int comapare instruction are the same we can
                         // calculate the result at compile time.
                         if values_equal(&consts, a, b) {
@@ -152,11 +158,7 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
                                 IntPredicate::GteU     => true,
                             };
 
-                            replacement = Some(Instruction::Const {
-                                dst,
-                                imm: result as u64,
-                                ty:  Type::U1,
-                            });
+                            constant = Some(result as u64);
                         }
                     }
                     Instruction::ArithmeticUnary { dst, op, value } => {
@@ -242,7 +244,6 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
                         let cb = consts.get(&b).copied();
 
                         // If any operand is constant then get its type.
-                        let ty       = function.value_type(dst);
                         let const_ty = match (ca, cb) {
                             (Some((ty, _)), _) => Some(ty),
                             (_, Some((ty, _))) => Some(ty),
@@ -266,20 +267,16 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
 
                         macro_rules! alias {
                             ($value: expr) => {
-                                Some(Instruction::Alias {
+                                replacement = Some(Instruction::Alias {
                                     dst,
                                     value: $value,
-                                })
+                                });
                             }
                         }
 
                         macro_rules! constant {
                             ($value: expr) => {
-                                Some(Instruction::Const  {
-                                    dst,
-                                    imm: $value as u64,
-                                    ty,
-                                });
+                                constant = Some($value as u64);
                             }
                         }
 
@@ -287,16 +284,16 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
                         match op {
                             BinaryOp::Add => {
                                 if ca == Some(0) {
-                                    replacement = alias!(b);
+                                    alias!(b);
                                 } else if cb == Some(0) {
-                                    replacement = alias!(a);
+                                    alias!(a);
                                 }
                             }
                             BinaryOp::Sub => {
                                 if a == b {
-                                    replacement = constant!(0);
+                                    constant!(0);
                                 } else if cb == Some(0) {
-                                    replacement = alias!(a);
+                                    alias!(a);
                                 } else if ca == Some(0) {
                                     let value = b;
 
@@ -310,33 +307,33 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
                             }
                             BinaryOp::And => {
                                 if ca == Some(0) || cb == Some(0) {
-                                    replacement = constant!(0);
+                                    constant!(0);
                                 } else if cb == Some(ones) {
-                                    replacement = alias!(a);
+                                    alias!(a);
                                 } else if ca == Some(ones) {
-                                    replacement = alias!(b);
+                                    alias!(b);
                                 } else if a == b {
-                                    replacement = alias!(a);
+                                    alias!(a);
                                 }
                             }
                             BinaryOp::Or => {
                                 if ca == Some(ones) || cb == Some(ones) {
-                                    replacement = constant!(ones);
+                                    constant!(ones);
                                 } else if cb == Some(0) {
-                                    replacement = alias!(a);
+                                    alias!(a);
                                 } else if ca == Some(0) {
-                                    replacement = alias!(b);
+                                    alias!(b);
                                 } else if a == b {
-                                    replacement = alias!(a);
+                                    alias!(a);
                                 }
                             }
                             BinaryOp::Xor => {
                                 if a == b {
-                                    replacement = constant!(0);
+                                    constant!(0);
                                 } else if cb == Some(0) {
-                                    replacement = alias!(a);
+                                    alias!(a);
                                 } else if ca == Some(0) {
-                                    replacement = alias!(b);
+                                    alias!(b);
                                 } else if ca == Some(ones) {
                                     let value = b;
 
@@ -359,11 +356,11 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
                             }
                             BinaryOp::Mul => {
                                 if ca == Some(0) || cb == Some(0) {
-                                    replacement = constant!(0);
+                                    constant!(0);
                                 } else if cb == Some(1) {
-                                    replacement = alias!(a);
+                                    alias!(a);
                                 } else if ca == Some(1) {
-                                    replacement = alias!(b);
+                                    alias!(b);
                                 } else if ca == Some(2) {
                                     let value = b;
 
@@ -388,28 +385,28 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
                             }
                             BinaryOp::DivS | BinaryOp::DivU => {
                                 if ca == Some(0) {
-                                    replacement = constant!(0);
+                                    constant!(0);
                                 } else if cb == Some(1) {
-                                    replacement = alias!(a);
+                                    alias!(a);
                                 } else if a == b {
-                                    replacement = constant!(1);
+                                    constant!(1);
                                 }
                             }
                             BinaryOp::ModS | BinaryOp::ModU => {
                                 if ca == Some(0) || cb == Some(1) || a == b {
-                                    replacement = constant!(0);
+                                    constant!(0);
                                 }
                             }
                             BinaryOp::Shl | BinaryOp::Shr | BinaryOp::Sar => {
                                 if ca == Some(0) {
-                                    replacement = constant!(0);
+                                    constant!(0);
                                 } else if cb == Some(0) {
-                                    replacement = alias!(a);
+                                    alias!(a);
                                 }
                             }
                         }
 
-                        if replacement.is_none() && op.is_commutative() {
+                        if replacement.is_none() && constant.is_none() && op.is_commutative() {
                             // If operation is commutative than canonicalize:
                             // op constant, non-constant
                             // To:
@@ -426,19 +423,12 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
                     }
                     Instruction::Phi { dst, ref incoming } => {
                         let mut incoming_value = incoming[0].1;
-                        let mut incoming_const = consts.get(&incoming_value)
-                            .copied().map(|x| x.1);
-
-                        let mut valid = true;
+                        let mut valid          = true;
 
                         // If all incoming values are the same we can replace `phi` with `alias`.
                         // This will also handle PHIs with one incoming value.
                         for (_label, value) in &incoming[1..] {
-                            let other_const = consts.get(&value).copied().map(|x| x.1);
-                            let const_match = incoming_const.is_some() &&
-                                incoming_const == other_const;
-
-                            if *value != incoming_value && !const_match  {
+                            if *value != incoming_value {
                                 valid = false;
                                 break;
                             }
@@ -449,42 +439,41 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
                             if incoming[0].1 == dst {
                                 incoming_value = incoming[1].1;
                                 valid          = true;
-                                incoming_const = None;
                             } else if incoming[1].1 == dst {
                                 incoming_value = incoming[0].1;
                                 valid          = true;
-                                incoming_const = None;
                             }
                         }
 
                         // Replace single incoming value with just `alias`.
                         if valid {
-                            replacement = Some(match incoming_const {
-                                Some(constant) => {
-                                    Instruction::Const {
-                                        dst,
-                                        imm: constant,
-                                        ty:  function.value_type(dst),
-                                    }
-                                }
-                                None => {
-                                    Instruction::Alias {
-                                        dst,
-                                        value: incoming_value,
-                                    }
-                                }
+                            replacement = Some(Instruction::Alias {
+                                dst,
+                                value: incoming_value,
                             });
                         }
                     }
                     _ => {}
                 }
 
-                if let Some(replacement) = replacement {
-                    if let Instruction::Const { dst, imm, ty } = replacement {
-                        consts.insert(dst, (ty, imm));
-                    }
+                if let Some(constant) = constant {
+                    assert!(replacement.is_none(), "Replacements conflict.");
 
-                    replacements.push((location, replacement));
+                    // If we constant propagated instruction then it must have output value.
+                    let dst = instruction.created_value()
+                        .expect("Propagated constant from instruction which \
+                                doesn't create value?");
+
+                    let ty = function.value_type(dst);
+
+                    assert!(consts.insert(dst, (ty, constant)).is_none(),
+                            "Propagated already constant value?");
+
+                    replacements.push((location, Replacement::Constant(dst, ty, constant)));
+                }
+
+                if let Some(replacement) = replacement {
+                    replacements.push((location, Replacement::Instruction(replacement)));
                 }
             });
 
@@ -492,6 +481,18 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
 
             // Actually perform the replacements.
             for (location, replacement) in replacements {
+                let replacement = match replacement {
+                    Replacement::Instruction(i) => i,
+                    Replacement::Constant(dst, ty, constant) => {
+                        let value = function.add_constant(ty, constant);
+
+                        Instruction::Alias {
+                            dst,
+                            value,
+                        }
+                    }
+                };
+
                 *function.instruction_mut(location) = replacement;
             }
 
