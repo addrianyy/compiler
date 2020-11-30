@@ -118,8 +118,8 @@ impl FunctionData {
         dotgraph.push_str("digraph G {\n");
 
         for label in self.reachable_labels() {
-            let insts      = &self.blocks[&label];
-            let targets    = self.targets(label);
+            let instructions = &self.blocks[&label];
+            let targets      = self.targets(label);
 
             let name = if label == self.entry() {
                 self.prototype_representation(formatter)
@@ -134,9 +134,9 @@ impl FunctionData {
                 dotgraph.push_str(&format!(r#"\n{}:\n"#, formatter.fmt_label(label)));
             }
 
-            for (inst_idx, inst) in insts.iter().enumerate() {
-                dotgraph.push_str(&format!("{:>3}: {}\\l", inst_idx,
-                                           self.instruction_string(inst, formatter)));
+            for (inst_id, instruction) in instructions.iter().enumerate() {
+                dotgraph.push_str(&format!("{:>3}: {}\\l", inst_id,
+                                           self.instruction_string(instruction, formatter)));
             }
 
             dotgraph.push_str("\"];\n");
@@ -175,8 +175,8 @@ impl FunctionData {
 
             writeln!(w, "{}:", formatter.fmt_label(label))?;
 
-            for inst in &self.blocks[&label] {
-                writeln!(w, "{}{}", indent, self.instruction_string(inst, formatter))?;
+            for instruction in &self.blocks[&label] {
+                writeln!(w, "{}{}", indent, self.instruction_string(instruction, formatter))?;
             }
         }
 
