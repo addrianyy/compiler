@@ -32,6 +32,7 @@ use graph::Dominators;
 use graph::FlowGraph;
 use passes::Pass;
 use collections::{Map, Set, LargeKeyMap, CapacityExt};
+use analysis::Const;
 
 const VALIDATE_AFTER_EVERY_PASS: bool = false;
 
@@ -106,6 +107,9 @@ struct FunctionData {
     type_info:     Option<TypeInfo>,
     function_info: Option<Rc<CrossFunctionInfo>>,
 
+    constant_to_value: Map<(Type, Const), Value>,
+    constants:         Map<Value, (Type, Const)>,
+
     phi_locations: Map<Value, Location>,
 }
 
@@ -126,6 +130,9 @@ impl FunctionData {
             next_value: Value(0),
             next_label: Label(0),
             entry:      Label(0),
+
+            constant_to_value: Map::default(),
+            constants:         Map::default(),
 
             type_info:     None,
             function_info: None,
@@ -173,9 +180,9 @@ impl FunctionData {
     fn allocate_typed_value(&mut self, ty: Type) -> Value {
         let value = self.allocate_value();
 
-        self.type_info.as_mut()
-            .expect("Cannot allocate typed value without typeinfo.")
-            .insert(value, ty);
+        if let Some(type_info) = self.type_info.as_mut() {
+            type_info.insert(value, ty);
+        }
 
         value
     }
@@ -224,11 +231,7 @@ impl FunctionData {
             return value;
         }
 
-        let value = self.allocate_value();
-
-        if let Some(type_info) = self.type_info.as_mut() {
-            type_info.insert(value, ty);
-        }
+        let value = self.allocate_typed_value(ty);
 
         self.undefined.insert(ty, value);
         self.undefined_set.insert(value);
@@ -240,8 +243,29 @@ impl FunctionData {
         self.type_info.as_ref().unwrap()[&value]
     }
 
+    fn constant(&self, value: Value) -> Option<(Type, Const)> {
+        self.constants.get(&value).copied()
+    }
+
+    fn add_constant(&mut self, ty: Type, value: Const) -> Value {
+        let key = (ty, value);
+
+        if let Some(value) = self.constant_to_value.get(&key) {
+            *value
+        } else {
+            let value = self.allocate_typed_value(ty);
+
+            self.constant_to_value.insert(key, value);
+            self.constants.insert(value, key);
+
+            value
+        }
+    }
+
     fn is_value_special(&self, value: Value) -> bool {
-        self.argument_set.contains(&value) || self.undefined_set.contains(&value)
+        self.argument_set.contains(&value)      ||
+            self.undefined_set.contains(&value) ||
+            self.constants.get(&value).is_some()
     }
 
     fn is_value_undefined(&self, value: Value) -> bool {
@@ -380,7 +404,7 @@ impl FunctionData {
 
         // Rewrite IR values for cleaner look.
         // TODO: Maybe we should do this only in debug mode.
-        passes::RewriteValuesPass.run_on_function_timed(self);
+        //passes::RewriteValuesPass.run_on_function_timed(self);
     }
 
     fn value_count(&self) -> usize {
