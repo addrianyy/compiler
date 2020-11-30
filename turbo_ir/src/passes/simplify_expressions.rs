@@ -1,4 +1,4 @@
-use crate::{FunctionData, Instruction, Value, ConstType, BinaryOp, Map, Type, Location, Label};
+use crate::{FunctionData, Instruction, Value, ConstType, BinaryOp, Map, Type};
 
 #[derive(Clone)]
 struct Chain {
@@ -6,18 +6,6 @@ struct Chain {
     consts: Vec<u64>,
     ty:     ConstType,
     op:     BinaryOp,
-}
-
-fn rebuild_creators_in_block(function: &FunctionData, creators: &mut Map<Value, Location>,
-                             label: Label, start_index: usize) {
-    for (inst_id, instruction) in function.blocks[&label][start_index..].iter().enumerate() {
-        let inst_id  = inst_id + start_index;
-        let location = Location::new(label, inst_id);
-
-        if let Some(value) = instruction.created_value() {
-            creators.insert(value, location);
-        }
-    }
 }
 
 pub struct SimplifyExpressionsPass;
@@ -36,8 +24,9 @@ impl super::Pass for SimplifyExpressionsPass {
 
         let mut did_something             = false;
         let mut chains: Map<Value, Chain> = Map::default();
-        let mut creators                  = function.value_creators_with_labels(&labels);
         let mut consts                    = function.constant_values_with_labels(&labels);
+
+        let creators = function.value_creators_with_labels(&labels);
 
         // Chain commulative operations with at least two constant operands.
         // (a + 1) + 1
@@ -153,17 +142,14 @@ impl super::Pass for SimplifyExpressionsPass {
                 ConstType::U64 => (evaluate_chain!(&chain, u64), Type::U64),
             };
 
-            // Create instructions which will create RHS constant and calculate simplified
-            // expression.
-            let constant = function.add_constant(ir_type, chain_value);
-            let simplified    = vec![
-                Instruction::ArithmeticBinary {
-                    dst: *output_value,
-                    a:   chain.value,
-                    op:  chain.op,
-                    b:   constant,
-                },
-            ];
+            // Create instruction which will calculate simplified expression.
+            let constant   = function.add_constant(ir_type, chain_value);
+            let simplified = Instruction::ArithmeticBinary {
+                dst: *output_value,
+                a:   chain.value,
+                op:  chain.op,
+                b:   constant,
+            };
 
             // Add new constant to the list.
             consts.insert(constant, (ir_type, chain_value));
@@ -172,16 +158,8 @@ impl super::Pass for SimplifyExpressionsPass {
             let creator = creators[&output_value];
             let body    = function.blocks.get_mut(&creator.label()).unwrap();
 
-            // Remove old, complex expression.
-            body.remove(creator.index());
-
-            // Insert new, simplified expression to the block.
-            for instruction in simplified.into_iter().rev() {
-                body.insert(creator.index(), instruction);
-            }
-
-            // We have modified `creator.label()` so we need to rebuild creators for it.
-            rebuild_creators_in_block(function, &mut creators, creator.label(), creator.index());
+            // Replace old expression with new one.
+            body[creator.index()] = simplified;
 
             did_something = true;
         }

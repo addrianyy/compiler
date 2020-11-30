@@ -201,7 +201,7 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
                                     ty,
                                 });
                             } else if cast == Cast::Truncate && (*p_cast == Cast::ZeroExtend ||
-                                                                *p_cast == Cast::SignExtend) {
+                                                                 *p_cast == Cast::SignExtend) {
                                 // v1 = zext u16 v0 to u64
                                 // v2 = trunc u64 v1 to u32
                                 //

@@ -243,8 +243,7 @@ impl super::Pass for ConstPropagatePass {
                     .expect("Propagated constant from instruction which doesn't create value?");
 
                 let ty = function.value_type(dst);
-
-                if ty == Type::U1 {
+                if  ty == Type::U1 {
                     // U1s can be only true or false.
                     assert!(propagated == 0 || propagated == 1,
                             "Invalid propagated U1 constant {}.", propagated);
