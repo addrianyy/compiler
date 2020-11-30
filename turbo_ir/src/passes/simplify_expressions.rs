@@ -85,17 +85,9 @@ impl super::Pass for SimplifyExpressionsPass {
             function.for_each_instruction_with_labels(&labels, |_, instruction| {
                 // We only simplify binary expressions for now.
                 if let Instruction::ArithmeticBinary { dst, a, op, b } = instruction {
-                    // If operator is commulative then (a op b) op c == a op (a b).
-                    let commulative = match op {
-                        BinaryOp::Add | BinaryOp::Mul | BinaryOp::And |
-                        BinaryOp::Or  | BinaryOp::Xor => {
-                            true
-                        }
-                        _ => false,
-                    };
-
-                    // We cannot chain non-commulative operations.
-                    if !commulative {
+                    // If operator is associative then (a op b) op c == a op (a b).
+                    // We cannot chain non-associative operations.
+                    if !op.is_associative() {
                         return;
                     }
 

@@ -135,3 +135,7 @@ i32 range_analysis() {
 
     return total;
 }
+
+i32 reassoc(i32 x) {
+    return (1 + 2 + x) * (x + (1+2));
+}

@@ -136,6 +136,26 @@ pub enum Param {
     Function(Function),
 }
 
+impl BinaryOp {
+    fn is_commutative_and_associative(&self) -> bool {
+        match self {
+            BinaryOp::Add | BinaryOp::Mul | BinaryOp::And |
+            BinaryOp::Or  | BinaryOp::Xor => {
+                true
+            }
+            _ => false,
+        }
+    }
+
+    pub fn is_commutative(&self) -> bool {
+        self.is_commutative_and_associative()
+    }
+
+    pub fn is_associative(&self) -> bool {
+        self.is_commutative_and_associative()
+    }
+}
+
 impl Instruction {
     pub fn input_parameters(&self) -> Vec<Param> {
         time!(input_parameters);
@@ -148,6 +168,15 @@ impl Instruction {
                 ]
             }
             Instruction::ArithmeticBinary { a, op, b, .. } => {
+                let mut a = a;
+                let mut b = b;
+
+                // If operator is commutative than make sure that `op a, b` and `op b, a` will
+                // be treated as having the same parameters.
+                if op.is_commutative() && a.0 > b.0 {
+                    std::mem::swap(&mut a, &mut b);
+                }
+
                 vec![
                     Param::Value(a),
                     Param::BinaryOp(op),

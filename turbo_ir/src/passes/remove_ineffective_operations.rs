@@ -408,6 +408,21 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
                                 }
                             }
                         }
+
+                        if replacement.is_none() && op.is_commutative() {
+                            // If operation is commutative than canonicalize:
+                            // op constant, non-constant
+                            // To:
+                            // op non-constant, constant
+                            if consts.get(&a).is_some() && consts.get(&b).is_none() {
+                                replacement = Some(Instruction::ArithmeticBinary {
+                                    dst,
+                                    a: b,
+                                    op,
+                                    b: a,
+                                });
+                            }
+                        }
                     }
                     Instruction::Phi { dst, ref incoming } => {
                         let mut incoming_value = incoming[0].1;
