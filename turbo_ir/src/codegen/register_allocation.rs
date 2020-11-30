@@ -1029,16 +1029,24 @@ impl FunctionData {
                 ConstType::U64 => constant as i64,
             };
 
-            let users: Vec<&Instruction> = users.get(&value).map(|users| {
-                users
-                    .iter()
-                    .map(|location| self.instruction(*location))
-                    .collect()
-            }).unwrap_or_else(Vec::new);
-
-            if users.is_empty() {
+            let users = users.get(&value);
+            if  users.map(|users| users.len()).unwrap_or(0) == 0 {
                 continue;
             }
+
+            let users: Vec<&Instruction> = users.map(|users| {
+                users
+                    .iter()
+                    .filter_map(|location| {
+                        let instruction =  self.instruction(*location);
+                        if let Instruction::Alias { .. } = self.instruction(*location) {
+                            return None;
+                        }
+
+                        Some(instruction)
+                    })
+                    .collect()
+            }).unwrap_or_else(Vec::new);
 
             // This is used constant, add it to the list.
             constants.insert(value, constant);
