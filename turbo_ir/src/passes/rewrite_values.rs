@@ -1,4 +1,4 @@
-use crate::{FunctionData, Value, Map, Set};
+use crate::{FunctionData, Value, Map, Set, CapacityExt};
 
 #[derive(Default)]
 struct Values {
@@ -57,7 +57,7 @@ impl super::Pass for RewriteValuesPass {
         }
 
         // Allocate new values for constant values.
-        for (&constant, _) in &function.constants {
+        for &constant in function.constants.keys() {
             values.allocate(constant);
         }
 
@@ -78,7 +78,7 @@ impl super::Pass for RewriteValuesPass {
 
         // Update undefined values.
         {
-            let mut undefined_set = Set::default();
+            let mut undefined_set = Set::new_with_capacity(function.undefined.len());
 
             for value in function.undefined.values_mut() {
                 let new_value = values.map[&value];
@@ -94,7 +94,7 @@ impl super::Pass for RewriteValuesPass {
 
         // Update constant values.
         {
-            let mut constants = Map::default();
+            let mut constants = Map::new_with_capacity(function.constants.len());
 
             for (&(ty, constant), value) in &mut function.constant_to_value {
                 let new_value = values.map[value];
@@ -113,7 +113,7 @@ impl super::Pass for RewriteValuesPass {
 
         // Update function type information.
         function.type_info = function.type_info.take().map(|old_type_info| {
-            let mut type_info = Map::default();
+            let mut type_info = Map::new_with_capacity(old_type_info.len());
 
             for (value, ty) in old_type_info {
                 // Previous type information can include types of now non-existent values.

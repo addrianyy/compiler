@@ -1089,7 +1089,8 @@ impl FunctionData {
 
         let mut phis  = Vec::new();
         let mut queue = VecDeque::with_capacity(self.argument_values.len() +
-                                                self.undefined_set.len());
+                                                self.undefined_set.len() +
+                                                self.constants.len());
 
         let mut expected_value_count = 0;
 
@@ -1113,7 +1114,7 @@ impl FunctionData {
             }
 
             // Handle all constant values.
-            for (&value, _) in &self.constants {
+            for &value in self.constants.keys() {
                 // Constant values can be processed immediately.
                 queue.push_back(value);
 

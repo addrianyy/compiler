@@ -1,0 +1,187 @@
+u32 main(u8* v0) {
+entry:
+  v1 = icmp eq u8* v0, null
+  bcond u1 v1, block_2, block_4
+
+block_2:
+  ret u32 0
+
+block_4:
+  v2 = phi u32 [block_9: v8, entry: 0]
+  v3 = gep u8* v0, u32 v2
+  v4 = load u8, u8* v3
+  v5 = icmp ne u8 v4, 0
+  bcond u1 v5, block_5, block_6
+
+block_5:
+  v6 = add u8 v4, 2
+  store u8* v3, u8 v6
+  v7 = icmp eq u8 v6, 12
+  bcond u1 v7, block_10, block_9
+
+block_6:
+  ret u32 312
+
+block_10:
+  branch block_10
+
+block_9:
+  v8 = add u32 v2, 1
+  branch block_4
+}
+
+u32 test12(u32* v0) {
+entry:
+  store u32* v0, u32 1337
+  branch block_1
+
+block_1:
+  branch block_1
+}
+
+u32 abc(u32 v0) {
+entry:
+  v1 = icmp ne u32 v0, 0
+  bcond u1 v1, block_2, block_3
+
+block_2:
+  ret u32 123
+
+block_3:
+  ret u32 321
+}
+
+u32 turbo(u32 v0) {
+entry:
+  v1 = icmp eq u32 v0, 4
+  v2 = select u1 v1, u32 555, 823
+  ret u32 v2
+}
+
+u32 xd(u32 v0) {
+entry:
+  ret u32 v0
+}
+
+u32 sum(u32 v0) {
+entry:
+  branch block_1
+
+block_1:
+  v1 = phi u32 [entry: 0, block_8: v9]
+  v2 = phi u32 [entry: 0, block_8: v5]
+  v3 = icmp sgt u32 v0, v1
+  bcond u1 v3, block_5, block_4
+
+block_5:
+  v4 = phi u32 [block_6: v8, block_1: 0]
+  v5 = phi u32 [block_6: v7, block_1: v2]
+  v6 = icmp sgt u32 v1, v4
+  bcond u1 v6, block_6, block_8
+
+block_4:
+  ret u32 v2
+
+block_6:
+  v7 = add u32 v5, v4
+  v8 = add u32 v4, 1
+  branch block_5
+
+block_8:
+  v9 = add u32 v1, 1
+  branch block_1
+}
+
+void unsafe() {
+entry:
+  v0 = stackalloc u32
+  store u32* v0, u32 0
+  v1 = bitcast u32* v0 to u8*
+  store u8* v1, u8 13
+  ret void
+}
+
+u8 other(u32 v0) {
+entry:
+  v1 = add u32 v0, 123
+  v2 = trunc u32 v1 to u8
+  ret u8 v2
+}
+
+u8 implicit(u8 v0) {
+entry:
+  v1 = zext u8 v0 to u32
+  v2 = call u8 other(u32 v1)
+  v3 = zext u8 v2 to u32
+  v4 = add u32 v3, 1337
+  v5 = mul u32 v4, 420
+  v6 = trunc u32 v5 to u8
+  ret u8 v6
+}
+
+u32 turbo_ss(u32 v0) {
+entry:
+  ret u32 49
+}
+
+u32 abasdsa(u32 v0) {
+entry:
+  v1 = icmp sgt u32 v0, 33
+  v2 = select u1 v1, u32 99, 55
+  v3 = sub u32 v2, 4
+  v4 = icmp sgt u32 v0, 88
+  v5 = select u1 v4, u32 v3, v2
+  ret u32 v5
+}
+
+u32 sum2(u32 v0) {
+entry:
+  branch block_1
+
+block_1:
+  v1 = phi u32 [entry: 0, block_2: v5]
+  v2 = phi u32 [entry: 0, block_2: v4]
+  v3 = icmp sgt u32 v0, v1
+  bcond u1 v3, block_2, block_4
+
+block_2:
+  v4 = add u32 v2, v1
+  v5 = add u32 v1, 1
+  branch block_1
+
+block_4:
+  ret u32 v2
+}
+
+u32 range_analysis() {
+entry:
+  branch block_1
+
+block_1:
+  v0 = phi u32 [entry: 0, block_7: v5]
+  v1 = phi u32 [entry: 0, block_7: v3]
+  v2 = icmp sgt u32 7, v0
+  bcond u1 v2, block_2, block_4
+
+block_2:
+  v3 = add u32 v1, 1
+  v4 = icmp sgt u32 v0, 10
+  bcond u1 v4, block_6, block_7
+
+block_4:
+  ret u32 v1
+
+block_6:
+  ret u32 123
+
+block_7:
+  v5 = add u32 v0, 1
+  branch block_1
+}
+
+u32 reassoc(u32 v0) {
+entry:
+  v1 = add u32 v0, 3
+  v2 = mul u32 v1, v1
+  ret u32 v2
+}

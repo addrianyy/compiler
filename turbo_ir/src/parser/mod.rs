@@ -203,12 +203,26 @@ impl Parser {
     }
 
     fn parse_value(&mut self, ty: Type, cx: &mut FunctionContext, ir: &mut Module) -> Value {
-        let value = match self.lexer.eat() {
+        let value = match self.lexer.current() {
             Token::Keyword(Keyword::Undefined) => {
+                self.lexer.eat();
+
                 ir.function_mut(ir.active_point().function).undefined_value(ty)
             }
-            Token::Identifier(identifier) => {
-                cx.value(identifier, ir)
+            Token::Identifier(_) => {
+                if let Token::Identifier(identifier) = self.lexer.eat() {
+                    cx.value(identifier, ir)
+                } else {
+                    unreachable!()
+                }
+            }
+            Token::Keyword(Keyword::Null)  |
+            Token::Keyword(Keyword::True)  |
+            Token::Keyword(Keyword::False) |
+            Token::Literal(..) => {
+                let constant = self.parse_constant(ty);
+
+                ir.iconst(constant, ty)
             }
             x => panic!("Unexpected token when parsing value: {:?}.", x),
         };
@@ -359,21 +373,6 @@ impl Parser {
         }
 
         let dst = cx.value(&output, ir);
-
-        if keyword.to_type().is_some() {
-            /*
-            let ty       = self.parse_type_keyword(keyword);
-            let constant = self.parse_constant(ty);
-
-            return Instruction::Const {
-                dst,
-                ty,
-                imm: constant,
-            };
-            */
-
-            panic!()
-        }
 
         if let Some(op) = keyword.to_unary_operator() {
             let ty    = self.parse_type();
