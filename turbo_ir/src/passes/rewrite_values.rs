@@ -36,6 +36,9 @@ impl super::Pass for RewriteValuesPass {
 
         let mut values = Values::default();
 
+        // Use DFS traversal to match value order in `dump` routines.
+        let labels = function.reachable_labels_dfs();
+
         // Allocate new values for function arguments.
         for &argument in &function.argument_values {
             let value = values.allocate(argument);
@@ -45,7 +48,7 @@ impl super::Pass for RewriteValuesPass {
         }
 
         // Allocate new values for all created IR values.
-        function.for_each_instruction_mut(|_location, instruction| {
+        function.for_each_instruction_with_labels_mut(&labels, |_location, instruction| {
             if let Some(value) = instruction.created_value() {
                 values.allocate(value);
             }
@@ -65,7 +68,7 @@ impl super::Pass for RewriteValuesPass {
         let values = values;
 
         // Update inputs and outputs for every instruction.
-        function.for_each_instruction_mut(|_location, instruction| {
+        function.for_each_instruction_with_labels_mut(&labels, |_location, instruction| {
             let transform = |value: &mut Value| {
                 *value = values.map[value];
             };

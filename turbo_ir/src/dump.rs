@@ -166,7 +166,7 @@ impl FunctionData {
         let     indent = "  ";
         let mut first  = true;
 
-        for label in self.reachable_labels() {
+        for label in self.reachable_labels_dfs() {
             if !first {
                 writeln!(w)?;
             }
