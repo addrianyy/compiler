@@ -48,27 +48,33 @@ impl IRFormatter for BlankFormatter {
     }
 }
 
+macro_rules! format_html {
+    ($value: expr, $color: expr) => {
+        format!(r##"<font color="#{}">{}</font>"##, $color, $value)
+    }
+}
+
 struct GraphvizFormatter;
 
 impl IRFormatter for GraphvizFormatter {
     fn fmt_value(&self, value: Value) -> String {
-        format!("{}", value)
+        format_html!(value, "000000")
     }
 
     fn fmt_type(&self, name: String) -> String {
-        name
+        format_html!(name, "000000")
     }
 
     fn fmt_inst(&self, name: String) -> String {
-        name
+        format_html!(name, "000000")
     }
 
     fn fmt_label(&self, label: Label) -> String {
-        format!("{}", label)
+        format_html!(label, "000000")
     }
 
     fn fmt_literal(&self, literal: String) -> String {
-        literal
+        format_html!(literal, "000000")
     }
 
     fn fmt_function(&self, name: &str) -> String {
@@ -76,23 +82,30 @@ impl IRFormatter for GraphvizFormatter {
     }
 }
 
+macro_rules! format_console {
+    ($value: expr, $color: expr) => {
+        format!("\x1b[1;{}m{}\x1b[0m", $color, $value)
+    }
+}
+
 struct ConsoleFormatter;
 
 impl IRFormatter for ConsoleFormatter {
+
     fn fmt_value(&self, value: Value) -> String {
-        format!("\x1b[1;33m{}\x1b[0m", value)
+        format_console!(value, 33)
     }
 
     fn fmt_type(&self, name: String) -> String {
-        format!("\x1b[1;34m{}\x1b[0m", name)
+        format_console!(name, 34)
     }
 
     fn fmt_inst(&self, name: String) -> String {
-        format!("\x1b[1;32m{}\x1b[0m", name)
+        format_console!(name, 32)
     }
 
     fn fmt_label(&self, label: Label) -> String {
-        format!("\x1b[1;37m{}\x1b[0m", label)
+        format_console!(label, 37)
     }
 
     fn fmt_literal(&self, literal: String) -> String {
@@ -170,7 +183,8 @@ impl FunctionData {
             }
 
             for instruction in instructions {
-                dotgraph.push_str(&format!(r#"{}<br align="left" />"#,
+                // This space is required here otherwise things break...
+                dotgraph.push_str(&format!(r#"{} <br align="left" />"#,
                                            self.instruction_string(instruction, formatter)));
             }
 
