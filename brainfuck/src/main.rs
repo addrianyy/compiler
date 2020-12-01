@@ -11,7 +11,7 @@ extern "win64" fn print_char(_ch: u8) {
 }
 
 fn main() {
-    let program = std::fs::read_to_string("hanoi.bf").unwrap();
+    let program = std::fs::read_to_string("mandel.bf").unwrap();
     let mut ir  = ir::Module::new();
 
     let input = unsafe {

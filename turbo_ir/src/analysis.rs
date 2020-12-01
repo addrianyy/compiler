@@ -856,6 +856,9 @@ impl FunctionData {
         let creators      = self.value_creators();
         let flow_incoming = self.flow_graph_incoming();
 
+        assert!(flow_incoming[&self.entry()].is_empty(),
+                "There cannot be jumps to the entry block.");
+
         let mut cache = Set::default();
 
         for label in self.reachable_labels() {
