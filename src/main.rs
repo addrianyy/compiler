@@ -46,7 +46,7 @@ fn main() {
         let name = &prototype.name;
 
         compiled.ir.dump_function_text_stdout(*function);
-        compiled.ir.dump_function_graph(*function, &format!("graphs/{}.svg", name));
+        compiled.ir.dump_function_graph(*function, &format!("graphs/{}.pdf", name));
 
         println!();
     }

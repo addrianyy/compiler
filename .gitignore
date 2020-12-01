@@ -4,5 +4,6 @@
 /.idea
 *.bin
 *.svg
+*.png
 perf.data
 perf.data.old

@@ -115,6 +115,9 @@ impl FunctionData {
         let formatter    = &BlankFormatter;
         let mut dotgraph = String::new();
 
+        assert!(!path.to_lowercase().ends_with(".svg"),
+                "Graphviz is buggy and IR graph cannot be created with SVG format.");
+
         dotgraph.push_str("digraph G {\n");
 
         for label in self.reachable_labels() {
