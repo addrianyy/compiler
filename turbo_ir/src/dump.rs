@@ -48,6 +48,34 @@ impl IRFormatter for BlankFormatter {
     }
 }
 
+struct GraphvizFormatter;
+
+impl IRFormatter for GraphvizFormatter {
+    fn fmt_value(&self, value: Value) -> String {
+        format!("{}", value)
+    }
+
+    fn fmt_type(&self, name: String) -> String {
+        name
+    }
+
+    fn fmt_inst(&self, name: String) -> String {
+        name
+    }
+
+    fn fmt_label(&self, label: Label) -> String {
+        format!("{}", label)
+    }
+
+    fn fmt_literal(&self, literal: String) -> String {
+        literal
+    }
+
+    fn fmt_function(&self, name: &str) -> String {
+        name.to_owned()
+    }
+}
+
 struct ConsoleFormatter;
 
 impl IRFormatter for ConsoleFormatter {
@@ -112,7 +140,7 @@ impl FunctionData {
     }
 
     pub fn dump_graph(&self, path: &str) {
-        let formatter    = &BlankFormatter;
+        let formatter    = &GraphvizFormatter;
         let mut dotgraph = String::new();
 
         assert!(!path.to_lowercase().ends_with(".svg"),
@@ -130,19 +158,23 @@ impl FunctionData {
                 format!("{}:", formatter.fmt_label(label))
             };
 
-            dotgraph.push_str(&format!(r#"{} [shape=box fontname="Consolas" label="{}\n"#,
-                                       label, name));
+            dotgraph.push_str(
+                &format!(
+                    r#"{} [shape=box fontname="Consolas" label=<{}<br/>"#,
+                    label, name,
+                )
+            );
 
             if label == self.entry() {
-                dotgraph.push_str(&format!(r#"\n{}:\n"#, formatter.fmt_label(label)));
+                dotgraph.push_str(&format!(r#"<br/>{}:<br/>"#, formatter.fmt_label(label)));
             }
 
-            for (inst_id, instruction) in instructions.iter().enumerate() {
-                dotgraph.push_str(&format!("{:>3}: {}\\l", inst_id,
+            for instruction in instructions {
+                dotgraph.push_str(&format!(r#"{}<br align="left" />"#,
                                            self.instruction_string(instruction, formatter)));
             }
 
-            dotgraph.push_str("\"];\n");
+            dotgraph.push_str(">];\n");
 
             let conditional = targets.len() == 2;
 
