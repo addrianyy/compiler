@@ -156,7 +156,7 @@ impl FunctionData {
 
         dotgraph.push_str("}\n");
 
-        super::dot::save_svg_graph(&dotgraph, path);
+        crate::dot::save_graph(&dotgraph, path);
     }
 
     pub fn dump_text_formatter<W: Write>(&self, w: &mut W,

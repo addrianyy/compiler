@@ -594,8 +594,8 @@ impl FunctionData {
 
         dotgraph.push_str("}\n");
 
-        crate::dot::save_svg_graph(&dotgraph, &format!("graphs/interference_{}.svg",
-                                                       self.prototype.name));
+        crate::dot::save_graph(&dotgraph, &format!("graphs/interference_{}.svg",
+                                                    self.prototype.name));
     }
 
     fn interference_graph(

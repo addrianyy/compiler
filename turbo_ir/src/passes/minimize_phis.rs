@@ -17,8 +17,8 @@ impl PhisGraph {
         self.edges.get_mut(&from).unwrap().insert(to);
     }
 
-    #[allow(dead_code)]
-    fn dump_dot(&self, path: &str) {
+    #[allow(unused)]
+    fn dump(&self, path: &str) {
         let mut dotgraph = String::from("digraph G {\n");
 
         for &vertex in &self.vertices {
@@ -33,7 +33,7 @@ impl PhisGraph {
 
         dotgraph.push_str("}\n");
 
-        crate::dot::save_svg_graph(&dotgraph, path);
+        crate::dot::save_graph(&dotgraph, path);
     }
 
     fn scc(&self) -> Vec<Vec<Value>> {
