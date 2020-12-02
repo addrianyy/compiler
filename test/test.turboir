@@ -1,20 +1,19 @@
-u32 invariant(u32 v0, u32 v1) {
+u32 cond_test(u32 v0) {
 entry:
-    zero = u32 0
-    cond = icmp eq u32 v0, zero
-    bcond u1 cond, lbl1, lbl2
+    result = stackalloc u32
+    cond   = icmp eq u32 v0, 0
 
-lbl1:
-    x = u32 5
+    bcond u1 cond, on_true, on_false
+
+on_true:
+    store u32* result, u32 100
     branch exit
 
-lbl2:
-    y = u32 7
+on_false:
+    store u32* result, u32 0
     branch exit
 
 exit:
-    d = phi u32 [lbl1: x, lbl2: y]
-    z = add u32 v0, v1
-    f = phi u32 [lbl1: x, lbl2: y]
-    ret u32 d
+    read_result = load u32, u32* result
+    ret u32 read_result
 }

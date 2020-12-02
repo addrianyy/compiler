@@ -71,9 +71,10 @@ impl Keyword {
 
 #[derive(Default)]
 struct FunctionContext {
-    values: LargeKeyMap<String, Value>,
-    labels: LargeKeyMap<String, Label>,
-    types:  Map<Value, Type>,
+    values:         LargeKeyMap<String, Value>,
+    labels:         LargeKeyMap<String, Label>,
+    types:          Map<Value, Type>,
+    labels_defined: Map<Label, bool>,
 }
 
 impl FunctionContext {
@@ -82,9 +83,12 @@ impl FunctionContext {
             return *label;
         }
 
+
         let label = ir.create_label();
 
         self.labels.insert(label_name.to_string(), label);
+
+        self.labels_defined.entry(label).or_insert(false);
 
         label
     }
@@ -111,6 +115,8 @@ impl FunctionContext {
         } else {
             self.label(label_name, ir)
         };
+
+        self.labels_defined.insert(label, true);
 
         ir.switch_label(label);
     }
@@ -659,6 +665,16 @@ pub fn parse(source: &str) -> Module {
     let mut ir     = Module::new();
 
     parser.parse_functions(&mut ir);
+
+    for (_, cx) in &parser.function_contexts {
+        let reverse_lookup: Map<Label, String> = cx.labels.iter().map(|(name, label)| {
+            (*label, name.to_string())
+        }).collect();
+
+        for (label, defined) in &cx.labels_defined {
+            assert!(defined, "Label {} used but not defined.", reverse_lookup[&label]);
+        }
+    }
 
     ir.finalize();
 
