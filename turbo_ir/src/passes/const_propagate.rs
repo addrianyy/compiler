@@ -115,13 +115,13 @@ impl super::Pass for ConstPropagatePass {
             ($from: expr, $cast: expr, $dst_ty: expr, $from_signed: ty, $from_unsigned: ty) => {{
                 match *$dst_ty {
                     Type::U8  => propagate_cast!(r, $from, $cast, $from_signed,
-                                                 $from_unsigned, u8),
+                                                    $from_unsigned, u8),
                     Type::U16 => propagate_cast!(r, $from, $cast, $from_signed,
-                                                 $from_unsigned, u16),
+                                                    $from_unsigned, u16),
                     Type::U32 => propagate_cast!(r, $from, $cast, $from_signed,
-                                                 $from_unsigned, u32),
+                                                    $from_unsigned, u32),
                     Type::U64 => propagate_cast!(r, $from, $cast, $from_signed,
-                                                 $from_unsigned, u64),
+                                                    $from_unsigned, u64),
                     _ => panic!("Invalid {:?} cast to {:?}.", $cast, $dst_ty),
                 }
             }};
@@ -149,10 +149,7 @@ impl super::Pass for ConstPropagatePass {
                     }
                 }
                 Instruction::ArithmeticBinary { a, op, b, .. } => {
-                    if let (Some(&(a_ty, a)), Some(&(b_ty, b))) = (consts.get(a), consts.get(b)) {
-                        assert_eq!(a_ty, b_ty, "Constprop: binary arihmetic instruction \
-                                   has different operand types.");
-
+                    if let (Some(&(a_ty, a)), Some(&(_, b))) = (consts.get(a), consts.get(b)) {
                         let result = match ConstType::new(a_ty) {
                             ConstType::U1  => panic!("U1 not allowed in binary instruction."),
                             ConstType::U8  => propagate_binary!(a, op, b, i8,  u8),
@@ -165,10 +162,7 @@ impl super::Pass for ConstPropagatePass {
                     }
                 }
                 Instruction::IntCompare { a, pred, b, .. } => {
-                    if let (Some(&(a_ty, a)), Some(&(b_ty, b))) = (consts.get(a), consts.get(b)) {
-                        assert_eq!(a_ty, b_ty, "Constprop: int compare instruction \
-                                   has different operand types.");
-
+                    if let (Some(&(a_ty, a)), Some(&(_, b))) = (consts.get(a), consts.get(b)) {
                         let result = match ConstType::new(a_ty) {
                             ConstType::U1  => panic!("U1 not allowed in compare instruction."),
                             ConstType::U8  => propagate_compare!(a, pred, b, i8,  u8),
