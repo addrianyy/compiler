@@ -9,13 +9,13 @@ fn get_invariant_value(
     consts:   &Map<Value, (Type, Const)>,
 ) -> Option<(Value, Value)> {
     // We can get invariant value if `from` ends with conditional branch with condition being
-    // a result from `icmp ne` or `icmp eq` instruction.
+    // a result from `cmp ne` or `cmp eq` instruction.
 
     // Get the conditional branch at the end of `from`.
     if let Instruction::BranchCond { cond, on_true, on_false } = function.last_instruction(from) {
         let creator = creators.get(cond).map(|location| function.instruction(*location));
 
-        // Get the `icmp` instruction that is used as `bcond` condition.
+        // Get the `cmp` instruction that is used as `bcond` condition.
         if let Some(Instruction::IntCompare { a, pred, b, .. }) = creator {
             // We cannot get invariant if on_true == on_false or a == b
             // (it's an unconditional branch then).

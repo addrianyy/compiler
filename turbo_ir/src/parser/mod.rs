@@ -425,7 +425,7 @@ impl Parser {
         }
 
         match keyword {
-            Keyword::Icmp => {
+            Keyword::Cmp => {
                 let pred = self.lexer.eat_keyword()
                     .to_int_predicate()
                     .expect("Expected int predicate.");

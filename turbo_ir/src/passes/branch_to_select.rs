@@ -120,7 +120,7 @@ impl super::Pass for BranchToSelectPass {
         //
         // entry:
         //   v2 = u32 4
-        //   v4 = icmp eq u32 v0, v2
+        //   v4 = cmp eq u32 v0, v2
         //   bcond u1 v4, block_2, block_3
         //
         // block_2:
@@ -140,7 +140,7 @@ impl super::Pass for BranchToSelectPass {
         //   v11 = u32 823
         //   v10 = u32 555
         //   v2 = u32 4
-        //   v4 = icmp eq u32 v0, v2
+        //   v4 = cmp eq u32 v0, v2
         //   v15 = select u1 v4, u32 v10, v11
         //   ret u32 v15
 

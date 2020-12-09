@@ -17,7 +17,7 @@ impl super::Pass for X86ReorderPass {
         // Try to reorder instructions to create patterns which are matched by x86 backend
         // to create more efficient machine code.
         //
-        // For now this optimization pass will only try to move icmps just above select/bcond
+        // For now this optimization pass will only try to move cmps just above select/bcond
         // instructions.
 
         for label in function.reachable_labels() {
@@ -48,19 +48,19 @@ impl super::Pass for X86ReorderPass {
                     }
                     Instruction::Select     { cond, .. } |
                     Instruction::BranchCond { cond, .. } => {
-                        // We found `select`/`bcond` and we want to move corresponding `icmp`
+                        // We found `select`/`bcond` and we want to move corresponding `cmp`
                         // just above it.
                         if let Some(&cmp_id) = compares.get(cond) {
-                            // Check if `icmp` is actually just above us. In this case
+                            // Check if `cmp` is actually just above us. In this case
                             // we have nothing to do.
                             let inbetween = inst_id - cmp_id - 1;
                             if  inbetween == 0 {
                                 continue 'next_instruction;
                             }
 
-                            // We want to move `icmp` down. We need to make sure that
+                            // We want to move `cmp` down. We need to make sure that
                             // no instruction so far read its output value. If that's the
-                            // case, moving `icmp` would violate SSA properites.
+                            // case, moving `cmp` would violate SSA properites.
                             for instruction in &body[cmp_id + 1..inst_id] {
                                 for value in instruction.read_values() {
                                     if value == *cond {
@@ -69,12 +69,12 @@ impl super::Pass for X86ReorderPass {
                                 }
                             }
 
-                            // We are able to move `icmp` instruction.
+                            // We are able to move `cmp` instruction.
 
-                            // This `icmp` instruction is non-movable from now.
+                            // This `cmp` instruction is non-movable from now.
                             compares.remove(cond);
 
-                            // Move `icmp` instruction down so it's just above us.
+                            // Move `cmp` instruction down so it's just above us.
                             // We are only updating indices under us.
                             let compare = std::mem::replace(&mut body[cmp_id],
                                                             Instruction::Nop);

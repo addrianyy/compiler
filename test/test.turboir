@@ -1,7 +1,7 @@
 u32 cond_test(u32 v0) {
 entry:
     result = stackalloc u32
-    cond   = icmp eq u32 v0, 0
+    cond   = cmp eq u32 v0, 0
 
     bcond u1 cond, on_true, on_false
 

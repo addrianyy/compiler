@@ -199,7 +199,7 @@ impl FunctionData {
                        fmt_type!(*a), fmt_value!(*a), fmt_value!(*b))?;
             }
             Instruction::IntCompare { dst, a, pred, b } => {
-                write!(w, "{} = {} {} {} {}, {}", fmt_value!(*dst), fmt_inst!("icmp"),
+                write!(w, "{} = {} {} {} {}, {}", fmt_value!(*dst), fmt_inst!("cmp"),
                        fmt_inst!(*pred), fmt_type!(*a), fmt_value!(*a), fmt_value!(*b))?;
             }
             Instruction::Load { dst, ptr } => {

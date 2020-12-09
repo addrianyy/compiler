@@ -139,3 +139,13 @@ i32 range_analysis() {
 i32 reassoc(i32 x) {
     return (1 + 2 + x) * (x + (1+2));
 }
+
+void call_x() {
+}
+
+void test(i32 x) {
+    while (x == 7) {
+        call_x();
+        x = 0;
+    }
+}

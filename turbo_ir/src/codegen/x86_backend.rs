@@ -538,7 +538,7 @@ impl X86Backend {
              Instruction::BranchCond { cond, on_true, on_false }, ..]
                  if dst == cond && cx.usage_count(*dst) == 1 =>
             {
-                // We can merge icmp and bcond. This will allow us to use flag registers
+                // We can merge cmp and bcond. This will allow us to use flag registers
                 // directly and avoid 2 compares and conditional instructions.
 
                 // Get textual representations of true and false labels.
@@ -625,7 +625,7 @@ impl X86Backend {
              Instruction::Select     { dst: sel_dst, cond, on_true, on_false }, ..]
                 if cond == cmp_dst && cx.usage_count(*cmp_dst) == 1 =>
             {
-                // We can merge icmp and select. This will allow us to use flag registers
+                // We can merge cmp and select. This will allow us to use flag registers
                 // directly and avoid 2 compares and conditional instructions.
 
                 let cmp_ty   = function.value_type(*a);

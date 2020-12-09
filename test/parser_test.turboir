@@ -1,6 +1,6 @@
 u32 main(u8* v0) {
 entry:
-  v1 = icmp eq u8* v0, null
+  v1 = cmp eq u8* v0, null
   bcond u1 v1, block_2, block_4
 
 block_2:
@@ -10,13 +10,13 @@ block_4:
   v2 = phi u32 [block_9: v8, entry: 0]
   v3 = gep u8* v0, u32 v2
   v4 = load u8, u8* v3
-  v5 = icmp ne u8 v4, 0
+  v5 = cmp ne u8 v4, 0
   bcond u1 v5, block_5, block_6
 
 block_5:
   v6 = add u8 v4, 2
   store u8* v3, u8 v6
-  v7 = icmp eq u8 v6, 12
+  v7 = cmp eq u8 v6, 12
   bcond u1 v7, block_10, block_9
 
 block_6:
@@ -41,7 +41,7 @@ block_1:
 
 u32 abc(u32 v0) {
 entry:
-  v1 = icmp ne u32 v0, 0
+  v1 = cmp ne u32 v0, 0
   bcond u1 v1, block_2, block_3
 
 block_2:
@@ -53,7 +53,7 @@ block_3:
 
 u32 turbo(u32 v0) {
 entry:
-  v1 = icmp eq u32 v0, 4
+  v1 = cmp eq u32 v0, 4
   v2 = select u1 v1, u32 555, 823
   ret u32 v2
 }
@@ -70,13 +70,13 @@ entry:
 block_1:
   v1 = phi u32 [entry: 0, block_8: v9]
   v2 = phi u32 [entry: 0, block_8: v5]
-  v3 = icmp sgt u32 v0, v1
+  v3 = cmp sgt u32 v0, v1
   bcond u1 v3, block_5, block_4
 
 block_5:
   v4 = phi u32 [block_6: v8, block_1: 0]
   v5 = phi u32 [block_6: v7, block_1: v2]
-  v6 = icmp sgt u32 v1, v4
+  v6 = cmp sgt u32 v1, v4
   bcond u1 v6, block_6, block_8
 
 block_4:
@@ -126,10 +126,10 @@ entry:
 
 u32 abasdsa(u32 v0) {
 entry:
-  v1 = icmp sgt u32 v0, 33
+  v1 = cmp sgt u32 v0, 33
   v2 = select u1 v1, u32 99, 55
   v3 = sub u32 v2, 4
-  v4 = icmp sgt u32 v0, 88
+  v4 = cmp sgt u32 v0, 88
   v5 = select u1 v4, u32 v3, v2
   ret u32 v5
 }
@@ -141,7 +141,7 @@ entry:
 block_1:
   v1 = phi u32 [entry: 0, block_2: v5]
   v2 = phi u32 [entry: 0, block_2: v4]
-  v3 = icmp sgt u32 v0, v1
+  v3 = cmp sgt u32 v0, v1
   bcond u1 v3, block_2, block_4
 
 block_2:
@@ -160,12 +160,12 @@ entry:
 block_1:
   v0 = phi u32 [entry: 0, block_7: v5]
   v1 = phi u32 [entry: 0, block_7: v3]
-  v2 = icmp sgt u32 7, v0
+  v2 = cmp sgt u32 7, v0
   bcond u1 v2, block_2, block_4
 
 block_2:
   v3 = add u32 v1, 1
-  v4 = icmp sgt u32 v0, 10
+  v4 = cmp sgt u32 v0, 10
   bcond u1 v4, block_6, block_7
 
 block_4:

@@ -863,7 +863,7 @@ impl FunctionData {
         //   v5 = u32 1
         //   v6 = add u32 v2, v5
         //   v7 = u32 6
-        //   v8 = icmp ne u32 v6, v7
+        //   v8 = cmp ne u32 v6, v7
         //   bcond u1 v8, label_1, label_2
         //
         // label_2:
@@ -885,7 +885,7 @@ impl FunctionData {
         //   v7 = u32 6
         //   v10 = alias u32 v6
         //   v12 = alias u32 v4
-        //   v8 = icmp ne u32 v6, v7
+        //   v8 = cmp ne u32 v6, v7
         //   bcond u1 v8, label_1, label_2
         //
         // label_2:
@@ -923,7 +923,7 @@ impl FunctionData {
                 let index = if body.len() == 1 {
                     0
                 } else {
-                    // To help x86 backend try to not put alias inbetween icmp and bcond.
+                    // To help x86 backend try to not put alias inbetween cmp and bcond.
                     if let Instruction::IntCompare { dst, .. } = body[body.len() - 2] {
                         if dst != value {
                             body.len() - 2

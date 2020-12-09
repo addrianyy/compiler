@@ -102,7 +102,7 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
                             });
                         } else {
                             // Some optimization passes combined can create sequences like this:
-                            // v3 = icmp eq u32 v0, v2
+                            // v3 = cmp eq u32 v0, v2
                             // v4 = select u1 v3, u32 v2, v0
                             //
                             // In this case we can optimize this to:

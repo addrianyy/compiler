@@ -405,7 +405,7 @@ impl super::Pass for OptimizeKnownBitsPass {
                         let mut a = known_bits[&a];
                         let mut b = known_bits[&b];
 
-                        // Try to resolve `icmp` result using known bits.
+                        // Try to resolve `cmp` result using known bits.
                         let result = match pred {
                             IntPredicate::Equal | IntPredicate::NotEqual => {
                                 // Quickly prove inequality by comparing operands known bits.
@@ -453,7 +453,7 @@ impl super::Pass for OptimizeKnownBitsPass {
                             }
                         };
 
-                        // If comparison result is constant than replace `icmp` with that constant.
+                        // If comparison result is constant than replace `cmp` with that constant.
                         if let Some(result) = result {
                             constant = Some(result as u64);
                         }
