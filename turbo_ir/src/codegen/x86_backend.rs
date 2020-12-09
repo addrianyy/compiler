@@ -609,8 +609,8 @@ impl X86Backend {
                     IntPredicate::NotEqual => asm.jne(operands),
                     IntPredicate::GtS      => asm.jg(operands),
                     IntPredicate::GteS     => asm.jge(operands),
-                    IntPredicate::GtU      => asm.jb(operands),
-                    IntPredicate::GteU     => asm.jbe(operands),
+                    IntPredicate::GtU      => asm.ja(operands),
+                    IntPredicate::GteU     => asm.jae(operands),
                 }
 
                 // If there was no fallthrough we must jump to other label.
@@ -667,8 +667,8 @@ impl X86Backend {
                     IntPredicate::NotEqual => asm.cmovne(operands),
                     IntPredicate::GtS      => asm.cmovg(operands),
                     IntPredicate::GteS     => asm.cmovge(operands),
-                    IntPredicate::GtU      => asm.cmovb(operands),
-                    IntPredicate::GteU     => asm.cmovbe(operands),
+                    IntPredicate::GtU      => asm.cmova(operands),
+                    IntPredicate::GteU     => asm.cmovae(operands),
                 }
 
                 // Move selected value to destination place from intermediate register.
