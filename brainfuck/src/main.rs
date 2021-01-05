@@ -1,17 +1,28 @@
 use std::time::Instant;
+use std::io::Read;
+use std::fs::File;
 
 use turbo_ir as ir;
 
 extern "win64" fn read_char() -> u8 {
-    panic!()
+    std::io::stdin()
+        .bytes()
+        .next()
+        .unwrap_or(Ok(0))
+        .unwrap_or(0)
 }
 
-extern "win64" fn print_char(_ch: u8) {
-    print!("{}", _ch as char);
+extern "win64" fn print_char(ch: u8) {
+    print!("{}", ch as char);
 }
 
 fn main() {
-    let program = std::fs::read_to_string("mandel.bf").unwrap();
+    let input_file = std::env::args().skip(1).next().unwrap_or_else(|| {
+        println!("Usage: brainfuck <source file>");
+        std::process::exit(1);
+    });
+
+    let program = std::fs::read_to_string(input_file).unwrap();
     let mut ir  = ir::Module::new();
 
     let input = unsafe {
@@ -139,33 +150,29 @@ fn main() {
     let finalize_time = start.elapsed().as_secs_f64();
 
     let passes = &[
-        turbo_ir::passes::const_propagate(),
-        turbo_ir::passes::remove_ineffective_operations(),
-        turbo_ir::passes::simplify_cfg(),
-        turbo_ir::passes::simplify_compares(),
-        turbo_ir::passes::simplify_expressions(),
-        turbo_ir::passes::remove_dead_code(),
-        turbo_ir::passes::memory_to_ssa(),
-        turbo_ir::passes::deduplicate_fast(),
-        turbo_ir::passes::remove_known_loads_fast(),
-        turbo_ir::passes::remove_dead_stores_fast(),
-        turbo_ir::passes::undefined_propagate(),
-        turbo_ir::passes::minimize_phis(),
-        turbo_ir::passes::branch_to_select(),
-        //turbo_ir::passes::reorder(),
-        turbo_ir::passes::x86reorder(),
+        ir::passes::const_propagate(),
+        ir::passes::remove_ineffective_operations(),
+        ir::passes::simplify_cfg(),
+        ir::passes::simplify_compares(),
+        ir::passes::simplify_expressions(),
+        ir::passes::remove_dead_code(),
+        ir::passes::memory_to_ssa(),
+        ir::passes::deduplicate_fast(),
+        ir::passes::remove_known_loads_fast(),
+        ir::passes::remove_dead_stores_fast(),
+        ir::passes::undefined_propagate(),
+        ir::passes::minimize_phis(),
+        ir::passes::branch_to_select(),
+        ir::passes::x86reorder(),
     ];
 
     let start = Instant::now();
 
-    let pass_manager = turbo_ir::PassManager::with_passes(passes);
-
-    ir.optimize(&pass_manager, true);
+    ir.optimize(&ir::PassManager::with_passes(passes), false);
 
     let optimize_time = start.elapsed().as_secs_f64();
 
     if true {
-        use std::fs::File;
         ir.dump_function_text(function, &mut File::create("result.turboir").unwrap()).unwrap();
     }
 
@@ -189,7 +196,9 @@ fn main() {
 
     let mut buffer = vec![0u8; 30 * 1000];
 
-    std::fs::write("asm_dump.bin", machine_code.function_buffer(function)).unwrap();
+    if true {
+        std::fs::write("asm_dump.bin", machine_code.function_buffer(function)).unwrap();
+    }
 
     println!("Running...");
 

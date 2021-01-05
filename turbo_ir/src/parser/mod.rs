@@ -666,7 +666,7 @@ pub fn parse(source: &str) -> Module {
 
     parser.parse_functions(&mut ir);
 
-    for (_, cx) in &parser.function_contexts {
+    for cx in parser.function_contexts.values() {
         let reverse_lookup: Map<Label, String> = cx.labels.iter().map(|(name, label)| {
             (*label, name.to_string())
         }).collect();

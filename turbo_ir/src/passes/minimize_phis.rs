@@ -118,7 +118,7 @@ impl PhisGraph {
                     data.sccs.push(cur_scc);
                 }
             }
-        };
+        }
 
         let mut sccs = Vec::new();
 

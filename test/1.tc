@@ -149,3 +149,13 @@ void test(i32 x) {
         x = 0;
     }
 }
+
+u32 tester(u32 a) {
+    if (a == 20) {
+        a += 4;
+    } else {
+        a = 1337;
+    }
+
+    return a & 0xfff;
+}
