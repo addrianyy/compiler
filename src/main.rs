@@ -2,6 +2,8 @@ mod parser;
 mod compiler;
 mod runtimelib;
 
+use parser::Ty;
+
 fn recreate_directory(path: &str) {
     let _ = std::fs::remove_dir_all(path);
 
@@ -11,7 +13,12 @@ fn recreate_directory(path: &str) {
 }
 
 fn main() {
-    let source       = std::fs::read_to_string("test/1.tc").unwrap();
+    let input_file = std::env::args().skip(1).next().unwrap_or_else(|| {
+        println!("Usage: compiler <source file>");
+        std::process::exit(1);
+    });
+
+    let source       = std::fs::read_to_string(input_file).unwrap();
     let parsed       = parser::parse(&source);
     let mut compiled = compiler::compile(&parsed);
 
@@ -60,26 +67,15 @@ fn main() {
         std::fs::write(format!("mcode/{}.bin", name), buffer).unwrap();
 
         if name == "main" {
-            let mut buffer = [1u8, 2u8, 3u8, 0u8];
+            assert!(prototype.return_ty == Ty::U32, "Invalid main return value.");
+            assert!(prototype.args.is_empty(), "Invalid main arguments.");
 
-            type Func = extern "win64" fn(*mut u8) -> i32;
-
-            let result = unsafe {
-                let func = mcode.function_ptr::<Func>(*function);
-
-                func(buffer.as_mut_ptr())
-            };
-
-            println!("return value: {}. buffer: {:?}", result, buffer);
-        }
-
-        if name == "sum" {
-            type Func = extern "win64" fn(i32) -> i32;
+            type Func = extern "win64" fn() -> u32;
 
             let result = unsafe {
                 let func = mcode.function_ptr::<Func>(*function);
 
-                func(5)
+                func()
             };
 
             println!("return value: {}.", result);

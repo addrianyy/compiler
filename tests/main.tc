@@ -1,0 +1,41 @@
+extern void print(u8* str);
+
+void print_num(u32 num) {
+    u8 buffer[256];
+    i32 i = 255;
+
+    buffer[i] = 0;
+    i -= 1;
+
+    if (num == 0) {
+        buffer[i] = 48u8;
+        i -= 1;
+    }
+
+    while (num > 0) {
+        u8 char = (num % 10u8) + 48u8;
+            
+        buffer[i] = char;
+        i -= 1;
+
+        num /= 10u8;
+    }
+
+    print(&buffer[i + 1]);
+}
+
+u32 main() {
+    u32 count = 8;
+    u32 a = 0;
+    u32 b = 1;
+
+    for (u32 i = 0; i < count; i += 1) {
+        print_num(a);
+
+        u32 t = a + b;
+        a = b;
+        b = t;
+    }
+
+    return 0;
+}

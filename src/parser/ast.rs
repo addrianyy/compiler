@@ -48,6 +48,7 @@ impl BinaryOp {
             Token::Sub      => BinaryOp::Sub,
             Token::Mul      => BinaryOp::Mul,
             Token::Div      => BinaryOp::Div,
+            Token::Mod      => BinaryOp::Mod,
             Token::Shr      => BinaryOp::Shr,
             Token::Shl      => BinaryOp::Shl,
             Token::And      => BinaryOp::And,

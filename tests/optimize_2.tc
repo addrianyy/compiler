@@ -1,4 +1,4 @@
-u32 x(i8 x, i8 y) {
+u32 optimize_1(i8 x, i8 y) {
     i8 r = 0;
 
     if (x == 0i8) {
@@ -12,7 +12,7 @@ u32 x(i8 x, i8 y) {
     return zz & 0x8000i32;
 }
 
-u32 test(i32 x, i32 y) {
+u32 optimize_2(i32 x, i32 y) {
     x &= ~0x80000000i32;
     y &= ~0x80000000i32;
 
@@ -23,7 +23,7 @@ u32 test(i32 x, i32 y) {
     return 33;
 }
 
-u32 test2(i32 x, i32 y) {
+u32 optimize_3(i32 x, i32 y) {
     x &= ~0xFF000000i32;
     y &= ~0xFF000000i32;
 
@@ -37,7 +37,7 @@ u32 test2(i32 x, i32 y) {
     return 33;
 }
 
-u32 turbo123(u32 x, u32 y) {
+u32 optimize_4(u32 x, u32 y) {
     i64 x2 = x;
     i64 y2 = y;
 
@@ -51,7 +51,7 @@ u32 turbo123(u32 x, u32 y) {
     return y2 & 0b1101i64;
 }
 
-u32 addtest(i32 x, i32 y) {
+u32 optimize_5(i32 x, i32 y) {
     x &= ~0xff;
     x |= 0b1011;
 
@@ -61,7 +61,7 @@ u32 addtest(i32 x, i32 y) {
     return (x + y) & 0xff;
 }
 
-u32 invariant(u32 x, u32 y) {
+u32 optimize_6(u32 x, u32 y) {
     if (x == (3 + 1 * 2)) {
         if (x == 33u32) {
             x = x + y;
