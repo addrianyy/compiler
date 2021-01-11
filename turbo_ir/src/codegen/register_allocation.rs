@@ -609,11 +609,11 @@ impl FunctionData {
         time!(interference_graph);
 
         // State of used values for each block.
-        let mut block_alloc_state: Map<Label, Vec<Value>> =
+        let mut block_used_values: Map<Label, Vec<Value>> =
             Map::new_with_capacity(self.blocks.len());
 
-        // Entry block starts with empty state.
-        block_alloc_state
+        // Entry block starts with no used values.
+        block_used_values
             .entry(self.entry())
             .or_insert_with(Default::default);
 
@@ -623,31 +623,28 @@ impl FunctionData {
         };
 
         let mut interference = InterferenceGraph::default();
-        let mut to_free: Vec<Value> = Vec::new();
 
         for &label in labels {
-            // If there is no register usage state for this block then take one
+            // If there is no value usage state for this block then take one
             // from immediate dominator (as we can only use values originating from it).
             #[allow(clippy::map_entry)]
-            if !block_alloc_state.contains_key(&label) {
-                let idom   = dominators[&label];
-                let allocs = block_alloc_state[&idom].clone();
+            if !block_used_values.contains_key(&label) {
+                let dominator   = dominators[&label];
+                let used_values = block_used_values[&dominator].clone();
 
-                block_alloc_state.insert(label, allocs);
+                block_used_values.insert(label, used_values);
             }
 
-            let block_allocs = block_alloc_state.get_mut(&label).unwrap();
-            let block        = &self.blocks[&label];
+            let used_values = block_used_values.get_mut(&label).unwrap();
+            let block       = &self.blocks[&label];
 
             // PHI values can be used before being defined so we must make them alive
             // in this block.
             for instruction in block.iter() {
                 if let Instruction::Phi { incoming, .. } = instruction {
                     for (_, value) in incoming {
-                        // Make PHI input value alive if it's currently not.
-                        if block_allocs.iter().position(|x| x == value).is_none() {
-                            block_allocs.push(*value);
-                        }
+                        // Make PHI input value alive. This may add duplicate but it's fine.
+                        used_values.push(*value);
                     }
                 }
             }
@@ -656,24 +653,8 @@ impl FunctionData {
             for (inst_id, instruction) in block.iter().enumerate() {
                 let location = Location::new(label, inst_id);
 
-                to_free.clear();
-
-                // Get a list of all values which aren't used anymore and can be freed.
-                for &value in block_allocs.iter() {
-                    if liveness.value_dies(location, value) {
-                        to_free.push(value);
-                    }
-                }
-
-                // Free all queued values.
-                for &value in &to_free {
-                    // Get index of unused value.
-                    let item = block_allocs.iter()
-                        .position(|&x| x == value)
-                        .unwrap();
-
-                    block_allocs.remove(item);
-                }
+                // Remove all values which aren't used anymore.
+                used_values.retain(|&value| !liveness.value_dies(location, value));
 
                 if let Some(output) = instruction.created_value() {
                     // Skip optimizable constants.
@@ -689,12 +670,12 @@ impl FunctionData {
                     interference.add_vertex(output_entity);
 
                     // Newly created VR interferes with all currently alive VRs.
-                    for &value in block_allocs.iter() {
+                    for &value in used_values.iter() {
                         interference.add_edge(output_entity, get_entity(value));
                     }
 
-                    // Add allocated value to usage state.
-                    block_allocs.push(output);
+                    // Add allocated value to usage state. This may add duplicate but it's fine.
+                    used_values.push(output);
                 }
             }
         }

@@ -13,7 +13,7 @@ fn recreate_directory(path: &str) {
 }
 
 fn main() {
-    let input_file = std::env::args().skip(1).next().unwrap_or_else(|| {
+    let input_file = std::env::args().nth(1).unwrap_or_else(|| {
         println!("Usage: compiler <source file>");
         std::process::exit(1);
     });

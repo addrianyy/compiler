@@ -17,7 +17,7 @@ extern "win64" fn print_char(ch: u8) {
 }
 
 fn main() {
-    let input_file = std::env::args().skip(1).next().unwrap_or_else(|| {
+    let input_file = std::env::args().nth(1).unwrap_or_else(|| {
         println!("Usage: brainfuck <source file>");
         std::process::exit(1);
     });

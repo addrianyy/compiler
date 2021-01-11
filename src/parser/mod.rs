@@ -262,6 +262,9 @@ impl Parser {
                     value:    self.parse_expression(),
                 });
             }
+            // TODO: This is broken. Fix this.
+            // *get_ptr() += 15;
+            // In this case get_ptr() will be called 2 times.
             Token::AddAssign => combined = Some(BinaryOp::Add),
             Token::SubAssign => combined = Some(BinaryOp::Sub),
             Token::MulAssign => combined = Some(BinaryOp::Mul),
