@@ -1,5 +1,5 @@
-use crate::{FunctionData, Value, Location, Label, Map, Set, ConstType,
-            Dominators, FlowGraph, CapacityExt, Instruction};
+use crate::{CapacityExt, ConstType, Dominators, FlowGraph, FunctionData, Instruction, Label,
+            Location, Map, Set, Value};
 use super::Backend;
 
 const DEBUG_ALLOCATOR: bool = false;
@@ -417,6 +417,70 @@ impl InterferenceGraph {
                    "Not all vertices were colored.");
 
         coloring
+    }
+}
+
+struct DominatorTree {
+    _tree: Map<Label, Set<Label>>,
+    root:  Label,
+}
+
+impl DominatorTree {
+    fn new(function: &FunctionData, dominators: &Dominators) -> Self {
+        let mut tree = Map::default();
+
+        tree.insert(function.entry, Set::default());
+
+        for (dominated, dominator) in dominators {
+            tree.entry(*dominator)
+                .or_insert_with(Set::default)
+                .insert(*dominated);
+        }
+
+        Self {
+            _tree: tree,
+            root:  function.entry,
+        }
+    }
+
+    fn lowest_common_ancestor(&self, l1: Label, l2: Label) -> Label {
+        if l1 == l2 {
+            return l1;
+        }
+
+        // TODO: Implement actual LCA.
+        self.root
+    }
+
+    fn insertion_point(&self, value: Value, users: &Map<Value, Set<Location>>) -> Option<Location> {
+        let mut insertion_point = None;
+
+        for user in &users[&value] {
+            let label = user.label();
+            let index = user.index();
+
+            let result = if let Some((i_label, i_index)) = insertion_point {
+                let lca = self.lowest_common_ancestor(i_label, label);
+
+                let index = if lca == i_label && lca == label {
+                    std::cmp::min(index, i_index)
+                } else if lca == i_label {
+                    i_index
+                } else if lca == label {
+                    index
+                } else {
+                    0
+                };
+
+                (lca, index)
+            } else {
+                (label, index)
+            };
+
+            insertion_point = Some(result);
+        }
+
+        insertion_point.map(|(label, index)| Location::new(label, index))
     }
 }
 
@@ -881,8 +945,6 @@ impl FunctionData {
             }
         });
 
-        let has_phis = !phis.is_empty();
-
         for (phi_location, phi_dst, incoming) in phis {
             let mut new_incoming = Vec::new();
 
@@ -937,31 +999,18 @@ impl FunctionData {
             // Replace old PHI with rewritten one.
             *self.instruction_mut(phi_location) = new_phi;
         }
-
-        if has_phis {
-            // If we have rewritten PHIs make sure we didn't break anything.
-            self.validate_ssa();
-
-            if DEBUG_ALLOCATOR {
-                println!("Rewritten PHIs: ");
-
-                self.dump_text_stdout();
-
-                println!();
-            }
-        }
     }
 
-    fn rewrite_arguments(&mut self, labels: &[Label]) {
+    fn rewrite_arguments(&mut self, labels: &[Label], dominator_tree: &DominatorTree) {
         time!(rewrite_arguments);
 
-        let usage_counts = self.usage_counts();
-        let arguments    = self.argument_values.clone();
+        let arguments = self.argument_values.clone();
+        let users     = self.users_with_labels(labels);
 
         let mut aliases = Map::default();
 
         for argument in arguments {
-            if usage_counts[argument.index()] > 5 {
+            if users[&argument].len() > 4 {
                 let ty    = self.value_type(argument);
                 let value = self.allocate_typed_value(ty);
 
@@ -978,14 +1027,16 @@ impl FunctionData {
                 });
             });
 
-            // TODO: Use LCA on dominator tree to find the best insertion point.
-            let entry_body = self.blocks.get_mut(&self.entry()).unwrap();
-
             for (old, new) in aliases {
-                entry_body.insert(0, Instruction::Alias {
-                    dst:   new,
-                    value: old,
-                });
+                if let Some(location) = dominator_tree.insertion_point(old, &users) {
+                    // We have to ignore `location.index()` because it is outdated by now.
+                    self.blocks.get_mut(&location.label())
+                        .unwrap()
+                        .insert(0, Instruction::Alias {
+                            dst:   new,
+                            value: old,
+                        });
+                }
             }
         }
     }
@@ -1041,20 +1092,25 @@ impl FunctionData {
         (constants, uninlineable)
     }
 
-    fn rewrite_constants(&mut self, labels: &[Label], uninlineable: Set<Value>) {
+    fn rewrite_constants(&mut self, labels: &[Label], uninlineable: Set<Value>,
+                         dominator_tree: &DominatorTree) {
         let mut rewritten = Map::default();
+        let users         = self.users_with_labels(labels);
 
         for value in uninlineable {
-            let ty    = self.value_type(value);
-            let alias = self.allocate_typed_value(ty);
+            if let Some(location) = dominator_tree.insertion_point(value, &users) {
+                let ty    = self.value_type(value);
+                let alias = self.allocate_typed_value(ty);
 
-            // TODO: Use LCA on dominator tree to find the best insertion point.
-            self.blocks.get_mut(&self.entry()).unwrap().insert(0, Instruction::Alias {
-                dst: alias,
-                value,
-            });
+                self.blocks.get_mut(&location.label())
+                    .unwrap()
+                    .insert(location.index(), Instruction::Alias {
+                        dst: alias,
+                        value,
+                    });
 
-            rewritten.insert(value, alias);
+                rewritten.insert(value, alias);
+            }
         }
 
         self.for_each_instruction_with_labels_mut(labels, |_location, instruction| {
@@ -1068,8 +1124,6 @@ impl FunctionData {
                 }
             });
         });
-
-        self.validate_ssa();
     }
 
     pub(super) fn allocate_registers(&mut self, backend: &dyn Backend) -> RegisterAllocation {
@@ -1077,16 +1131,28 @@ impl FunctionData {
 
         let hardware_registers = backend.hardware_registers();
         let labels             = self.reachable_labels();
+        let dominators         = self.dominators();
+        let dominator_tree     = DominatorTree::new(self, &dominators);
 
         self.rewrite_phis(&labels);
-        self.rewrite_arguments(&labels);
+        self.rewrite_arguments(&labels, &dominator_tree);
 
         let (constants, uninlineable) = self.process_constants(backend, &labels);
 
-        self.rewrite_constants(&labels, uninlineable);
+        self.rewrite_constants(&labels, uninlineable, &dominator_tree);
 
-        let dominators = self.dominators();
-        let liveness   = self.liveness(&dominators, &labels);
+        // Make sure that we haven't broken anything during rewrite.
+        self.validate_ssa();
+
+        if DEBUG_ALLOCATOR {
+            println!("Rewritten function: ");
+
+            self.dump_text_stdout();
+
+            println!();
+        }
+
+        let liveness = self.liveness(&dominators, &labels);
 
         if DEBUG_ALLOCATOR {
             println!("Values liveness: ");
