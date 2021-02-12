@@ -33,7 +33,7 @@ impl PassRegistry {
             ("dedup-fast",    ir::passes::deduplicate_fast()),
             ("bitopt",        ir::passes::optimize_known_bits()),
             ("reorder",       ir::passes::reorder()),
-            ("x86reorder",    ir::passes::x86reorder()),
+            ("greorder",      ir::passes::global_reorder()),
         ];
 
         Self { passes }

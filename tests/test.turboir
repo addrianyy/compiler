@@ -1,0 +1,7 @@
+u32 main() {
+entry:
+    ptr = stackalloc u32
+    store u32* ptr, u32 33
+    value = load u32, u32* ptr
+    ret u32 value
+}

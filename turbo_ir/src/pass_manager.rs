@@ -21,8 +21,8 @@ const USER_PASSES: &[&dyn passes::Pass] = &[
     &passes::DeduplicateFastPass,
     &passes::DeduplicatePrecisePass,
     &passes::OptimizeKnownBitsPass,
+    &passes::GlobalReorderPass,
     &passes::ReorderPass,
-    &passes::X86ReorderPass,
 ];
 
 fn pass_to_id(pass: &'static dyn passes::Pass) -> PassID {

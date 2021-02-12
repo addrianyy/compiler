@@ -1,4 +1,4 @@
-use crate::{FunctionData, Instruction, Location, ValidationCache};
+use crate::{FunctionData, Instruction, Map};
 
 pub struct ReorderPass;
 
@@ -13,138 +13,79 @@ impl super::Pass for ReorderPass {
 
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let mut did_something = false;
-        let mut vcache        = ValidationCache::default();
-        let dominators        = function.dominators();
-        let labels            = function.reachable_labels();
 
-        // Reorder instructions so they are executed just before first
-        // instruction that needs them. This reduces register pressure and makes
-        // IR easier to follow. Deduplication pass may create values which
-        // are far away from first use.
-        // Limitation is that we can reorder things to a different block then current one.
-        // This is because of a few reasons:
-        // 1. It doesn't collide with x86 reorder pass.
-        // 2. It avoids infinite loops.
-        //    v10 = add v0, v1
-        //    v11 = add v2, v3
-        //    v12 = add v10, v11
-        //    In this case v10 and v11 will be swapped each pass and optimization will never
-        //    finish.
+        // Try to reorder instructions to create patterns which are matched by x86 backend
+        // to create more efficient machine code.
+        //
+        // For now this optimization pass will only try to move cmps just above select/bcond
+        // instructions.
 
-        for &label in &labels {
-            let size = function.blocks[&label].len();
+        for label in function.reachable_labels() {
+            let mut compares  = Map::default();
+            let mut skip_next = false;
 
-            for inst_id in 0..size {
-                let instruction = &function.blocks[&label][inst_id];
+            let body = function.blocks.get_mut(&label).unwrap();
 
-                // Loads, PHIs, volatile instructions, `nop`s and `alias`es cannot be reordered.
-                if !instruction.can_be_reordered() || instruction.is_nop() ||
-                    matches!(instruction, Instruction::Alias { .. }) {
+            'next_instruction: for inst_id in 0.. {
+                // Because size changes dynamically we need to check it manually.
+                if inst_id >= body.len() {
+                    break;
+                }
+
+                // If previous iteration inserted instruction this iteration is at position
+                // of already visited instruction. Skip it.
+                if skip_next {
+                    skip_next = false;
                     continue;
                 }
 
-                if let Some(value) = instruction.created_value() {
-                    let creator = Location::new(label, inst_id);
-
-                    let uses              = function.find_uses(value);
-                    let mut best_location = None;
-                    let mut best_count    = None;
-
-                    // Go through all uses to find the best location to reorder creator.
-                    'next_location: for &location in &uses {
-                        // We don't bother reordering within the same block.
-                        // It can cause infinite optimization loops so we better avoid it.
-                        // If creator is in the same block as one use ordering isn't that bad.
-                        // Don't touch it.
-                        if location.label() == creator.label() {
-                            best_location = None;
-                            break;
-                        }
-
-                        // Don't reorder anything that is used as incoming value in PHI.
-                        if function.instruction(location).is_phi() {
-                            best_location = None;
-                            break;
-                        }
-
-                        let mut instruction_count = 0;
-
-                        // Make sure that we actually can reorder creator and retain
-                        // SSA properties. Basically check that new creator location dominates
-                        // all other uses. Also count number of instructions.
-                        for &other_location in &uses {
-                            // We don't care about ourselves.
-                            if location == other_location {
-                                continue;
+                match &body[inst_id] {
+                    Instruction::IntCompare { dst, .. } => {
+                        // Record information about instruction which can be a
+                        // candidate for reordering.
+                        assert!(compares.insert(*dst, inst_id).is_none(),
+                                "Compares create multiple same values.");
+                    }
+                    Instruction::Select     { cond, .. } |
+                    Instruction::BranchCond { cond, .. } => {
+                        // We found `select`/`bcond` and we want to move corresponding `cmp`
+                        // just above it.
+                        if let Some(&cmp_id) = compares.get(cond) {
+                            // Check if `cmp` is actually just above us. In this case
+                            // we have nothing to do.
+                            let inbetween = inst_id - cmp_id - 1;
+                            if  inbetween == 0 {
+                                continue 'next_instruction;
                             }
 
-                            // Make sure that with reordered creator this use will be still valid.
-                            // Also count number of instructions.
-                            // Because we sum them up, it's not a perfect measure.
-                            // TODO: Find better way of determining the best reorder.
-                            let result = function.validate_path_count(&dominators, location,
-                                                                      other_location, &mut vcache);
-
-                            if let Some(count) = result {
-                                instruction_count += count;
-                            } else {
-                                continue 'next_location;
+                            // We want to move `cmp` down. We need to make sure that
+                            // no instruction so far read its output value. If that's the
+                            // case, moving `cmp` would violate SSA properites.
+                            for instruction in &body[cmp_id + 1..inst_id] {
+                                for value in instruction.read_values() {
+                                    if value == *cond {
+                                        continue 'next_instruction;
+                                    }
+                                }
                             }
+
+                            // We are able to move `cmp` instruction.
+
+                            // This `cmp` instruction is non-movable from now.
+                            compares.remove(cond);
+
+                            // Move `cmp` instruction down so it's just above us.
+                            // We are only updating indices under us.
+                            let compare = std::mem::replace(&mut body[cmp_id],
+                                                            Instruction::Nop);
+                            body.insert(inst_id, compare);
+
+                            // Next index will be this instruction so we need to skip it.
+                            skip_next     = true;
+                            did_something = true;
                         }
-
-                        // It's a valid candidate, check if it's better than current best.
-                        let better = match best_count {
-                            Some(best_count) => instruction_count < best_count,
-                            None             => true,
-                        };
-
-                        if better {
-                            best_location = Some(location);
-                            best_count    = Some(instruction_count);
-                        }
                     }
-
-                    if let Some(best_location) = best_location {
-                        // We have found the best location to reorder instruction.
-
-                        assert_ne!(creator.label(), best_location.label(),
-                                   "It's illegal to reorder within the same block.");
-
-                        // Remove creator instruction.
-                        let creator = std::mem::replace(&mut function.blocks
-                                                        .get_mut(&creator.label())
-                                                        .unwrap()[creator.index()],
-                                                        Instruction::Nop);
-
-                        // Place creator instruction in the new location.
-                        function.blocks.get_mut(&best_location.label())
-                            .unwrap()
-                            .insert(best_location.index(), creator);
-
-                        did_something = true;
-                    }
-                }
-            }
-        }
-
-        for label in labels {
-            let body = function.blocks.get_mut(&label).unwrap();
-            let size = body.len();
-
-            let mut phi_index = 0;
-
-            // Move all PHIs to the top of the block.
-            for inst_id in 0..size {
-                if body[inst_id].is_phi() {
-                    // If there is non-PHI instruction inbetween PHIs than move PHI up.
-                    if inst_id != phi_index {
-                        let instruction = body.remove(inst_id);
-                        body.insert(phi_index, instruction);
-
-                        // There is no point in setting `did_something` here.
-                    }
-
-                    phi_index += 1;
+                    _ => {}
                 }
             }
         }

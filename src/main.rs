@@ -38,8 +38,8 @@ fn main() {
         turbo_ir::passes::optimize_known_bits(),
         turbo_ir::passes::propagate_block_invariants(),
         turbo_ir::passes::branch_to_select(),
+        turbo_ir::passes::global_reorder(),
         turbo_ir::passes::reorder(),
-        turbo_ir::passes::x86reorder(),
     ];
 
     let pass_manager = turbo_ir::PassManager::with_passes(passes);
