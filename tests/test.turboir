@@ -1,7 +1,9 @@
-u32 main() {
+u32 main(u32* ptr, u32 value) {
 entry:
-    ptr = stackalloc u32
-    store u32* ptr, u32 33
-    value = load u32, u32* ptr
-    ret u32 value
+    g    = gep u32* ptr, u32 44
+    x    = add u32 value, 123
+    read = load u32, u32* g
+    y    = add u32 x, read
+
+    ret u32 y
 }

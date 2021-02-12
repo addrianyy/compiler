@@ -14,14 +14,19 @@ impl super::Pass for ReorderPass {
     fn run_on_function(&self, function: &mut FunctionData) -> bool {
         let mut did_something = false;
 
-        // Try to reorder instructions to create patterns which are matched by x86 backend
+        let mut compares = Map::default();
+        let mut geps     = Map::default();
+
+        // Try to reorder instructions to create patterns which can be matched by the backend
         // to create more efficient machine code.
         //
         // For now this optimization pass will only try to move cmps just above select/bcond
         // instructions.
 
         for label in function.reachable_labels() {
-            let mut compares  = Map::default();
+            compares.clear();
+            geps.clear();
+
             let mut skip_next = false;
 
             let body = function.blocks.get_mut(&label).unwrap();
@@ -39,6 +44,8 @@ impl super::Pass for ReorderPass {
                     continue;
                 }
 
+                let mut other_instruction = None;
+
                 match &body[inst_id] {
                     Instruction::IntCompare { dst, .. } => {
                         // Record information about instruction which can be a
@@ -46,46 +53,61 @@ impl super::Pass for ReorderPass {
                         assert!(compares.insert(*dst, inst_id).is_none(),
                                 "Compares create multiple same values.");
                     }
+                    Instruction::GetElementPtr { dst, .. } => {
+                        // Record information about instruction which can be a
+                        // candidate for reordering.
+                        assert!(geps.insert(*dst, inst_id).is_none(),
+                                "GEPs create multiple same values.");
+                    }
                     Instruction::Select     { cond, .. } |
                     Instruction::BranchCond { cond, .. } => {
                         // We found `select`/`bcond` and we want to move corresponding `cmp`
                         // just above it.
-                        if let Some(&cmp_id) = compares.get(cond) {
-                            // Check if `cmp` is actually just above us. In this case
-                            // we have nothing to do.
-                            let inbetween = inst_id - cmp_id - 1;
-                            if  inbetween == 0 {
-                                continue 'next_instruction;
-                            }
-
-                            // We want to move `cmp` down. We need to make sure that
-                            // no instruction so far read its output value. If that's the
-                            // case, moving `cmp` would violate SSA properites.
-                            for instruction in &body[cmp_id + 1..inst_id] {
-                                for value in instruction.read_values() {
-                                    if value == *cond {
-                                        continue 'next_instruction;
-                                    }
-                                }
-                            }
-
-                            // We are able to move `cmp` instruction.
-
-                            // This `cmp` instruction is non-movable from now.
-                            compares.remove(cond);
-
-                            // Move `cmp` instruction down so it's just above us.
-                            // We are only updating indices under us.
-                            let compare = std::mem::replace(&mut body[cmp_id],
-                                                            Instruction::Nop);
-                            body.insert(inst_id, compare);
-
-                            // Next index will be this instruction so we need to skip it.
-                            skip_next     = true;
-                            did_something = true;
-                        }
+                        other_instruction = compares.get(cond).map(|location| (*location, *cond));
+                    }
+                    Instruction::Load  { ptr, .. } |
+                    Instruction::Store { ptr, .. } => {
+                        // We found `load`/`store` and we want to move corresponding `gep`
+                        // just above it.
+                        other_instruction = geps.get(ptr).map(|location| (*location, *ptr));
                     }
                     _ => {}
+                }
+
+                if let Some((other_id, other_value)) = other_instruction {
+                    // Check if other instruction is actually just above us. In this case
+                    // we have nothing to do.
+                    let inbetween = inst_id - other_id - 1;
+                    if  inbetween == 0 {
+                        continue 'next_instruction;
+                    }
+
+                    // We want to move other instruction down. We need to make sure that
+                    // no instruction so far read its output value. If that's the
+                    // case, moving other instruction would violate SSA properites.
+                    for instruction in &body[other_id + 1..inst_id] {
+                        for value in instruction.read_values() {
+                            if value == other_value {
+                                continue 'next_instruction;
+                            }
+                        }
+                    }
+
+                    // We are able to move other instruction.
+
+                    // This other instruction is non-movable from now.
+                    compares.remove(&other_value);
+                    geps.remove(&other_value);
+
+                    // Move other instruction instruction down so it's just above us.
+                    // We are only updating indices under us.
+                    let instruction = std::mem::replace(&mut body[other_id],
+                                                        Instruction::Nop);
+                    body.insert(inst_id, instruction);
+
+                    // Next index will be this instruction so we need to skip it.
+                    skip_next     = true;
+                    did_something = true;
                 }
             }
         }
