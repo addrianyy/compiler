@@ -3,7 +3,7 @@ use crate::{CapacityExt, ConstType, Dominators, FlowGraph, FunctionData, Instruc
 use super::Backend;
 
 const DEBUG_ALLOCATOR: bool = false;
-const ALLOCATOR_INFO:  bool = false;
+const ALLOCATOR_INFO:  bool = true;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Place {
@@ -420,36 +420,91 @@ impl InterferenceGraph {
     }
 }
 
+struct TourEntry {
+    node:  Label,
+    depth: usize,
+}
+
 struct DominatorTree {
-    _tree: Map<Label, Set<Label>>,
-    root:  Label,
+    tree:          Map<Label, Set<Label>>,
+    tour:          Vec<TourEntry>,
+    label_to_tour: Map<Label, usize>,
+    root:          Label,
 }
 
 impl DominatorTree {
-    fn new(function: &FunctionData, dominators: &Dominators) -> Self {
+    fn new(function: &FunctionData, labels: &[Label], dominators: &Dominators) -> Self {
         let mut tree = Map::default();
 
-        tree.insert(function.entry, Set::default());
+        for &label in labels {
+            tree.insert(label, Set::default());
+        }
 
         for (dominated, dominator) in dominators {
-            tree.entry(*dominator)
-                .or_insert_with(Set::default)
+            tree.get_mut(dominator)
+                .unwrap()
                 .insert(*dominated);
         }
 
-        Self {
-            _tree: tree,
-            root:  function.entry,
+        let mut tree = Self {
+            tree,
+            root:          function.entry(),
+            label_to_tour: Map::default(),
+            tour:          Vec::new(),
+        };
+
+        tree.tour(function.entry(), 0);
+
+        tree
+    }
+
+    fn tour_visit(&mut self, label: Label, depth: usize) {
+        let index = self.tour.len();
+
+        self.tour.push(TourEntry {
+            node: label,
+            depth,
+        });
+
+        *self.label_to_tour.entry(label).or_insert(0) = index;
+    }
+
+    fn tour(&mut self, label: Label, depth: usize) {
+        self.tour_visit(label, depth);
+
+        let children = self.tree[&label].clone();
+
+        for child in children {
+            self.tour(child, depth + 1);
+            self.tour_visit(child, depth);
         }
     }
 
-    fn lowest_common_ancestor(&self, l1: Label, l2: Label) -> Label {
-        if l1 == l2 {
-            return l1;
+    fn lowest_common_ancestor(&self, label_a: Label, label_b: Label) -> Label {
+        if label_a == label_b {
+            return label_a;
         }
 
-        // TODO: Implement actual LCA.
-        self.root
+        if label_a == self.root || label_b == self.root {
+            return self.root;
+        }
+
+        let index_a = self.label_to_tour[&label_a];
+        let index_b = self.label_to_tour[&label_b];
+
+        let left  = std::cmp::min(index_a, index_b);
+        let right = std::cmp::max(index_a, index_b);
+
+        let mut min = self.tour[right].depth;
+
+        for index in left..right {
+            let depth = self.tour[index].depth;
+            if  depth < min {
+                min = depth;
+            }
+        }
+
+        self.tour[min].node
     }
 
     fn insertion_point(&self, value: Value, users: &Map<Value, Set<Location>>) -> Option<Location> {
@@ -469,6 +524,7 @@ impl DominatorTree {
                 } else if lca == label {
                     index
                 } else {
+                    // TODO: Put it in the end (but don't split `cmp` and `bcond`).
                     0
                 };
 
@@ -966,7 +1022,7 @@ impl FunctionData {
                 let index = if body.len() == 1 {
                     0
                 } else {
-                    // To help x86 backend try to not put alias inbetween cmp and bcond.
+                    // To help backends don't put `alias` inbetween `cmp` and `bcond`.
                     if let Instruction::IntCompare { dst, .. } = body[body.len() - 2] {
                         if dst != value {
                             body.len() - 2
@@ -997,7 +1053,11 @@ impl FunctionData {
             };
 
             // Replace old PHI with rewritten one.
-            *self.instruction_mut(phi_location) = new_phi;
+            let instruction = self.instruction_mut(phi_location);
+
+            assert!(instruction.is_phi());
+
+            *instruction = new_phi;
         }
     }
 
@@ -1020,6 +1080,10 @@ impl FunctionData {
 
         if !aliases.is_empty() {
             self.for_each_instruction_with_labels_mut(labels, |_, instruction| {
+                if matches!(instruction, Instruction::Alias { .. }) {
+                    return;
+                }
+
                 instruction.transform_inputs(|value| {
                     if let Some(new) = aliases.get(value) {
                         *value = *new;
@@ -1038,6 +1102,44 @@ impl FunctionData {
                         });
                 }
             }
+        }
+    }
+
+    fn rewrite_constants(&mut self, labels: &[Label], uninlineable: Set<Value>,
+                         dominator_tree: &DominatorTree) {
+        time!(rewrite_constants);
+
+        let mut rewritten = Map::default();
+        let users         = self.users_with_labels(labels);
+
+        for value in uninlineable {
+            if let Some(location) = dominator_tree.insertion_point(value, &users) {
+                let ty    = self.value_type(value);
+                let alias = self.allocate_typed_value(ty);
+
+                self.blocks.get_mut(&location.label())
+                    .unwrap()
+                    .insert(location.index(), Instruction::Alias {
+                        dst: alias,
+                        value,
+                    });
+
+                rewritten.insert(value, alias);
+            }
+        }
+
+        if !rewritten.is_empty() {
+            self.for_each_instruction_with_labels_mut(labels, |_location, instruction| {
+                if matches!(instruction, Instruction::Alias { .. }) {
+                    return;
+                }
+
+                instruction.transform_inputs(|input| {
+                    if let Some(alias) = rewritten.get(input) {
+                        *input = *alias;
+                    }
+                });
+            });
         }
     }
 
@@ -1092,47 +1194,13 @@ impl FunctionData {
         (constants, uninlineable)
     }
 
-    fn rewrite_constants(&mut self, labels: &[Label], uninlineable: Set<Value>,
-                         dominator_tree: &DominatorTree) {
-        let mut rewritten = Map::default();
-        let users         = self.users_with_labels(labels);
-
-        for value in uninlineable {
-            if let Some(location) = dominator_tree.insertion_point(value, &users) {
-                let ty    = self.value_type(value);
-                let alias = self.allocate_typed_value(ty);
-
-                self.blocks.get_mut(&location.label())
-                    .unwrap()
-                    .insert(location.index(), Instruction::Alias {
-                        dst: alias,
-                        value,
-                    });
-
-                rewritten.insert(value, alias);
-            }
-        }
-
-        self.for_each_instruction_with_labels_mut(labels, |_location, instruction| {
-            if matches!(instruction, Instruction::Alias { .. }) {
-                return;
-            }
-
-            instruction.transform_inputs(|input| {
-                if let Some(alias) = rewritten.get(input) {
-                    *input = *alias;
-                }
-            });
-        });
-    }
-
     pub(super) fn allocate_registers(&mut self, backend: &dyn Backend) -> RegisterAllocation {
         time!(allocate_registers);
 
         let hardware_registers = backend.hardware_registers();
         let labels             = self.reachable_labels();
         let dominators         = self.dominators();
-        let dominator_tree     = DominatorTree::new(self, &dominators);
+        let dominator_tree     = DominatorTree::new(self, &labels, &dominators);
 
         self.rewrite_phis(&labels);
         self.rewrite_arguments(&labels, &dominator_tree);

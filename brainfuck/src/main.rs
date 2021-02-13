@@ -163,7 +163,7 @@ fn main() {
         ir::passes::undefined_propagate(),
         ir::passes::minimize_phis(),
         ir::passes::branch_to_select(),
-        ir::passes::x86reorder(),
+        ir::passes::reorder(),
     ];
 
     let start = Instant::now();
