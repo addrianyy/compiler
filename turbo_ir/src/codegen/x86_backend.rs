@@ -1416,6 +1416,11 @@ impl super::Backend for X86Backend {
         for user in users {
             // Try to determine if we can easily use constant in particular x86 instruction.
             match user {
+                Instruction::Store { value: store_value, .. } => {
+                    if value != *store_value {
+                        return false;
+                    }
+                }
                 Instruction::ArithmeticBinary { a, op, b, .. } => {
                     let op = *op;
 
@@ -1433,12 +1438,6 @@ impl super::Backend for X86Backend {
                     // x86 backend can change the order and therafore we cannot
                     // easily determine if constant can be used as imm.
                     // TODO: Handle this somehow.
-
-                    /*
-                    if *a == value || *b != value {
-                        continue 'skip;
-                    }
-                    */
 
                     return false;
                 }

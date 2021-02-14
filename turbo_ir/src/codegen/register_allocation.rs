@@ -1,5 +1,6 @@
-use crate::{CapacityExt, ConstType, Dominators, FlowGraph, FunctionData, Instruction, Label,
-            Location, Map, Set, Value};
+use passes::Pass;
+
+use crate::{CapacityExt, ConstType, Dominators, FlowGraph, FunctionData, Instruction, Label, Location, Map, Set, Value, passes};
 use super::Backend;
 
 const DEBUG_ALLOCATOR: bool = false;
@@ -1211,6 +1212,8 @@ impl FunctionData {
 
         // Make sure that we haven't broken anything during rewrite.
         self.validate_ssa();
+
+        passes::ReorderPass.run_on_function_timed(self);
 
         if DEBUG_ALLOCATOR {
             println!("Rewritten function: ");
