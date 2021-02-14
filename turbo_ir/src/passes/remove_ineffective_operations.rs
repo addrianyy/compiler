@@ -145,7 +145,7 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
                             }
                         }
                     }
-                    Instruction::IntCompare { a, pred, b, .. } => {
+                    Instruction::IntCompare { dst, a, pred, b } => {
                         // If both operands to int comapare instruction are the same we can
                         // calculate the result at compile time.
                         if values_equal(&consts, a, b) {
@@ -163,6 +163,33 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
                             };
 
                             constant = Some(result as u64);
+                        } else if consts.get(&a).is_some() && consts.get(&b).is_none() {
+                            // Canonicalize:
+                            // compare constant, non-constant
+                            // To:
+                            // compare non-constant, constant
+                            if consts.get(&a).is_some() && consts.get(&b).is_none() {
+                                // Swap compare order (this is NOT the same as inversion).
+                                let new_pred = match pred {
+                                    IntPredicate::Equal    => IntPredicate::Equal,
+                                    IntPredicate::NotEqual => IntPredicate::NotEqual,
+                                    IntPredicate::GtS      => IntPredicate::LtS,
+                                    IntPredicate::GteS     => IntPredicate::LteS,
+                                    IntPredicate::GtU      => IntPredicate::LtU,
+                                    IntPredicate::GteU     => IntPredicate::LteU,
+                                    IntPredicate::LtS      => IntPredicate::GtS,
+                                    IntPredicate::LteS     => IntPredicate::GteS,
+                                    IntPredicate::LtU      => IntPredicate::GtU,
+                                    IntPredicate::LteU     => IntPredicate::GteU,
+                                };
+
+                                replacement = Some(Instruction::IntCompare {
+                                    dst,
+                                    a:    b,
+                                    pred: new_pred,
+                                    b:    a,
+                                });
+                            }
                         }
                     }
                     Instruction::ArithmeticUnary { dst, op, value } => {

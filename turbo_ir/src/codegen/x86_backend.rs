@@ -1532,11 +1532,6 @@ impl super::Backend for X86Backend {
         for user in users {
             // Try to determine if we can easily use constant in particular x86 instruction.
             match user {
-                Instruction::Store { value: store_value, .. } => {
-                    if value != *store_value {
-                        return false;
-                    }
-                }
                 Instruction::ArithmeticBinary { a, op, b, .. } => {
                     let op = *op;
 
@@ -1546,16 +1541,22 @@ impl super::Backend for X86Backend {
                         return false;
                     }
 
-                    if op == BinaryOp::Mul || op == BinaryOp::DivU || op == BinaryOp::DivS {
+                    if op == BinaryOp::Mul  || op == BinaryOp::DivU || op == BinaryOp::DivS ||
+                       op == BinaryOp::ModS || op == BinaryOp::ModU {
                         return false;
                     }
                 }
-                Instruction::IntCompare { .. } => {
-                    // x86 backend can change the order and therafore we cannot
-                    // easily determine if constant can be used as imm.
-                    // TODO: Handle this somehow.
-
-                    return false;
+                Instruction::IntCompare { a, b, .. } => {
+                    // We can easily use this constant if it's second operand of
+                    // compare operations.
+                    if *a == value || *b != value {
+                        return false;
+                    }
+                }
+                Instruction::Store { value: store_value, .. } => {
+                    if value != *store_value {
+                        return false;
+                    }
                 }
                 Instruction::GetElementPtr { index, .. } => {
                     if *index != value {
@@ -1563,7 +1564,7 @@ impl super::Backend for X86Backend {
                     }
                 }
                 Instruction::Return { .. } => {},
-                _ => return false,
+                _                          => return false,
             }
         }
 
