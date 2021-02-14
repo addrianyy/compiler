@@ -1071,11 +1071,13 @@ impl FunctionData {
         let mut aliases = Map::default();
 
         for argument in arguments {
-            if users[&argument].len() >= 4 {
-                let ty    = self.value_type(argument);
-                let value = self.allocate_typed_value(ty);
+            if let Some(users) = users.get(&argument) {
+                if users.len() >= 4 {
+                    let ty    = self.value_type(argument);
+                    let value = self.allocate_typed_value(ty);
 
-                aliases.insert(argument, value);
+                    aliases.insert(argument, value);
+                }
             }
         }
 

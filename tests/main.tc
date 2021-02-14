@@ -39,3 +39,19 @@ u32 main() {
 
     return 0;
 }
+
+void do_something(i32 x) {
+}
+
+void do_something_else(i32 y) {
+}
+
+void test(i32 n) {
+	for (i32 i = 0; i < n; i += 1) {
+		if (i > n) {
+			do_something(i);
+		}
+		
+		do_something_else(i);
+	}
+}
