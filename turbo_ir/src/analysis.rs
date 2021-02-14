@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
 use super::{FunctionData, Value, Location, Label, Dominators, Map, Set,
-            Instruction, Type, CapacityExt};
+            Instruction, Type, CapacityExt, BinaryOp};
 
 const VALUE_DIVIDER: usize = 4;
 
@@ -1310,5 +1310,15 @@ impl FastValueSet {
         let bit   = value.index() % BITS_PER_VALUE;
 
         self.bitmap[index] |= 1 << bit;
+    }
+}
+
+pub fn corresponding_divmod(op: BinaryOp) -> BinaryOp {
+    match op {
+        BinaryOp::ModU => BinaryOp::DivU,
+        BinaryOp::DivU => BinaryOp::ModU,
+        BinaryOp::ModS => BinaryOp::DivS,
+        BinaryOp::DivS => BinaryOp::ModS,
+        _              => unreachable!(),
     }
 }

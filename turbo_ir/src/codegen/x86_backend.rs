@@ -368,50 +368,9 @@ impl X86Backend {
         }
     }
 
-    fn generate_gep_access(&mut self, cx: &X86CodegenContext, location: Location,
-                           instructions: &[Instruction]) -> usize {
-        let r        = cx.resolver(location);
-        let function = &cx.function;
-
-        match instructions {
-            [Instruction::GetElementPtr { dst: gep_dst,  source, index },
-             Instruction::Load          { dst: load_dst, ptr }, ..]
-                 if gep_dst == ptr && cx.usage_count(*gep_dst) == 1 =>
-            {
-                let ty       = function.value_type(*load_dst);
-                let size     = type_to_operand_size(ty, true);
-                let load_dst = r.resolve(*load_dst);
-
-                let operand = self.gep_operand(cx, &r, *source, *index, Rax, Rcx);
-
-                self.asm.with_size(size, |asm| {
-                    copy(asm, load_dst, operand, Rax);
-                });
-
-                2
-            }
-            [Instruction::GetElementPtr { dst: gep_dst, source, index },
-             Instruction::Store         { ptr, value }, ..]
-                 if gep_dst == ptr && cx.usage_count(*gep_dst) == 1 =>
-            {
-                let ty    = function.value_type(*value);
-                let size  = type_to_operand_size(ty, true);
-                let value = r.resolve(*value);
-
-                let operand = self.gep_operand(cx, &r, *source, *index, Rax, Rcx);
-
-                self.asm.with_size(size, |asm| {
-                    copy(asm, operand, value, Rax);
-                });
-
-                2
-            }
-            _ => 0,
-        }
-    }
-
     fn generate_complex_gep_access(&mut self, cx: &X86CodegenContext, location: Location,
-                                   mut instructions: &[Instruction]) -> usize {
+                                   mut instructions: &[Instruction],
+                                   _next_label: Option<crate::Label>) -> usize {
         let r        = cx.resolver(location);
         let function = &cx.function;
 
@@ -502,23 +461,52 @@ impl X86Backend {
         }
     }
 
-    fn generate_from_patterns(&mut self, cx: &X86CodegenContext, location: Location,
-                              instructions: &[Instruction],
-                              next_label:   Option<crate::Label>) -> usize {
-        if instructions.is_empty() {
-            return 0;
-        }
+    fn generate_gep_access(&mut self, cx: &X86CodegenContext, location: Location,
+                           instructions: &[Instruction],
+                           _next_label: Option<crate::Label>) -> usize {
+        let r        = cx.resolver(location);
+        let function = &cx.function;
 
-        let generated = self.generate_complex_gep_access(cx, location, instructions);
-        if  generated > 0 {
-            return generated;
-        }
+        match instructions {
+            [Instruction::GetElementPtr { dst: gep_dst,  source, index },
+             Instruction::Load          { dst: load_dst, ptr }, ..]
+                 if gep_dst == ptr && cx.usage_count(*gep_dst) == 1 =>
+            {
+                let ty       = function.value_type(*load_dst);
+                let size     = type_to_operand_size(ty, true);
+                let load_dst = r.resolve(*load_dst);
 
-        let generated = self.generate_gep_access(cx, location, instructions);
-        if  generated > 0 {
-            return generated;
-        }
+                let operand = self.gep_operand(cx, &r, *source, *index, Rax, Rcx);
 
+                self.asm.with_size(size, |asm| {
+                    copy(asm, load_dst, operand, Rax);
+                });
+
+                2
+            }
+            [Instruction::GetElementPtr { dst: gep_dst, source, index },
+             Instruction::Store         { ptr, value }, ..]
+                 if gep_dst == ptr && cx.usage_count(*gep_dst) == 1 =>
+            {
+                let ty    = function.value_type(*value);
+                let size  = type_to_operand_size(ty, true);
+                let value = r.resolve(*value);
+
+                let operand = self.gep_operand(cx, &r, *source, *index, Rax, Rcx);
+
+                self.asm.with_size(size, |asm| {
+                    copy(asm, operand, value, Rax);
+                });
+
+                2
+            }
+            _ => 0,
+        }
+    }
+
+    fn generate_conditional_instructions(&mut self, cx: &X86CodegenContext, location: Location,
+                                         instructions: &[Instruction],
+                                         next_label: Option<crate::Label>) -> usize {
         let function = cx.function;
         let asm      = &mut self.asm;
 
@@ -528,15 +516,10 @@ impl X86Backend {
         let resolver      = cx.resolver(location);
         let next_resolver = cx.resolver(next_location);
 
-        // Handle some instruction patterns in a more effective way. X86ReorderPass will try
-        // to create these patterns if possible.
-        //
-        // If from two instructions we create one, we must make sure that one which
-        // we are "destroying" has apropriate number of uses.
-        let generated = match instructions {
+        match instructions {
             [Instruction::IntCompare { dst, a, pred, b },
              Instruction::BranchCond { cond, on_true, on_false }, ..]
-                 if dst == cond && cx.usage_count(*dst) == 1 =>
+                    if dst == cond && cx.usage_count(*dst) == 1 =>
             {
                 // We can merge cmp and bcond. This will allow us to use flag registers
                 // directly and avoid 2 compares and conditional instructions.
@@ -678,9 +661,115 @@ impl X86Backend {
                 2
             }
             _ => 0,
-        };
+        }
+    }
 
-        generated
+    fn generate_divmod(&mut self, cx: &X86CodegenContext, location: Location,
+                       instructions: &[Instruction],
+                       _next_label: Option<crate::Label>) -> usize {
+        let r        = cx.resolver(location);
+        let function = &cx.function;
+
+        match instructions {
+            [Instruction::ArithmeticBinary { dst: dst_1, a: a_1, op: op_1, b: b_1 },
+             Instruction::ArithmeticBinary { dst: dst_2, a: a_2, op: op_2, b: b_2 }, ..] => {
+                if a_1 != a_2 || b_1 != b_2 {
+                    return 0;
+                }
+
+                if !matches!(*op_1, BinaryOp::ModU | BinaryOp::DivU |
+                                    BinaryOp::ModS | BinaryOp::DivS) {
+                    return 0;
+                }
+
+                if crate::analysis::corresponding_divmod(*op_1) != *op_2 {
+                    return 0;
+                }
+
+                let a         = *a_1;
+                let b         = *b_1;
+                let signed    = matches!(*op_1, BinaryOp::ModS | BinaryOp::DivS);
+                let first_mod = matches!(*op_1, BinaryOp::ModU | BinaryOp::ModS);
+
+                let (mod_dst, div_dst) = if first_mod {
+                    (*dst_1, *dst_2)
+                } else {
+                    (*dst_2, *dst_1)
+                };
+
+                let ty   = function.value_type(a);
+                let size = type_to_operand_size(ty, false);
+
+                let a = r.resolve(a);
+                let b = r.resolve(b);
+
+                let mod_dst = r.resolve(mod_dst);
+                let div_dst = r.resolve(div_dst);
+
+                self.asm.with_size(size, |asm| {
+                    asm.mov(&[Reg(Rax), a]);
+
+                    if signed {
+                        asm.cqo(&[]);
+                        asm.idiv(&[b]);
+                    } else {
+                        asm.xor(&[Reg(Rdx), Reg(Rdx)]);
+                        asm.div(&[b]);
+                    }
+
+                    // If operand size is 8 bit AH contains remainder and AL quotient.
+                    // Move remainder to DL.
+                    if size == OperandSize::Bits8 {
+                        asm.operand_size(OperandSize::Bits16);
+
+                        asm.mov(&[Reg(Rdx), Reg(Rax)]);
+
+                        asm.and(&[Reg(Rax), Imm(0xff)]);
+                        asm.shr(&[Reg(Rdx), Imm(8)]);
+
+                        asm.operand_size(OperandSize::Bits8);
+                    }
+
+                    if mod_dst != div_dst {
+                        asm.mov(&[div_dst, Reg(Rax)]);
+                        asm.mov(&[mod_dst, Reg(Rdx)])
+                    } else {
+                        if first_mod {
+                            asm.mov(&[div_dst, Reg(Rax)]);
+                        } else {
+                            asm.mov(&[mod_dst, Reg(Rdx)]);
+                        }
+                    }
+                });
+
+                2
+            }
+            _ => 0,
+        }
+    }
+
+    fn generate_from_patterns(&mut self, cx: &X86CodegenContext, location: Location,
+                              instructions: &[Instruction],
+                              next_label:   Option<crate::Label>) -> usize {
+        if instructions.is_empty() {
+            return 0;
+        }
+
+        macro_rules! pattern_generator {
+            ($function: ident) => {
+                let generated = self.$function(cx, location, instructions, next_label);
+                if  generated > 0 {
+                    return generated;
+                }
+            }
+        }
+
+        pattern_generator!(generate_complex_gep_access);
+        pattern_generator!(generate_gep_access);
+        pattern_generator!(generate_conditional_instructions);
+        pattern_generator!(generate_divmod);
+
+        0
     }
 
     fn generate_function_body(&mut self, cx: &X86CodegenContext, labels: &[crate::Label]) {
@@ -915,6 +1004,19 @@ impl X86Backend {
                                 BinaryOp::And => asm.and(&operands),
                                 BinaryOp::Or  => asm.or(&operands),
                                 BinaryOp::Xor => asm.xor(&operands),
+                            }
+
+                            // If operand size is 8 bit AH contains remainder and AL quotient.
+                            // Move remainder to DL.
+                            if op_type == OpType::Divmod && size == OperandSize::Bits8 {
+                                asm.operand_size(OperandSize::Bits16);
+
+                                asm.mov(&[Reg(Rdx), Reg(Rax)]);
+
+                                asm.and(&[Reg(Rax), Imm(0xff)]);
+                                asm.shr(&[Reg(Rdx), Imm(8)]);
+
+                                asm.operand_size(OperandSize::Bits8);
                             }
 
                             // If we haven't modified value in place then copy it to destination

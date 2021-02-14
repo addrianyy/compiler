@@ -2,16 +2,6 @@ use crate::{BinaryOp, FunctionData, Instruction, Map};
 
 pub struct ReorderPass;
 
-fn corresponding_divmod(op: BinaryOp) -> BinaryOp {
-    match op {
-        BinaryOp::ModU => BinaryOp::DivU,
-        BinaryOp::DivU => BinaryOp::ModU,
-        BinaryOp::ModS => BinaryOp::DivS,
-        BinaryOp::DivS => BinaryOp::ModS,
-        _              => unreachable!(),
-    }
-}
-
 impl super::Pass for ReorderPass {
     fn name(&self) -> &str {
         "reordering"
@@ -78,7 +68,7 @@ impl super::Pass for ReorderPass {
                             let b  = *b;
                             let op = *op;
 
-                            let corresponding = corresponding_divmod(op);
+                            let corresponding = crate::analysis::corresponding_divmod(op);
 
                             if let Some(&other_id) = divmods.get(&(a, corresponding, b)) {
                                 divmods.remove(&(a, corresponding, b));
