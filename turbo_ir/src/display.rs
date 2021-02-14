@@ -61,6 +61,10 @@ impl fmt::Display for IntPredicate {
             IntPredicate::GteU     => "ugte",
             IntPredicate::GtS      => "sgt",
             IntPredicate::GteS     => "sgte",
+            IntPredicate::LtU      => "ult",
+            IntPredicate::LteU     => "ulte",
+            IntPredicate::LtS      => "slt",
+            IntPredicate::LteS     => "slte",
         };
 
         write!(f, "{}", name)

@@ -532,8 +532,8 @@ impl X86Backend {
                 let size = type_to_operand_size(ty, true);
 
                 let mut pred = *pred;
-                let mut a    = resolver.resolve(*a);
-                let mut b    = resolver.resolve(*b);
+                let a        = resolver.resolve(*a);
+                let b        = resolver.resolve(*b);
 
                 // Check if there is fallthrough and on what label.
                 let fallthrough = match next_label {
@@ -546,21 +546,7 @@ impl X86Backend {
                     // Invert the condition if we are falling through to the true label.
                     // This will make us jump to the false label if condition is not met
                     // and fallthrough to true label if it is met.
-                    match pred {
-                        IntPredicate::Equal    => pred = IntPredicate::NotEqual,
-                        IntPredicate::NotEqual => pred = IntPredicate::Equal,
-                        _                      => {
-                            pred = match pred {
-                                IntPredicate::GtS  => IntPredicate::GteS,
-                                IntPredicate::GteS => IntPredicate::GtS,
-                                IntPredicate::GtU  => IntPredicate::GteU,
-                                IntPredicate::GteU => IntPredicate::GtU,
-                                _                  => unreachable!(),
-                            };
-
-                            std::mem::swap(&mut a, &mut b);
-                        }
-                    }
+                    pred = pred.invert();
                 }
 
                 // Compare two operands.
@@ -594,6 +580,10 @@ impl X86Backend {
                     IntPredicate::GteS     => asm.jge(operands),
                     IntPredicate::GtU      => asm.ja(operands),
                     IntPredicate::GteU     => asm.jae(operands),
+                    IntPredicate::LtS      => asm.jl(operands),
+                    IntPredicate::LteS     => asm.jle(operands),
+                    IntPredicate::LtU      => asm.jb(operands),
+                    IntPredicate::LteU     => asm.jbe(operands),
                 }
 
                 // If there was no fallthrough we must jump to other label.
@@ -652,6 +642,10 @@ impl X86Backend {
                     IntPredicate::GteS     => asm.cmovge(operands),
                     IntPredicate::GtU      => asm.cmova(operands),
                     IntPredicate::GteU     => asm.cmovae(operands),
+                    IntPredicate::LtS      => asm.cmovl(operands),
+                    IntPredicate::LteS     => asm.cmovle(operands),
+                    IntPredicate::LtU      => asm.cmovb(operands),
+                    IntPredicate::LteU     => asm.cmovbe(operands),
                 }
 
                 // Move selected value to destination place from intermediate register.
@@ -1339,6 +1333,10 @@ impl X86Backend {
                                 IntPredicate::GteS     => asm.setge(operands),
                                 IntPredicate::GtU      => asm.seta(operands),
                                 IntPredicate::GteU     => asm.setae(operands),
+                                IntPredicate::LtS      => asm.setl(operands),
+                                IntPredicate::LteS     => asm.setle(operands),
+                                IntPredicate::LtU      => asm.setb(operands),
+                                IntPredicate::LteU     => asm.setbe(operands),
                             }
 
                             // Move condtion result from intermediate register

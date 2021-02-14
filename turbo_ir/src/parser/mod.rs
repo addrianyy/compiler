@@ -54,6 +54,10 @@ impl Keyword {
             Keyword::Ugte => IntPredicate::GteU,
             Keyword::Sgt  => IntPredicate::GtS,
             Keyword::Sgte => IntPredicate::GteS,
+            Keyword::Ult  => IntPredicate::LtU,
+            Keyword::Ulte => IntPredicate::LteU,
+            Keyword::Slt  => IntPredicate::LtS,
+            Keyword::Slte => IntPredicate::LteS,
             _             => return None,
         })
     }

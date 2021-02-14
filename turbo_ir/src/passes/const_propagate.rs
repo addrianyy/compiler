@@ -91,6 +91,10 @@ impl super::Pass for ConstPropagatePass {
                     IntPredicate::GteU     => ua >= ub,
                     IntPredicate::GtS      => sa >  sb,
                     IntPredicate::GteS     => sa >= sb,
+                    IntPredicate::LtU      => ua <  ub,
+                    IntPredicate::LteU     => ua <= ub,
+                    IntPredicate::LtS      => sa <  sb,
+                    IntPredicate::LteS     => sa <= sb,
                 };
 
                 result as u64

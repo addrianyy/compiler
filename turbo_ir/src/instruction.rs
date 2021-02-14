@@ -28,10 +28,33 @@ pub enum BinaryOp {
 pub enum IntPredicate {
     Equal,
     NotEqual,
+
     GtU,
     GteU,
     GtS,
     GteS,
+
+    LtU,
+    LteU,
+    LtS,
+    LteS,
+}
+
+impl IntPredicate {
+    pub fn invert(self) -> Self {
+        match self {
+            IntPredicate::Equal    => IntPredicate::NotEqual,
+            IntPredicate::NotEqual => IntPredicate::Equal,
+            IntPredicate::GtS      => IntPredicate::LteS,
+            IntPredicate::GteS     => IntPredicate::LtS,
+            IntPredicate::GtU      => IntPredicate::LteU,
+            IntPredicate::GteU     => IntPredicate::LtU,
+            IntPredicate::LtS      => IntPredicate::GteS,
+            IntPredicate::LteS     => IntPredicate::GtS,
+            IntPredicate::LtU      => IntPredicate::GteU,
+            IntPredicate::LteU     => IntPredicate::GtU,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]

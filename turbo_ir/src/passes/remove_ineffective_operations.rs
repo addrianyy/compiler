@@ -156,6 +156,10 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
                                 IntPredicate::GteS     => true,
                                 IntPredicate::GtU      => false,
                                 IntPredicate::GteU     => true,
+                                IntPredicate::LtS      => false,
+                                IntPredicate::LteS     => true,
+                                IntPredicate::LtU      => false,
+                                IntPredicate::LteU     => true,
                             };
 
                             constant = Some(result as u64);

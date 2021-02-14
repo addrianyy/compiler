@@ -85,6 +85,10 @@ impl Module {
     implement_compare!(compare_ugte, IntPredicate::GteU);
     implement_compare!(compare_sgt,  IntPredicate::GtS);
     implement_compare!(compare_sgte, IntPredicate::GteS);
+    implement_compare!(compare_ult,  IntPredicate::LtU);
+    implement_compare!(compare_ulte, IntPredicate::LteU);
+    implement_compare!(compare_slt,  IntPredicate::LtS);
+    implement_compare!(compare_slte, IntPredicate::LteS);
 
     implement_cast!(zero_extend, Cast::ZeroExtend);
     implement_cast!(sign_extend, Cast::SignExtend);

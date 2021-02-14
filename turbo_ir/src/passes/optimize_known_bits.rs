@@ -425,7 +425,12 @@ impl super::Pass for OptimizeKnownBitsPass {
                                     None
                                 }
                             }
-                            IntPredicate::GtS | IntPredicate::GteS => {
+                            IntPredicate::GtS | IntPredicate::GteS | 
+                            IntPredicate::LtS | IntPredicate::LteS => {
+                                if matches!(pred, IntPredicate::LtS | IntPredicate::LteS) {
+                                    std::mem::swap(&mut a, &mut b);
+                                }
+
                                 if let (Some(a_sign), Some(b_sign)) = (a.sign(ty), b.sign(ty)) {
                                     if a_sign != b_sign {
                                         // If `b` is negative than `a` is positive and `a` is
@@ -450,6 +455,9 @@ impl super::Pass for OptimizeKnownBitsPass {
                             }
                             IntPredicate::GtU | IntPredicate::GteU => {
                                 bit_compare_greater(&a, &b, ty)
+                            }
+                            IntPredicate::LtU | IntPredicate::LteU => {
+                                bit_compare_greater(&b, &a, ty)
                             }
                         };
 

@@ -127,36 +127,12 @@ impl super::Pass for SimplifyComparesPass {
                                 if let Some(&Instruction::IntCompare { a, pred, b, .. })
                                     = parent_compare
                                 {
-                                    let mut a = a;
-                                    let mut b = b;
-
-                                    // Invert `cmp` instruction.
-                                    let (new_pred, needs_swap) = match pred {
-                                        IntPredicate::Equal    => (IntPredicate::NotEqual, false),
-                                        IntPredicate::NotEqual => (IntPredicate::Equal,    false),
-                                        _                      => {
-                                            let pred = match pred {
-                                                IntPredicate::GtS  => IntPredicate::GteS,
-                                                IntPredicate::GteS => IntPredicate::GtS,
-                                                IntPredicate::GtU  => IntPredicate::GteU,
-                                                IntPredicate::GteU => IntPredicate::GtU,
-                                                _                  => unreachable!(),
-                                            };
-
-                                            (pred, true)
-                                        }
-                                    };
-
-                                    if needs_swap {
-                                        std::mem::swap(&mut a, &mut b);
-                                    }
-
                                     // Change this instruction to inverted version of the
                                     // first `cmp`.
                                     new_instruction = Some(Instruction::IntCompare {
                                         dst: *dst,
                                         a,
-                                        pred: new_pred,
+                                        pred: pred.invert(),
                                         b,
                                     });
                                 }
