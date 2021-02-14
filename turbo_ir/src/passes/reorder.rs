@@ -1,6 +1,16 @@
-use crate::{FunctionData, Instruction, Map};
+use crate::{BinaryOp, FunctionData, Instruction, Map};
 
 pub struct ReorderPass;
+
+fn corresponding_divmod(op: BinaryOp) -> BinaryOp {
+    match op {
+        BinaryOp::ModU => BinaryOp::DivU,
+        BinaryOp::DivU => BinaryOp::ModU,
+        BinaryOp::ModS => BinaryOp::DivS,
+        BinaryOp::DivS => BinaryOp::ModS,
+        _              => unreachable!(),
+    }
+}
 
 impl super::Pass for ReorderPass {
     fn name(&self) -> &str {
@@ -16,6 +26,7 @@ impl super::Pass for ReorderPass {
 
         let mut compares = Map::default();
         let mut geps     = Map::default();
+        let mut divmods  = Map::default();
 
         // Try to reorder instructions to create patterns which can be matched by the backend
         // to create more efficient machine code.
@@ -26,6 +37,7 @@ impl super::Pass for ReorderPass {
         for label in function.reachable_labels() {
             compares.clear();
             geps.clear();
+            divmods.clear();
 
             let mut skip_next = false;
 
@@ -58,6 +70,53 @@ impl super::Pass for ReorderPass {
                         // candidate for reordering.
                         assert!(geps.insert(*dst, inst_id).is_none(),
                                 "GEPs create multiple same values.");
+                    }
+                    Instruction::ArithmeticBinary { a, op, b, .. } => {
+                        if matches!(op, BinaryOp::ModU | BinaryOp::DivU |
+                                        BinaryOp::ModS | BinaryOp::DivS) {
+                            let a  = *a;
+                            let b  = *b;
+                            let op = *op;
+
+                            let corresponding = corresponding_divmod(op);
+
+                            if let Some(&other_id) = divmods.get(&(a, corresponding, b)) {
+                                divmods.remove(&(a, corresponding, b));
+                                divmods.remove(&(a, op,            b));
+
+                                let inbetween = inst_id - other_id - 1;
+                                if  inbetween == 0 {
+                                    continue 'next_instruction;
+                                }
+
+                                // Remove this instruction from current position.
+                                let instruction = std::mem::replace(&mut body[inst_id],
+                                                                    Instruction::Nop);
+
+                                // Move this instruction just above corresponding `div`/`mod`.
+                                body.insert(other_id, instruction);
+
+                                // We have moved down all instructions with index >= `other_id`.
+                                // Adjust the maps.
+                                macro_rules! adjust {
+                                    ($map: expr) => {
+                                        for location in $map.values_mut() {
+                                            if *location >= other_id { *location += 1; }
+                                        }
+                                    }
+                                }
+
+                                adjust!(compares);
+                                adjust!(geps);
+                                adjust!(divmods);
+
+                                // Next index will be this instruction so we need to skip it.
+                                skip_next     = true;
+                                did_something = true;
+                            } else {
+                                divmods.insert((a, op, b), inst_id);
+                            }
+                        }
                     }
                     Instruction::Select     { cond, .. } |
                     Instruction::BranchCond { cond, .. } => {
