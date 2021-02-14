@@ -2,7 +2,7 @@ extern void print(u8* str);
 
 void print_num(u32 num) {
     u8 buffer[256];
-    i32 i = 255;
+    i64 i = 255;
 
     buffer[i] = 0;
     i -= 1;

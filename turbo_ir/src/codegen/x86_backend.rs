@@ -967,8 +967,24 @@ impl X86Backend {
 
                             // Perform the operation.
                             match op {
-                                BinaryOp::Add => asm.add(&operands),
-                                BinaryOp::Sub => asm.sub(&operands),
+                                BinaryOp::Add => {
+                                    let dst = operands[0];
+
+                                    match operands[1] {
+                                        Imm(1)  => asm.inc(&[dst]),
+                                        Imm(-1) => asm.dec(&[dst]),
+                                        _       => asm.add(&operands),
+                                    }
+                                }
+                                BinaryOp::Sub => {
+                                    let dst = operands[0];
+
+                                    match operands[1] {
+                                        Imm(-1) => asm.inc(&[dst]),
+                                        Imm(1)  => asm.dec(&[dst]),
+                                        _       => asm.sub(&operands),
+                                    }
+                                }
                                 BinaryOp::Mul => asm.imul(&operands),
                                 BinaryOp::ModU => {
                                     // Zero extend the value.
