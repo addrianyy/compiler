@@ -224,10 +224,11 @@ impl super::Pass for RemoveIneffectiveOperationsPass {
                             // Two casts of the same type can be optimized out to only one.
                             // For example `zext` from u16 to u32 and `zext` from u32 to u64
                             // can be converted to `zext` from u16 to u64.
-                            if *p_cast == cast {
+                            if *p_cast == cast || (   cast == Cast::SignExtend &&
+                                                   *p_cast == Cast::ZeroExtend) {
                                 replacement = Some(Instruction::Cast {
                                     dst,
-                                    cast,
+                                    cast:  *p_cast,
                                     value: *p_value,
                                     ty,
                                 });

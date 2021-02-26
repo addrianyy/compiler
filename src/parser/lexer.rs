@@ -182,23 +182,27 @@ impl Lexer {
 
         'lex_next: while !source.is_empty() {
             source = source.trim_start();
+
             if source.is_empty() {
                 break;
             }
 
+            if source.starts_with("/*") {
+                let end_index = source.find("*/")
+                    .map(|index| index + 2)
+                    .unwrap_or(source.len());
+
+                source = &source[end_index..];
+
+                continue 'lex_next;
+            }
+
             if source.starts_with("//") {
-                source = &source[2..];
+                let end_index = source[2..].find(|ch| ch == '\n' || ch == '\r')
+                    .map(|index| index + 2 + 1)
+                    .unwrap_or(source.len());
 
-                let mut end = source.len();
-
-                for (index, ch) in source.char_indices() {
-                    if ch == '\n' || ch == '\r' {
-                        end = index + ch.len_utf8();
-                        break;
-                    }
-                }
-
-                source = &source[end..];
+                source = &source[end_index..];
 
                 continue 'lex_next;
             }
@@ -363,15 +367,15 @@ impl Lexer {
 
             let end = source.find(|c: char| !c.is_alphanumeric() && c != '_')
                 .unwrap_or_else(|| source.len());
-            let ident = &source[..end];
+            let identifier = &source[..end];
 
             source = &source[end..];
 
-            assert!(!ident.is_empty(), "Invalid state: {}.", source);
+            assert!(!identifier.is_empty(), "Invalid state: {}.", source);
 
-            let token = match Keyword::from_ident(ident) {
+            let token = match Keyword::from_ident(identifier) {
                 Some(keyword) => Token::Keyword(keyword),
-                None          => Token::Identifier(ident.to_string()),
+                None          => Token::Identifier(identifier.to_string()),
             };
 
             tokens.push(token);

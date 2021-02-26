@@ -4,7 +4,7 @@ use crate::{CapacityExt, ConstType, Dominators, FlowGraph, FunctionData, Instruc
 use super::Backend;
 
 const DEBUG_ALLOCATOR: bool = false;
-const ALLOCATOR_INFO:  bool = true;
+const ALLOCATOR_INFO:  bool = false;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Place {
@@ -284,6 +284,7 @@ struct InterferenceGraph {
     edges:          Map<Entity, Set<Entity>>,
     vertices:       Vec<Entity>,
     vertices_dedup: Set<Entity>,
+    edge_count:     usize,
 }
 
 impl InterferenceGraph {
@@ -301,6 +302,8 @@ impl InterferenceGraph {
         if e1 == e2 {
             return;
         }
+
+        self.edge_count += 1;
 
         // Insert edge from `e1` to `e2`.
         self.edges.get_mut(&e1).unwrap().insert(e2);
@@ -1261,6 +1264,9 @@ impl FunctionData {
         }
 
         if DEBUG_ALLOCATOR {
+            println!("Dumping interference graph with {} vertices and {} edges...",
+                     interference.vertices.len(), interference.edge_count);
+
             // Dump colored interference graph to the file.
             self.dump_interference_graph(&interference, &coloring,
                                          &virtual_registers.registers);

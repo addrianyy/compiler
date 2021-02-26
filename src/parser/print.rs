@@ -67,9 +67,9 @@ impl Expr {
             Expr::Call { target, args } => {
                 writeln!(w, "{}CallExpr", j)?;
 
-                writeln!(w, "{}Target: {}", j, target)?;
+                writeln!(w, "{}Target: {}", i, target)?;
 
-                writeln!(w, "{}Args:", j)?;
+                writeln!(w, "{}Args:", i)?;
                 for arg in args {
                     arg.print(w, indent + 1)?;
                 }

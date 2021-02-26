@@ -55,3 +55,11 @@ void test(i32 n) {
 		do_something_else(i);
 	}
 }
+
+/*
+void loop(i32* something) {
+	for (i64 i = 0; i < 10; i += 1) {
+		something[i] = 0;
+	}
+}
+*/
