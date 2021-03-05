@@ -18,31 +18,39 @@ fn main() {
         std::process::exit(1);
     });
 
+    let no_optimize = std::env::args().nth(2)
+        .map(|s| s == "-noopt")
+        .unwrap_or(false);
+
     let source       = std::fs::read_to_string(input_file).unwrap();
     let parsed       = parser::parse(&source);
     let mut compiled = compiler::compile(&parsed);
 
-    let passes = &[
-        turbo_ir::passes::const_propagate(),
-        turbo_ir::passes::remove_ineffective_operations(),
-        turbo_ir::passes::simplify_cfg(),
-        turbo_ir::passes::simplify_compares(),
-        turbo_ir::passes::simplify_expressions(),
-        turbo_ir::passes::remove_dead_code(),
-        turbo_ir::passes::memory_to_ssa(),
-        turbo_ir::passes::deduplicate_precise(),
-        turbo_ir::passes::remove_known_loads_precise(),
-        turbo_ir::passes::remove_dead_stores_precise(),
-        turbo_ir::passes::undefined_propagate(),
-        turbo_ir::passes::minimize_phis(),
-        turbo_ir::passes::optimize_known_bits(),
-        turbo_ir::passes::propagate_block_invariants(),
-        turbo_ir::passes::branch_to_select(),
-        turbo_ir::passes::global_reorder(),
-        turbo_ir::passes::reorder(),
-    ];
+    let passes = if no_optimize {
+        vec![]
+    } else {
+        vec![
+            turbo_ir::passes::const_propagate(),
+            turbo_ir::passes::remove_ineffective_operations(),
+            turbo_ir::passes::simplify_cfg(),
+            turbo_ir::passes::simplify_compares(),
+            turbo_ir::passes::simplify_expressions(),
+            turbo_ir::passes::remove_dead_code(),
+            turbo_ir::passes::memory_to_ssa(),
+            turbo_ir::passes::deduplicate_precise(),
+            turbo_ir::passes::remove_known_loads_precise(),
+            turbo_ir::passes::remove_dead_stores_precise(),
+            turbo_ir::passes::undefined_propagate(),
+            turbo_ir::passes::minimize_phis(),
+            turbo_ir::passes::optimize_known_bits(),
+            turbo_ir::passes::propagate_block_invariants(),
+            turbo_ir::passes::branch_to_select(),
+            turbo_ir::passes::global_reorder(),
+            turbo_ir::passes::reorder(),
+        ]
+    };
 
-    let pass_manager = turbo_ir::PassManager::with_passes(passes);
+    let pass_manager = turbo_ir::PassManager::with_passes(&passes);
 
     compiled.ir.optimize(&pass_manager, false);
 

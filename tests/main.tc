@@ -40,26 +40,12 @@ u32 main() {
     return 0;
 }
 
-void do_something(i32 x) {
-}
+i32 test123(i32 x, i32 y) {
+    if (x == 4) {
+        if (x == 8) {
+            return 44;
+        }
+    }
 
-void do_something_else(i32 y) {
+    return 12;
 }
-
-void test(i32 n) {
-	for (i32 i = 0; i < n; i += 1) {
-		if (i > n) {
-			do_something(i);
-		}
-		
-		do_something_else(i);
-	}
-}
-
-/*
-void loop(i32* something) {
-	for (i64 i = 0; i < 10; i += 1) {
-		something[i] = 0;
-	}
-}
-*/

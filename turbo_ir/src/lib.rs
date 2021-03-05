@@ -300,10 +300,6 @@ impl FunctionData {
             index:     usize,
         }
 
-        if passes.is_empty() {
-            return;
-        }
-
         let default_passes: &[&dyn Pass] = &[
             &passes::RemoveAliasesPass,
             &passes::RemoveNopsPass,
