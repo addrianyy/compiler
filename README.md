@@ -2,6 +2,8 @@ Simple hobby compiler project. Custom language gets converted to intermediate re
 then machine code is generated. IR is language-independent and as example this project contains 
 IR-based brainfuck compiler. A lot of features are missing.
 
+usage: `cargo run [source file]`
+
 1. Source code goes through lexer and parser which generates AST.
 
 ```
